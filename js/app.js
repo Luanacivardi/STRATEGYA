@@ -386,7 +386,12 @@ function abrirModalNovaEmpresa() {
 // Cada empresa tem sua própria lista de módulos habilitados (definida em Permissões, só por ORBEEX).
 // Módulos ainda não implementados (disponivel: false), mesmo que habilitados para a empresa,
 // levam a um placeholder "em construção".
+// Exceção: para o papel ORBEEX, "Ações" e "Controladoria" ficam sempre visíveis em qualquer
+// empresa, independente do que foi habilitado — a equipe ORBEEX precisa acessá-los sempre.
+const MODULOS_SEMPRE_VISIVEIS_ORBEEX = ['acoes', 'controladoria'];
+
 function moduloHabilitadoParaEmpresa(moduloId) {
+  if (state.papelAtual === 'orbeex' && MODULOS_SEMPRE_VISIVEIS_ORBEEX.includes(moduloId)) return true;
   return (state.empresaAtual?.modulos_habilitados || []).includes(moduloId);
 }
 
