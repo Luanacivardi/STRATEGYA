@@ -44,29 +44,27 @@ export async function render(container, state) {
   const nomeObjetivoPorId = new Map(objetivos.map((o) => [o.id, o.nome]));
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
 
-  const itensExibidos = objetivoFiltroId ? itens.filter((i) => i.objetivo_id === objetivoFiltroId) : itens;
+  const baseFiltrada = objetivoFiltroId ? itens.filter((i) => i.objetivo_id === objetivoFiltroId) : itens;
   const filtroBanner = objetivoFiltroId ? `
     <div class="alert alert-info" style="display:flex;justify-content:space-between;align-items:center">
       <span>Filtrando indicadores do objetivo <strong>${escapeHtml(nomeObjetivoPorId.get(objetivoFiltroId) || '—')}</strong></span>
       <button class="btn btn-secondary btn-sm" id="btn-limpar-filtro-objetivo">Limpar filtro</button>
     </div>` : '';
 
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-header">
-        <span><i class="ti ti-chart-line"></i> Indicadores (KPIs)</span>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary btn-sm" id="btn-indicadores-email"><i class="ti ti-mail"></i> Enviar por e-mail</button>
-          <button class="btn btn-secondary btn-sm" id="btn-indicadores-pdf"><i class="ti ti-printer"></i> Imprimir lista</button>
-          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-indicador"><i class="ti ti-plus"></i> Novo indicador</button>' : ''}
-        </div>
-      </div>
-      ${filtroBanner}
-      ${itensExibidos.length ? `
+  function itensExibidos() {
+    const respFiltro = container.querySelector('#in-filtro-responsavel')?.value || '';
+    if (!respFiltro) return baseFiltrada;
+    return baseFiltrada.filter((i) => i.responsavel_id === respFiltro);
+  }
+
+  function renderTabela() {
+    const filtrados = itensExibidos();
+    const area = container.querySelector('#indicadores-tabela-area');
+    area.innerHTML = filtrados.length ? `
         <table class="table">
           <thead><tr><th>Indicador</th><th>Objetivo</th><th>Meta</th><th>Periodicidade</th><th>Responsável</th><th></th></tr></thead>
           <tbody>
-            ${itensExibidos.map((ind) => `
+            ${filtrados.map((ind) => `
               <tr>
                 <td>
                   <strong>${escapeHtml(ind.nome)}</strong>
@@ -89,54 +87,78 @@ export async function render(container, state) {
                 </td>
               </tr>`).join('')}
           </tbody>
-        </table>` : `<div class="empty-state"><i class="ti ti-chart-line"></i>${objetivoFiltroId ? 'Nenhum indicador vinculado a este objetivo.' : 'Nenhum indicador cadastrado.'}</div>`}
+        </table>` : `<div class="empty-state"><i class="ti ti-chart-line"></i>${objetivoFiltroId ? 'Nenhum indicador vinculado a este objetivo.' : 'Nenhum indicador encontrado.'}</div>`;
+
+    area.querySelectorAll('[data-editar]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.editar);
+        abrirFormulario(state, container, objetivos, membros, item);
+      });
+    });
+
+    area.querySelectorAll('[data-excluir]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir este indicador? Todos os resultados apurados serão removidos.'))) return;
+        const { error } = await supabase.from('indicadores').delete().eq('id', btn.dataset.excluir);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        toast('Indicador excluído.', 'sucesso');
+        render(container, state);
+      });
+    });
+
+    area.querySelectorAll('[data-resultados]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.resultados);
+        abrirResultados(state, item);
+      });
+    });
+
+    area.querySelectorAll('[data-apresentar]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.apresentar);
+        abrirApresentacao(state, item);
+      });
+    });
+  }
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span><i class="ti ti-chart-line"></i> Indicadores (KPIs)</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" id="btn-indicadores-email"><i class="ti ti-mail"></i> Enviar por e-mail</button>
+          <button class="btn btn-secondary btn-sm" id="btn-indicadores-pdf"><i class="ti ti-printer"></i> Imprimir lista</button>
+          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-indicador"><i class="ti ti-plus"></i> Novo indicador</button>' : ''}
+        </div>
+      </div>
+      ${filtroBanner}
+      <div class="filters filters-compact">
+        <select id="in-filtro-responsavel" class="filter-select filter-select-sm">
+          <option value="">Responsável</option>
+          ${membros.map((m) => `<option value="${m.usuario_id}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="indicadores-tabela-area"></div>
     </div>
   `;
+
+  renderTabela();
+
+  container.querySelector('#in-filtro-responsavel').addEventListener('change', renderTabela);
 
   const btnLimparFiltro = container.querySelector('#btn-limpar-filtro-objetivo');
   if (btnLimparFiltro) btnLimparFiltro.addEventListener('click', () => { objetivoFiltroId = null; render(container, state); });
 
   container.querySelector('#btn-indicadores-pdf').addEventListener('click', () => {
-    imprimirListaIndicadores(itensExibidos, nomeObjetivoPorId, emailPorId);
+    imprimirListaIndicadores(itensExibidos(), nomeObjetivoPorId, emailPorId);
   });
   container.querySelector('#btn-indicadores-email').addEventListener('click', () => {
-    const corpo = itensExibidos.map((ind) => `${ind.nome}\nObjetivo: ${nomeObjetivoPorId.get(ind.objetivo_id) || '—'} | Meta: ${ind.classificacao === 'com_meta' && ind.meta !== null ? formatarValor(ind.meta, ind.unidade) + ' ' + (ind.unidade || '') : '—'} | Responsável: ${emailPorId.get(ind.responsavel_id) || '—'}\n`).join('\n');
+    const corpo = itensExibidos().map((ind) => `${ind.nome}\nObjetivo: ${nomeObjetivoPorId.get(ind.objetivo_id) || '—'} | Meta: ${ind.classificacao === 'com_meta' && ind.meta !== null ? formatarValor(ind.meta, ind.unidade) + ' ' + (ind.unidade || '') : '—'} | Responsável: ${emailPorId.get(ind.responsavel_id) || '—'}\n`).join('\n');
     enviarPorEmail('Indicadores (KPIs)', corpo || 'Nenhum indicador encontrado.');
   });
 
   const btnAdd = container.querySelector('#btn-add-indicador');
   if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, objetivos, membros));
-
-  container.querySelectorAll('[data-editar]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const item = itens.find((i) => i.id === btn.dataset.editar);
-      abrirFormulario(state, container, objetivos, membros, item);
-    });
-  });
-
-  container.querySelectorAll('[data-excluir]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!(await confirmar('Excluir este indicador? Todos os resultados apurados serão removidos.'))) return;
-      const { error } = await supabase.from('indicadores').delete().eq('id', btn.dataset.excluir);
-      if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
-      toast('Indicador excluído.', 'sucesso');
-      render(container, state);
-    });
-  });
-
-  container.querySelectorAll('[data-resultados]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const item = itens.find((i) => i.id === btn.dataset.resultados);
-      abrirResultados(state, item);
-    });
-  });
-
-  container.querySelectorAll('[data-apresentar]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const item = itens.find((i) => i.id === btn.dataset.apresentar);
-      abrirApresentacao(state, item);
-    });
-  });
 
   if (indicadorAlvoId) {
     const alvo = itens.find((i) => i.id === indicadorAlvoId);

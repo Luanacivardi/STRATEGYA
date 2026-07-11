@@ -1,10 +1,11 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao } from '../ui.js';
 import { definirFiltroObjetivo } from './planosAcao.js';
 import { renderMapa, wireMapa } from './mapaEstrategico.js';
 
+// Chave interna 'clientes' mantida (não altera dados existentes) — só o rótulo exibido virou "Mercado".
 export const PERSPECTIVAS = {
   financeira: 'Financeira',
-  clientes: 'Clientes',
+  clientes: 'Mercado',
   processos_internos: 'Processos Internos',
   aprendizado_crescimento: 'Aprendizado e Crescimento',
 };
@@ -45,19 +46,39 @@ export async function render(container, state) {
   const planosPorObjetivo = new Map();
   planos.forEach((p) => planosPorObjetivo.set(p.origem_id, (planosPorObjetivo.get(p.origem_id) || 0) + 1));
 
-  container.innerHTML = `
-    ${renderMapa(itens)}
-    <div class="card">
-      <div class="card-header">
-        <span><i class="ti ti-flag"></i> Objetivos Estratégicos</span>
-        ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-objetivo"><i class="ti ti-plus"></i> Novo objetivo</button>' : ''}
-      </div>
-      ${itens.length ? `
+  const selecionados = new Set(); // ids marcados para impressão em massa
+
+  function objetivosFiltrados() {
+    const respFiltro = container.querySelector('#ob-filtro-responsavel')?.value || '';
+    const statusFiltro = container.querySelector('#ob-filtro-status')?.value || '';
+    return itens.filter((o) => {
+      if (respFiltro && o.responsavel_id !== respFiltro) return false;
+      if (statusFiltro && o.status !== statusFiltro) return false;
+      return true;
+    });
+  }
+
+  // Imprime a seleção quando houver algo marcado; senão, imprime tudo que está filtrado na tela.
+  function objetivosAlvoImpressao() {
+    if (selecionados.size) return itens.filter((o) => selecionados.has(o.id));
+    return objetivosFiltrados();
+  }
+
+  function atualizarBotaoImprimir() {
+    const btn = container.querySelector('#btn-objetivos-pdf');
+    if (btn) btn.innerHTML = `<i class="ti ti-printer"></i> Imprimir (${objetivosAlvoImpressao().length})`;
+  }
+
+  function renderTabela() {
+    const filtrados = objetivosFiltrados();
+    const area = container.querySelector('#objetivos-tabela-area');
+    area.innerHTML = filtrados.length ? `
         <table class="table">
-          <thead><tr><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Plano de Ação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+          <thead><tr><th><input type="checkbox" id="ob-selecionar-todas"></th><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Plano de Ação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
           <tbody>
-            ${itens.map((o) => `
+            ${filtrados.map((o) => `
               <tr>
+                <td><input type="checkbox" class="ob-checkbox" data-id="${o.id}" ${selecionados.has(o.id) ? 'checked' : ''}></td>
                 <td><strong>${escapeHtml(o.nome)}</strong><br><span class="text-muted">${escapeHtml(o.descricao || '')}</span></td>
                 <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
                 <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
@@ -73,38 +94,117 @@ export async function render(container, state) {
                 </td>` : ''}
               </tr>`).join('')}
           </tbody>
-        </table>` : '<div class="empty-state"><i class="ti ti-flag"></i>Nenhum objetivo estratégico cadastrado.</div>'}
+        </table>` : '<div class="empty-state"><i class="ti ti-flag"></i>Nenhum objetivo encontrado.</div>';
+
+    const idsVisiveis = filtrados.map((o) => o.id);
+    const selecionarTodas = area.querySelector('#ob-selecionar-todas');
+    if (selecionarTodas) {
+      selecionarTodas.checked = idsVisiveis.length > 0 && idsVisiveis.every((id) => selecionados.has(id));
+      selecionarTodas.addEventListener('change', () => {
+        idsVisiveis.forEach((id) => (selecionarTodas.checked ? selecionados.add(id) : selecionados.delete(id)));
+        atualizarBotaoImprimir();
+        renderTabela();
+      });
+    }
+
+    area.querySelectorAll('.ob-checkbox').forEach((chk) => {
+      chk.addEventListener('change', () => {
+        if (chk.checked) selecionados.add(chk.dataset.id);
+        else selecionados.delete(chk.dataset.id);
+        atualizarBotaoImprimir();
+      });
+    });
+
+    area.querySelectorAll('[data-editar]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.editar);
+        abrirFormulario(state, container, membros, item);
+      });
+    });
+
+    area.querySelectorAll('[data-excluir]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir este objetivo? Indicadores e riscos vinculados perderão o vínculo.'))) return;
+        const { error } = await supabase.from('objetivos_estrategicos').delete().eq('id', btn.dataset.excluir);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        toast('Objetivo excluído.', 'sucesso');
+        render(container, state);
+      });
+    });
+
+    area.querySelectorAll('[data-ver-planos]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        definirFiltroObjetivo(btn.dataset.verPlanos);
+        document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'planos' } }));
+      });
+    });
+  }
+
+  container.innerHTML = `
+    ${renderMapa(itens)}
+    <div class="card">
+      <div class="card-header">
+        <span><i class="ti ti-flag"></i> Objetivos Estratégicos</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" id="btn-objetivos-pdf"><i class="ti ti-printer"></i> Imprimir</button>
+          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-objetivo"><i class="ti ti-plus"></i> Novo objetivo</button>' : ''}
+        </div>
+      </div>
+      ${itens.length ? `
+        <div class="filters filters-compact">
+          <select id="ob-filtro-responsavel" class="filter-select filter-select-sm">
+            <option value="">Responsável</option>
+            ${membros.map((m) => `<option value="${m.usuario_id}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
+          </select>
+          <select id="ob-filtro-status" class="filter-select filter-select-sm">
+            <option value="">Status</option>
+            ${Object.entries(STATUS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div id="objetivos-tabela-area"></div>
+      ` : '<div class="empty-state"><i class="ti ti-flag"></i>Nenhum objetivo estratégico cadastrado.</div>'}
     </div>
   `;
 
   wireMapa(container);
+  if (itens.length) {
+    renderTabela();
+    atualizarBotaoImprimir();
+    container.querySelectorAll('#ob-filtro-responsavel, #ob-filtro-status').forEach((el) => {
+      el.addEventListener('change', () => { renderTabela(); atualizarBotaoImprimir(); });
+    });
+  }
 
   const btnAdd = container.querySelector('#btn-add-objetivo');
   if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, membros));
 
-  container.querySelectorAll('[data-editar]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const item = itens.find((i) => i.id === btn.dataset.editar);
-      abrirFormulario(state, container, membros, item);
-    });
-  });
+  const btnImprimir = container.querySelector('#btn-objetivos-pdf');
+  if (btnImprimir) {
+    btnImprimir.addEventListener('click', () => imprimirListaObjetivos(objetivosAlvoImpressao(), emailPorId));
+  }
+}
 
-  container.querySelectorAll('[data-excluir]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!(await confirmar('Excluir este objetivo? Indicadores e riscos vinculados perderão o vínculo.'))) return;
-      const { error } = await supabase.from('objetivos_estrategicos').delete().eq('id', btn.dataset.excluir);
-      if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
-      toast('Objetivo excluído.', 'sucesso');
-      render(container, state);
-    });
-  });
-
-  container.querySelectorAll('[data-ver-planos]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      definirFiltroObjetivo(btn.dataset.verPlanos);
-      document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'planos' } }));
-    });
-  });
+// Documento de impressão de uma lista de objetivos (respeita a seleção em massa quando houver,
+// senão os filtros de responsável/status ativos na tela).
+function imprimirListaObjetivos(itens, emailPorId) {
+  imprimirSecao(`
+    <h2 style="margin-bottom:4px">Objetivos Estratégicos</h2>
+    <p class="text-muted">${itens.length} objetivo(s)</p>
+    <hr class="sep">
+    ${itens.length ? `
+      <table class="table">
+        <thead><tr><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th></tr></thead>
+        <tbody>
+          ${itens.map((o) => `
+            <tr>
+              <td>${escapeHtml(o.nome)}${o.descricao ? `<br><span class="text-muted">${escapeHtml(o.descricao)}</span>` : ''}</td>
+              <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
+              <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
+              <td>${STATUS[o.status]}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '<p>Nenhum objetivo encontrado.</p>'}
+  `);
 }
 
 function abrirFormulario(state, container, membros, item = null) {

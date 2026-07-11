@@ -2,7 +2,7 @@ import { escapeHtml, formatarValor } from '../ui.js';
 
 const PERSPECTIVAS = [
   { key: 'financeira', label: 'Financeira' },
-  { key: 'clientes', label: 'Clientes' },
+  { key: 'clientes', label: 'Mercado' },
   { key: 'processos_internos', label: 'Processos Internos' },
   { key: 'aprendizado_crescimento', label: 'Aprendizado e Crescimento' },
 ];

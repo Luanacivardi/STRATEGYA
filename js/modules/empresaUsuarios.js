@@ -55,6 +55,10 @@ export async function render(container, state) {
             <label>Cor de destaque</label>
             <input type="color" id="brand-cor-destaque" value="${empresaAtual.cor_destaque || '#E8B84B'}">
           </div>
+          <div class="form-group">
+            <label>Cor da fonte (sobre fundo escuro)</label>
+            <input type="color" id="brand-cor-texto" value="${empresaAtual.cor_texto || '#ffffff'}">
+          </div>
         </div>
         <div class="form-group">
           <label>Logo (PNG, JPG ou SVG)</label>
@@ -160,6 +164,7 @@ export async function render(container, state) {
       e.preventDefault();
       const corPrimaria = container.querySelector('#brand-cor-primaria').value;
       const corDestaque = container.querySelector('#brand-cor-destaque').value;
+      const corTexto = container.querySelector('#brand-cor-texto').value;
       const arquivo = container.querySelector('#brand-logo').files[0];
 
       let logoUrl = empresaAtual.logo_url;
@@ -175,12 +180,13 @@ export async function render(container, state) {
       }
 
       const { error: errUpd } = await supabase.from('empresas').update({
-        cor_primaria: corPrimaria, cor_destaque: corDestaque, logo_url: logoUrl,
+        cor_primaria: corPrimaria, cor_destaque: corDestaque, cor_texto: corTexto, logo_url: logoUrl,
       }).eq('id', empresaAtual.id);
       if (errUpd) return toast('Erro ao salvar identidade visual: ' + errUpd.message, 'erro');
 
       empresaAtual.cor_primaria = corPrimaria;
       empresaAtual.cor_destaque = corDestaque;
+      empresaAtual.cor_texto = corTexto;
       empresaAtual.logo_url = logoUrl;
       aplicarTema(empresaAtual);
       toast('Identidade visual atualizada.', 'sucesso');

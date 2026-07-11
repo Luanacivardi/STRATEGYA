@@ -188,6 +188,17 @@ async function renderPlanos(container, state) {
 
     area.querySelectorAll('[data-excluir]').forEach((btn) => {
       btn.addEventListener('click', async () => {
+        // Não permite excluir um plano com tarefas (ações micro) vinculadas — evita perder o
+        // histórico de execução por engano; é preciso excluir as tarefas primeiro.
+        const { count, error: errCount } = await supabase
+          .from('planos_acao_itens')
+          .select('id', { count: 'exact', head: true })
+          .eq('plano_acao_id', btn.dataset.excluir);
+        if (errCount) return toast('Erro ao verificar tarefas vinculadas: ' + errCount.message, 'erro');
+        if (count > 0) {
+          return toast(`Este plano tem ${count} tarefa(s) vinculada(s) e não pode ser excluído. Exclua as tarefas em "Ações micro" primeiro.`, 'erro');
+        }
+
         if (!(await confirmar('Excluir este plano de ação?'))) return;
         const { error } = await supabase.from('planos_acao').delete().eq('id', btn.dataset.excluir);
         if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
