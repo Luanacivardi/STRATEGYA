@@ -686,7 +686,10 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     planoId = salvo.id;
 
     if (arquivo) {
-      const caminho = `${empresaAtual.id}/${planoId}/${arquivo.name}`;
+      const nomeSanitizado = arquivo.name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .replace(/[^a-zA-Z0-9._-]/g, '_'); // troca espaços e demais caracteres especiais por "_"
+      const caminho = `${empresaAtual.id}/${planoId}/${nomeSanitizado}`;
       const { error: errUpload } = await supabase.storage.from('evidencias-planos').upload(caminho, arquivo, { upsert: true });
       if (errUpload) {
         toast('Plano salvo, mas houve erro ao enviar a evidência: ' + errUpload.message, 'erro');

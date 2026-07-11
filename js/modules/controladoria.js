@@ -420,7 +420,10 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
     const btnSubmit = areaAba.querySelector('#form-novo-anexo button[type="submit"]');
     btnSubmit.disabled = true;
 
-    const caminho = `${empresaAtual.id}/${conta.id}/${Date.now()}_${arquivo.name}`;
+    const nomeSanitizado = arquivo.name
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/[^a-zA-Z0-9._-]/g, '_'); // troca espaços e demais caracteres especiais por "_"
+    const caminho = `${empresaAtual.id}/${conta.id}/${Date.now()}_${nomeSanitizado}`;
     const { error: errUpload } = await supabase.storage.from('contas-anexos').upload(caminho, arquivo);
     if (errUpload) {
       btnSubmit.disabled = false;
