@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { empresaId, email, senha, papel, nome } = await req.json();
+    const { empresaId, email, senha, papel, nome, departamentoId } = await req.json();
 
     if (!empresaId || !email || !senha || !papel) {
       return resposta({ error: 'Preencha e-mail, senha, papel e empresa.' }, 400);
@@ -79,6 +79,7 @@ Deno.serve(async (req: Request) => {
       p_empresa_id: empresaId,
       p_email: email,
       p_papel: papel,
+      p_departamento_id: departamentoId || null,
     });
     if (errVinculo) return resposta({ error: errVinculo.message }, 400);
 
