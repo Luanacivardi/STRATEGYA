@@ -8,6 +8,7 @@ import * as planosAcao from './modules/planosAcao.js';
 import * as indicadores from './modules/indicadores.js';
 import * as atasReuniao from './modules/atasReuniao.js';
 import * as riscos from './modules/riscosOportunidades.js';
+import * as controladoria from './modules/controladoria.js';
 import * as empresaUsuarios from './modules/empresaUsuarios.js';
 import * as permissoes from './modules/permissoes.js';
 
@@ -20,20 +21,25 @@ export const state = {
 };
 
 // Abas internas do módulo Planejamento Estratégico
-// (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos)
-const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, planos: planosAcao, indicadores, atas: atasReuniao };
+// (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos;
+// Ações virou módulo próprio — ver MODULOS_SIMPLES)
+const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, indicadores, atas: atasReuniao };
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'riscos-oportunidades': riscos };
+const MODULOS_SIMPLES = { 'riscos-oportunidades': riscos, 'acoes': planosAcao, 'controladoria': controladoria };
 
 // Módulos do sistema — "planejamento-estrategico" e "riscos-oportunidades" já implementados;
 // os demais aparecem no menu como "em breve" para deixar a estrutura do SGI visível.
 export const MODULOS_SISTEMA = [
   { id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true,
-    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, planos de ação, indicadores e atas de reunião.' },
+    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, indicadores e atas de reunião.' },
+  { id: 'acoes', nome: 'Ações', icone: 'ti-list-check', disponivel: true,
+    descricao: 'Planos de ação e tarefas vinculados a objetivos, indicadores, riscos, não conformidades e atas de reunião.' },
   { id: 'riscos-oportunidades', nome: 'Riscos e Oportunidades', icone: 'ti-alert-triangle', disponivel: true,
     descricao: 'Identificação e tratamento de riscos e oportunidades, com matriz de probabilidade x impacto.' },
+  { id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true,
+    descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.' },
   { id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: false,
     descricao: 'Controle de documentos e registros da qualidade.',
     teaser: 'Nunca mais perca a versão certa de um documento.' },
@@ -467,7 +473,6 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     tabAtiva = btn.dataset.tab;
     if (tabAtiva === 'indicadores') indicadores.filtrarPorObjetivo(null);
-    if (tabAtiva === 'planos') planosAcao.irParaGrupo('planos');
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     renderConteudoAtivo();
@@ -544,8 +549,18 @@ document.addEventListener('strategya:abrir-risco', async (e) => {
   riscos.abrirEdicaoPorId(state, areaModuloSimples, e.detail.id);
 });
 
-// Troca de aba dentro do Planejamento Estratégico (ex: "ver planos de ação" a partir de um Objetivo)
+// Troca de aba dentro do Planejamento Estratégico (ex: "ver indicadores" a partir de um Objetivo)
 document.addEventListener('strategya:mudar-aba', (e) => {
+  // "Ações" virou módulo próprio (não é mais aba do Planejamento Estratégico)
+  if (e.detail.aba === 'planos') {
+    planosAcao.irParaGrupo(e.detail.grupo || 'planos');
+    moduloAtivo = 'acoes';
+    viewAtual = 'modulo';
+    renderModuleRail();
+    renderConteudoAtivo();
+    return;
+  }
+
   tabAtiva = e.detail.aba;
   moduloAtivo = 'planejamento-estrategico';
   viewAtual = 'modulo';
@@ -554,7 +569,6 @@ document.addEventListener('strategya:mudar-aba', (e) => {
     indicadores.filtrarPorObjetivo(e.detail.objetivoId || null);
     if (e.detail.indicadorId) indicadores.abrirIndicadorPorId(e.detail.indicadorId);
   }
-  if (tabAtiva === 'planos') planosAcao.irParaGrupo(e.detail.grupo || 'planos');
   renderModuleRail();
   renderConteudoAtivo();
 });
