@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao } from '../ui.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
 const CATEGORIA_BADGE = { receita: 'badge-success', custo: 'badge-warning', despesa: 'badge-danger', investimento: 'badge-neutral' };
@@ -102,6 +102,7 @@ export async function render(container, state) {
                 <td><span class="badge ${c.ativo ? 'badge-success' : 'badge-danger'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 <td class="table-actions">
                   <button class="icon-btn" data-detalhes="${c.id}" title="Análises e anexos"><i class="ti ti-folder-open"></i></button>
+                  <button class="icon-btn" data-imprimir-conta="${c.id}" title="Imprimir (último gráfico + análises)"><i class="ti ti-printer"></i></button>
                   ${podeEditar ? `
                     <button class="icon-btn" data-editar="${c.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${c.id}" title="Excluir"><i class="ti ti-trash"></i></button>
@@ -128,6 +129,13 @@ export async function render(container, state) {
     btn.addEventListener('click', () => {
       const conta = contas.find((c) => c.id === btn.dataset.detalhes);
       abrirDetalheConta(state, container, conta, membros);
+    });
+  });
+
+  container.querySelectorAll('[data-imprimir-conta]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const conta = contas.find((c) => c.id === btn.dataset.imprimirConta);
+      imprimirConta(state, conta);
     });
   });
 
@@ -237,6 +245,82 @@ function abrirFormulario(state, container, departamentos, membros, conta = null)
   });
 }
 
+// ---------- Imprimir conta: dados gerais + último gráfico/relatório enviado + análises de todos os meses ----------
+async function imprimirConta(state, conta) {
+  const { supabase, empresaAtual } = state;
+
+  let departamento, membros, analises, anexos;
+  try {
+    const [resDepto, membrosData, resAnalises, resAnexos] = await Promise.all([
+      conta.departamento_id ? supabase.from('departamentos').select('nome').eq('id', conta.departamento_id).single() : Promise.resolve({ data: null }),
+      supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
+      supabase.from('contas_analises').select('*').eq('conta_id', conta.id).order('competencia', { ascending: true }),
+      supabase.from('contas_anexos').select('*').eq('conta_id', conta.id).order('created_at', { ascending: false }),
+    ]);
+    departamento = resDepto.data;
+    membros = membrosData;
+    if (resAnalises.error) throw resAnalises.error;
+    if (resAnexos.error) throw resAnexos.error;
+    analises = resAnalises.data || [];
+    anexos = resAnexos.data || [];
+  } catch (err) {
+    return toast('Erro ao preparar impressão: ' + err.message, 'erro');
+  }
+
+  const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+  const ultimoAnexo = anexos[0] || null; // já vem ordenado do mais recente pro mais antigo
+
+  let ultimoAnexoHtml = '<p class="text-muted">Nenhum arquivo enviado ainda.</p>';
+  if (ultimoAnexo) {
+    const ehImagem = ultimoAnexo.arquivo_tipo === 'png' || ultimoAnexo.arquivo_tipo === 'jpg';
+    if (ehImagem) {
+      const { data: signed, error: errSigned } = await supabase.storage.from('contas-anexos').createSignedUrl(ultimoAnexo.arquivo_url, 300);
+      ultimoAnexoHtml = errSigned
+        ? '<p class="text-muted">Não foi possível carregar o arquivo.</p>'
+        : `<img src="${signed.signedUrl}" alt="${escapeHtml(ultimoAnexo.arquivo_nome)}" style="max-width:100%;max-height:400px">`;
+    } else {
+      ultimoAnexoHtml = `<p><i class="ti ${TIPO_ARQUIVO_ICONE[ultimoAnexo.arquivo_tipo]}"></i> ${escapeHtml(ultimoAnexo.arquivo_nome)} (${TIPO_ARQUIVO_LABEL[ultimoAnexo.arquivo_tipo]})</p>`;
+    }
+    ultimoAnexoHtml += `<p class="text-muted" style="font-size:12px">Competência ${fmtCompetencia(ultimoAnexo.competencia)} · enviado por ${escapeHtml(nomeMembroPorId.get(ultimoAnexo.usuario_id) || '—')} em ${fmtData(ultimoAnexo.created_at)}</p>`;
+  }
+
+  imprimirSecao(`
+    <h2 style="margin-bottom:4px">${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}</h2>
+    <p class="text-muted">Controladoria — Conta Gerencial</p>
+    <hr class="sep">
+    <table class="print-detalhe-tabela">
+      <tbody>
+        <tr><th>Categoria</th><td>${CATEGORIA_LABEL[conta.categoria]}</td></tr>
+        <tr><th>Área responsável</th><td>${escapeHtml(departamento?.nome || '—')}</td></tr>
+        <tr><th>Responsável pela análise</th><td>${escapeHtml(nomeMembroPorId.get(conta.responsavel_analise_id) || '—')}</td></tr>
+        <tr><th>Meta mensal</th><td>${fmtMoeda(conta.meta_mensal)}</td></tr>
+        <tr><th>Meta anual</th><td>${fmtMoeda(conta.meta_anual)}</td></tr>
+        <tr><th>Status</th><td>${conta.ativo ? 'Ativo' : 'Inativo'}</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin-top:16px">Último relatório/gráfico enviado</h4>
+    ${ultimoAnexoHtml}
+
+    <h4 style="margin-top:16px">Análises registradas (todos os meses)</h4>
+    ${analises.length ? `
+      <table class="table">
+        <thead><tr><th>Competência</th><th>Análise</th><th>Desvio</th><th>Justificativa</th><th>Registrado por</th></tr></thead>
+        <tbody>
+          ${analises.map((a) => `
+            <tr>
+              <td>${fmtCompetencia(a.competencia)}</td>
+              <td>${escapeHtml(a.texto_analise)}</td>
+              <td>${a.houve_desvio ? 'Sim' : 'Não'}</td>
+              <td>${escapeHtml(a.justificativa_desvio || '—')}</td>
+              <td>${escapeHtml(nomeMembroPorId.get(a.usuario_id) || '—')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>` : '<p class="text-muted">Nenhuma análise registrada ainda.</p>'}
+  `);
+}
+
 // ---------- DETALHE DA CONTA: análises periódicas + anexos (relatórios/gráficos) ----------
 let abaDetalheAtiva = 'analises';
 
@@ -269,12 +353,18 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
 
   corpo.innerHTML = `
-    <div class="filters" style="margin-bottom:1rem">
-      <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises periódicas</button>
-      <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos</button>
+    <div class="filters" style="margin-bottom:1rem;justify-content:space-between;display:flex;flex-wrap:wrap;gap:8px">
+      <div class="filters" style="margin-bottom:0">
+        <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises periódicas</button>
+        <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos</button>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btn-imprimir-conta-detalhe"><i class="ti ti-printer"></i> Imprimir</button>
     </div>
     <div id="detalhe-conta-aba"></div>
   `;
+
+  const btnImprimir = corpo.querySelector('#btn-imprimir-conta-detalhe');
+  if (btnImprimir) btnImprimir.addEventListener('click', () => imprimirConta(state, conta));
 
   corpo.querySelectorAll('[data-aba-detalhe]').forEach((btn) => {
     btn.addEventListener('click', () => { abaDetalheAtiva = btn.dataset.abaDetalhe; renderDetalheConta(state, containerPai, modal, conta, membros); });
