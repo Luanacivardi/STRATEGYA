@@ -23,21 +23,19 @@ export const state = {
 // Abas internas do módulo Planejamento Estratégico
 // (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos;
 // Ações virou módulo próprio — ver MODULOS_SIMPLES)
-const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, indicadores, atas: atasReuniao };
+const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, riscos, indicadores, atas: atasReuniao };
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'riscos-oportunidades': riscos, 'acoes': planosAcao, 'controladoria': controladoria };
+const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria };
 
 // Módulos do sistema — "planejamento-estrategico" e "riscos-oportunidades" já implementados;
 // os demais aparecem no menu como "em breve" para deixar a estrutura do SGI visível.
 export const MODULOS_SISTEMA = [
   { id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true,
-    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, indicadores e atas de reunião.' },
+    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, riscos e oportunidades, indicadores e atas de reunião.' },
   { id: 'acoes', nome: 'Ações', icone: 'ti-list-check', disponivel: true,
     descricao: 'Planos de ação e tarefas vinculados a objetivos, indicadores, riscos, não conformidades e atas de reunião.' },
-  { id: 'riscos-oportunidades', nome: 'Riscos e Oportunidades', icone: 'ti-alert-triangle', disponivel: true,
-    descricao: 'Identificação e tratamento de riscos e oportunidades, com matriz de probabilidade x impacto.' },
   { id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true,
     descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.' },
   { id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: false,
@@ -547,11 +545,12 @@ async function renderConteudoAtivo() {
 
 // Navegação vinda de outros módulos (ex: clicar num item da SWOT abre a análise em Riscos e Oportunidades)
 document.addEventListener('strategya:abrir-risco', async (e) => {
-  moduloAtivo = 'riscos-oportunidades';
+  tabAtiva = 'riscos';
+  moduloAtivo = 'planejamento-estrategico';
   viewAtual = 'modulo';
   renderModuleRail();
   await renderConteudoAtivo();
-  riscos.abrirEdicaoPorId(state, areaModuloSimples, e.detail.id);
+  riscos.abrirEdicaoPorId(state, document.getElementById('tab-riscos'), e.detail.id);
 });
 
 // Troca de aba dentro do Planejamento Estratégico (ex: "ver indicadores" a partir de um Objetivo)
