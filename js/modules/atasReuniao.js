@@ -50,7 +50,7 @@ export async function render(container, state) {
       </div>
       ${atas.length ? `
         <table class="table">
-          <thead><tr><th>Data</th><th>Status</th><th>Indicadores</th><th>Participantes</th><th>Decisões</th><th>Tarefas</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Indicadores</th><th>Participantes</th><th>Decisões</th><th>Tarefas</th><th></th></tr></thead>
           <tbody>
             ${atas.map((a) => {
               const nomesIndicadores = indicadoresPorAta.get(a.id) || [];
@@ -58,13 +58,11 @@ export async function render(container, state) {
               return `
               <tr>
                 <td>${a.data}</td>
-                <td><span class="badge ${a.status === 'aberta' ? 'badge-warning' : 'badge-neutral'}">${a.status === 'aberta' ? 'Aberta' : 'Fechada'}</span></td>
                 <td>${nomesIndicadores.length ? nomesIndicadores.map((n) => `<span class="badge badge-neutral">${escapeHtml(n)}</span>`).join(' ') : '<span class="text-muted">—</span>'}</td>
                 <td>${escapeHtml(a.participantes || '—')}</td>
                 <td>${escapeHtml((a.decisoes || '').slice(0, 80))}${(a.decisoes || '').length > 80 ? '…' : ''}</td>
                 <td><button class="btn btn-secondary btn-sm" data-acoes-todo="${a.id}"><i class="ti ti-checklist"></i> ${acoes.concluidas}/${acoes.total}</button></td>
                 <td class="table-actions">
-                  ${podeEditar ? `<button class="icon-btn" data-alternar-status="${a.id}" title="${a.status === 'aberta' ? 'Fechar ata' : 'Reabrir ata'}"><i class="ti ${a.status === 'aberta' ? 'ti-lock' : 'ti-lock-open'}"></i></button>` : ''}
                   <button class="icon-btn" data-imprimir-ata="${a.id}" title="Imprimir esta ata (PDF)"><i class="ti ti-printer"></i></button>
                   <button class="icon-btn" data-email-ata="${a.id}" title="Enviar por e-mail"><i class="ti ti-mail"></i></button>
                   ${podeEditar ? `
@@ -81,17 +79,6 @@ export async function render(container, state) {
 
   const btnAdd = container.querySelector('#btn-add-ata');
   if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, indicadores, membros));
-
-  container.querySelectorAll('[data-alternar-status]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const ata = atas.find((a) => a.id === btn.dataset.alternarStatus);
-      const novoStatus = ata.status === 'aberta' ? 'fechada' : 'aberta';
-      const { error } = await supabase.from('reunioes_analise_critica').update({ status: novoStatus }).eq('id', ata.id);
-      if (error) return toast('Erro ao atualizar status: ' + error.message, 'erro');
-      toast(novoStatus === 'aberta' ? 'Ata reaberta.' : 'Ata fechada.', 'sucesso');
-      render(container, state);
-    });
-  });
 
   container.querySelectorAll('[data-editar]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -378,13 +365,6 @@ function abrirFormulario(state, container, indicadores, membros, item = null) {
           <label>Participantes</label>
           <input type="text" id="ata-participantes" value="${item ? escapeHtml(item.participantes || '') : ''}">
         </div>
-        <div class="form-group">
-          <label>Status</label>
-          <select id="ata-status">
-            <option value="aberta" ${!item || item.status === 'aberta' ? 'selected' : ''}>Aberta</option>
-            <option value="fechada" ${item?.status === 'fechada' ? 'selected' : ''}>Fechada</option>
-          </select>
-        </div>
       </div>
       <div class="form-group">
         <label>Indicadores tratados nesta reunião</label>
@@ -466,7 +446,6 @@ function abrirFormulario(state, container, indicadores, membros, item = null) {
     const payload = {
       empresa_id: empresaAtual.id,
       data,
-      status: modal.querySelector('#ata-status').value,
       participantes: modal.querySelector('#ata-participantes').value.trim(),
       pauta: modal.querySelector('#ata-pauta').value.trim(),
       consideracoes: modal.querySelector('#ata-consideracoes').value.trim(),

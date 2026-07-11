@@ -42,7 +42,7 @@ export async function render(container, state) {
             <span class="macro-direcao-label">Direção</span>
             ${direcao.map((i, idx) => `
               <span class="macro-direcao-chip">
-                ${i.numero ? `<strong>${escapeHtml(i.numero)}</strong> — ` : ''}${escapeHtml(i.nome)}
+                ${escapeHtml(i.nome)}
                 ${podeEditar ? `
                   ${botoesMover(direcao, i, idx)}
                   <button class="icon-btn" data-editar="${i.id}" title="Editar"><i class="ti ti-pencil"></i></button>
@@ -62,7 +62,7 @@ export async function render(container, state) {
         ${principal.length ? principal.map((i, idx) => `
           ${idx > 0 ? '<div class="macro-conector-linha"><i class="ti ti-arrow-right"></i></div>' : ''}
           <div class="macro-chevron">
-            <div class="macro-item-nome">${i.numero ? `<strong>${escapeHtml(i.numero)}</strong> — ` : ''}${escapeHtml(i.nome)}</div>
+            <div class="macro-item-nome">${escapeHtml(i.nome)}</div>
             ${i.descricao ? `<div class="macro-item-desc">${escapeHtml(i.descricao)}</div>` : ''}
             ${podeEditar ? `<div class="macro-item-actions">
               ${botoesMover(principal, i, idx)}
@@ -80,7 +80,7 @@ export async function render(container, state) {
       <div class="macro-apoio-row">
         ${apoio.length ? apoio.map((i, idx) => `
           <div class="macro-apoio-box">
-            <div class="macro-item-nome">${i.numero ? `<strong>${escapeHtml(i.numero)}</strong> — ` : ''}${escapeHtml(i.nome)}</div>
+            <div class="macro-item-nome">${escapeHtml(i.nome)}</div>
             ${i.descricao ? `<div class="macro-item-desc">${escapeHtml(i.descricao)}</div>` : ''}
             ${podeEditar ? `<div class="macro-item-actions">
               ${botoesMover(apoio, i, idx)}
@@ -93,13 +93,12 @@ export async function render(container, state) {
   };
 
   container.innerHTML = `
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
-      <button class="btn btn-secondary btn-sm" id="btn-macro-tela-cheia"><i class="ti ti-maximize"></i> Tela cheia</button>
-      ${podeAtivarEdicao ? `
+    ${podeAtivarEdicao ? `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
         <button class="btn ${modoEdicao ? 'btn-primary' : 'btn-secondary'} btn-sm" id="btn-toggle-modo-edicao">
           <i class="ti ${modoEdicao ? 'ti-check' : 'ti-edit'}"></i> ${modoEdicao ? 'Concluir edição' : 'Modo edição'}
-        </button>` : ''}
-    </div>
+        </button>
+      </div>` : ''}
 
     <div class="macro-mapa">
       ${renderDirecao()}
@@ -126,8 +125,6 @@ export async function render(container, state) {
       ${renderApoio()}
     </div>
   `;
-
-  container.querySelector('#btn-macro-tela-cheia').addEventListener('click', () => abrirTelaCheiaMacrofluxo(itens));
 
   const btnToggle = container.querySelector('#btn-toggle-modo-edicao');
   if (btnToggle) btnToggle.addEventListener('click', () => { modoEdicao = !modoEdicao; render(container, state); });
@@ -179,76 +176,10 @@ export async function render(container, state) {
   });
 }
 
-// Visualização somente-leitura em tela cheia (mesmo padrão apresentacao-overlay usado em
-// Indicadores/Controladoria), pra melhor leitura em reunião ou projeção.
-function abrirTelaCheiaMacrofluxo(itens) {
-  const porTipo = (tipo) => itens.filter((i) => i.tipo === tipo);
-  const rotulo = (i) => `${i.numero ? `<strong>${escapeHtml(i.numero)}</strong> — ` : ''}${escapeHtml(i.nome)}`;
-
-  const direcao = porTipo('direcao');
-  const principal = porTipo('principal');
-  const apoio = porTipo('apoio');
-
-  const overlay = document.createElement('div');
-  overlay.className = 'apresentacao-overlay';
-  overlay.innerHTML = `
-    <button class="apresentacao-fechar" id="mf-fechar" title="Fechar"><i class="ti ti-x"></i></button>
-    <div class="apresentacao-conteudo">
-      <h1>Macrofluxo</h1>
-      <div class="macro-mapa" style="margin-top:20px">
-        <div class="macro-direcao-losango-wrap">
-          <div class="macro-direcao-losango">
-            <div class="macro-direcao-conteudo">
-              <span class="macro-direcao-label">Direção</span>
-              ${direcao.map((i) => `<span class="macro-direcao-chip">${rotulo(i)}</span>`).join('')}
-            </div>
-          </div>
-        </div>
-        <div class="macro-principal-wrap">
-          <div class="macro-cliente-tab macro-cliente-entrada"><span>Necessidades do Cliente</span><i class="ti ti-arrow-right"></i></div>
-          <div class="macro-principal-corpo">
-            <div class="macro-mapa-secao-titulo" style="text-align:center">Processos Principais</div>
-            <div class="macro-chevron-row">
-              ${principal.length ? principal.map((i, idx) => `
-                ${idx > 0 ? '<div class="macro-conector-linha"><i class="ti ti-arrow-right"></i></div>' : ''}
-                <div class="macro-chevron">
-                  <div class="macro-item-nome">${rotulo(i)}</div>
-                  ${i.descricao ? `<div class="macro-item-desc">${escapeHtml(i.descricao)}</div>` : ''}
-                </div>`).join('') : '<span class="text-muted">Nenhum processo cadastrado.</span>'}
-            </div>
-          </div>
-          <div class="macro-cliente-tab macro-cliente-saida"><i class="ti ti-arrow-right"></i><span>Satisfação do Cliente</span></div>
-        </div>
-        <div class="macro-conectores-apoio" aria-hidden="true">
-          <i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i>
-        </div>
-        <div class="macro-mapa-secao-titulo">Processos de Apoio</div>
-        <div class="macro-apoio-row">
-          ${apoio.length ? apoio.map((i) => `
-            <div class="macro-apoio-box">
-              <div class="macro-item-nome">${rotulo(i)}</div>
-              ${i.descricao ? `<div class="macro-item-desc">${escapeHtml(i.descricao)}</div>` : ''}
-            </div>`).join('') : '<span class="text-muted">Nenhum processo cadastrado.</span>'}
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  const fechar = () => { overlay.remove(); document.removeEventListener('keydown', onEsc); };
-  overlay.querySelector('#mf-fechar').addEventListener('click', fechar);
-  const onEsc = (e) => { if (e.key === 'Escape') fechar(); };
-  document.addEventListener('keydown', onEsc);
-}
-
 function abrirFormulario(state, container, tipo, item = null, proximaOrdem = 0) {
   const { supabase, empresaAtual } = state;
   const modal = abrirModal(item ? `Editar item — ${TIPO_LABEL[tipo]}` : `Novo item — ${TIPO_LABEL[tipo]}`, `
     <form id="form-macro">
-      <div class="form-group">
-        <label>Número${tipo !== 'direcao' ? ' (usado futuramente para vincular documentos na aba Documentos)' : ''}</label>
-        <input type="text" id="macro-numero" placeholder="Ex: 3.1" value="${item ? escapeHtml(item.numero || '') : ''}">
-      </div>
       <div class="form-group">
         <label>Nome</label>
         <input type="text" id="macro-nome" required value="${item ? escapeHtml(item.nome) : ''}">
@@ -266,7 +197,6 @@ function abrirFormulario(state, container, tipo, item = null, proximaOrdem = 0) 
     const payload = {
       empresa_id: empresaAtual.id,
       tipo,
-      numero: modal.querySelector('#macro-numero').value.trim() || null,
       nome: modal.querySelector('#macro-nome').value.trim(),
       descricao: modal.querySelector('#macro-descricao').value.trim(),
     };
