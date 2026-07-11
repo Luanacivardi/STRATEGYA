@@ -1,0 +1,564 @@
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, formatarValor, formatarMesAno, enviarPorEmail, imprimirSecao } from '../ui.js';
+import { listarObjetivos } from './objetivos.js';
+
+const PERIODICIDADE = { mensal: 'Mensal', trimestral: 'Trimestral', anual: 'Anual' };
+const POLARIDADE = { maior_melhor: 'Maior é melhor', menor_melhor: 'Menor é melhor' };
+const CLASSIFICACAO = { com_meta: 'Com meta', monitoramento: 'Monitoramento', complementar: 'Complementar' };
+const UNIDADES = ['%', 'R$', 'un', 'dias', 'horas', 'pontos', 'kg', 'ton', 'm²'];
+
+let chartInstance = null;
+let objetivoFiltroId = null;
+let indicadorAlvoId = null;
+
+// Chamado ao navegar do Mapa Estratégico (clique num objetivo) para pré-filtrar os indicadores.
+// Passar null limpa o filtro (ex: atalho "Indicadores" do Dashboard, ou clique manual na aba).
+export function filtrarPorObjetivo(id) {
+  objetivoFiltroId = id || null;
+}
+
+// Chamado a partir do semáforo de indicadores no Dashboard — abre direto os resultados do indicador clicado.
+export function abrirIndicadorPorId(id) {
+  indicadorAlvoId = id || null;
+}
+
+export async function render(container, state) {
+  const { supabase, empresaAtual, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
+
+  let itens, objetivos, membros;
+  try {
+    const [resIndicadores, resObjetivos, resMembros] = await Promise.all([
+      supabase.from('indicadores').select('*').eq('empresa_id', empresaAtual.id).order('nome'),
+      listarObjetivos(supabase, empresaAtual.id),
+      supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
+    ]);
+    if (resIndicadores.error) throw resIndicadores.error;
+    itens = resIndicadores.data;
+    objetivos = resObjetivos;
+    membros = resMembros;
+  } catch (err) {
+    container.innerHTML = `<div class="alert alert-warning">Erro ao carregar indicadores: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const nomeObjetivoPorId = new Map(objetivos.map((o) => [o.id, o.nome]));
+  const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+
+  const baseFiltrada = objetivoFiltroId ? itens.filter((i) => i.objetivo_id === objetivoFiltroId) : itens;
+  const filtroBanner = objetivoFiltroId ? `
+    <div class="alert alert-info" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Filtrando indicadores do objetivo <strong>${escapeHtml(nomeObjetivoPorId.get(objetivoFiltroId) || '—')}</strong></span>
+      <button class="btn btn-secondary btn-sm" id="btn-limpar-filtro-objetivo">Limpar filtro</button>
+    </div>` : '';
+
+  function itensExibidos() {
+    const respFiltro = container.querySelector('#in-filtro-responsavel')?.value || '';
+    if (!respFiltro) return baseFiltrada;
+    return baseFiltrada.filter((i) => i.responsavel_id === respFiltro);
+  }
+
+  function renderTabela() {
+    const filtrados = itensExibidos();
+    const area = container.querySelector('#indicadores-tabela-area');
+    area.innerHTML = filtrados.length ? `
+        <table class="table">
+          <thead><tr><th>Indicador</th><th>Objetivo</th><th>Meta</th><th>Periodicidade</th><th>Responsável</th><th></th></tr></thead>
+          <tbody>
+            ${filtrados.map((ind) => `
+              <tr>
+                <td>
+                  <strong>${escapeHtml(ind.nome)}</strong>
+                  <br><span class="badge badge-neutral">${CLASSIFICACAO[ind.classificacao] || CLASSIFICACAO.com_meta}</span>
+                  ${ind.descricao ? `<br><span class="text-muted">${escapeHtml(ind.descricao)}</span>` : ''}
+                </td>
+                <td>${escapeHtml(nomeObjetivoPorId.get(ind.objetivo_id) || '—')}</td>
+                <td>${ind.classificacao === 'com_meta' && ind.meta !== null
+                  ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}<br><span class="text-muted">${POLARIDADE[ind.polaridade] || ''}</span>`
+                  : '<span class="text-muted">—</span>'}</td>
+                <td>${PERIODICIDADE[ind.periodicidade]}</td>
+                <td>${escapeHtml(emailPorId.get(ind.responsavel_id) || '—')}</td>
+                <td class="table-actions">
+                  <button class="icon-btn" data-resultados="${ind.id}" title="Resultados"><i class="ti ti-chart-dots"></i></button>
+                  <button class="icon-btn" data-apresentar="${ind.id}" title="Apresentar (tela cheia)"><i class="ti ti-presentation"></i></button>
+                  ${podeEditar ? `
+                    <button class="icon-btn" data-editar="${ind.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                    <button class="icon-btn" data-excluir="${ind.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+                  ` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>` : `<div class="empty-state"><i class="ti ti-chart-line"></i>${objetivoFiltroId ? 'Nenhum indicador vinculado a este objetivo.' : 'Nenhum indicador encontrado.'}</div>`;
+
+    area.querySelectorAll('[data-editar]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.editar);
+        abrirFormulario(state, container, objetivos, membros, item);
+      });
+    });
+
+    area.querySelectorAll('[data-excluir]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir este indicador? Todos os resultados apurados serão removidos.'))) return;
+        const { error } = await supabase.from('indicadores').delete().eq('id', btn.dataset.excluir);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        toast('Indicador excluído.', 'sucesso');
+        render(container, state);
+      });
+    });
+
+    area.querySelectorAll('[data-resultados]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.resultados);
+        abrirResultados(state, item);
+      });
+    });
+
+    area.querySelectorAll('[data-apresentar]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = itens.find((i) => i.id === btn.dataset.apresentar);
+        abrirApresentacao(state, item);
+      });
+    });
+  }
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span><i class="ti ti-chart-line"></i> Indicadores (KPIs)</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" id="btn-indicadores-email"><i class="ti ti-mail"></i> Enviar por e-mail</button>
+          <button class="btn btn-secondary btn-sm" id="btn-indicadores-pdf"><i class="ti ti-printer"></i> Imprimir lista</button>
+          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-indicador"><i class="ti ti-plus"></i> Novo indicador</button>' : ''}
+        </div>
+      </div>
+      ${filtroBanner}
+      <div class="filters filters-compact">
+        <select id="in-filtro-responsavel" class="filter-select filter-select-sm">
+          <option value="">Responsável</option>
+          ${membros.map((m) => `<option value="${m.usuario_id}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="indicadores-tabela-area"></div>
+    </div>
+  `;
+
+  renderTabela();
+
+  container.querySelector('#in-filtro-responsavel').addEventListener('change', renderTabela);
+
+  const btnLimparFiltro = container.querySelector('#btn-limpar-filtro-objetivo');
+  if (btnLimparFiltro) btnLimparFiltro.addEventListener('click', () => { objetivoFiltroId = null; render(container, state); });
+
+  container.querySelector('#btn-indicadores-pdf').addEventListener('click', () => {
+    imprimirListaIndicadores(itensExibidos(), nomeObjetivoPorId, emailPorId);
+  });
+  container.querySelector('#btn-indicadores-email').addEventListener('click', () => {
+    const corpo = itensExibidos().map((ind) => `${ind.nome}\nObjetivo: ${nomeObjetivoPorId.get(ind.objetivo_id) || '—'} | Meta: ${ind.classificacao === 'com_meta' && ind.meta !== null ? formatarValor(ind.meta, ind.unidade) + ' ' + (ind.unidade || '') : '—'} | Responsável: ${emailPorId.get(ind.responsavel_id) || '—'}\n`).join('\n');
+    enviarPorEmail('Indicadores (KPIs)', corpo || 'Nenhum indicador encontrado.');
+  });
+
+  const btnAdd = container.querySelector('#btn-add-indicador');
+  if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, objetivos, membros));
+
+  if (indicadorAlvoId) {
+    const alvo = itens.find((i) => i.id === indicadorAlvoId);
+    indicadorAlvoId = null;
+    if (alvo) abrirResultados(state, alvo);
+  }
+}
+
+// Documento de impressão da lista de indicadores (respeitando o filtro de objetivo ativo).
+function imprimirListaIndicadores(itens, nomeObjetivoPorId, emailPorId) {
+  imprimirSecao(`
+    <h2 style="margin-bottom:4px">Indicadores (KPIs)</h2>
+    <p class="text-muted">${itens.length} indicador(es)</p>
+    <hr class="sep">
+    ${itens.length ? `
+      <table class="table">
+        <thead><tr><th>Indicador</th><th>Objetivo</th><th>Meta</th><th>Periodicidade</th><th>Responsável</th></tr></thead>
+        <tbody>
+          ${itens.map((ind) => `
+            <tr>
+              <td>${escapeHtml(ind.nome)}${ind.descricao ? `<br><span class="text-muted">${escapeHtml(ind.descricao)}</span>` : ''}</td>
+              <td>${escapeHtml(nomeObjetivoPorId.get(ind.objetivo_id) || '—')}</td>
+              <td>${ind.classificacao === 'com_meta' && ind.meta !== null ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}` : '—'}</td>
+              <td>${PERIODICIDADE[ind.periodicidade]}</td>
+              <td>${escapeHtml(emailPorId.get(ind.responsavel_id) || '—')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '<p>Nenhum indicador encontrado.</p>'}
+  `);
+}
+
+function abrirFormulario(state, container, objetivos, membros, item = null) {
+  const { supabase, empresaAtual } = state;
+  const classificacaoAtual = item?.classificacao || 'com_meta';
+  const unidadeAtual = item?.unidade || '';
+  const unidadeEhCustom = unidadeAtual && !UNIDADES.includes(unidadeAtual);
+
+  const modal = abrirModal(item ? 'Editar indicador' : 'Novo indicador', `
+    <form id="form-indicador">
+      <div class="form-group">
+        <label>Nome</label>
+        <input type="text" id="in-nome" required value="${item ? escapeHtml(item.nome) : ''}">
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <textarea id="in-descricao" placeholder="O que este indicador mede...">${item ? escapeHtml(item.descricao || '') : ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Fórmula de cálculo</label>
+        <input type="text" id="in-formula" placeholder="Ex: (realizado / previsto) x 100" value="${item ? escapeHtml(item.formula || '') : ''}">
+      </div>
+      <div class="form-group">
+        <label>Classificação</label>
+        <select id="in-classificacao">
+          ${Object.entries(CLASSIFICACAO).map(([v, l]) => `<option value="${v}" ${classificacaoAtual === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="in-unidade">
+            <option value="">—</option>
+            ${UNIDADES.map((u) => `<option value="${u}" ${unidadeAtual === u ? 'selected' : ''}>${u}</option>`).join('')}
+            <option value="outro" ${unidadeEhCustom ? 'selected' : ''}>Outra...</option>
+          </select>
+          <input type="text" id="in-unidade-custom" placeholder="Digite a unidade" style="margin-top:6px;display:${unidadeEhCustom ? '' : 'none'}" value="${unidadeEhCustom ? escapeHtml(unidadeAtual) : ''}">
+        </div>
+        <div class="form-group" id="grupo-meta" style="display:${classificacaoAtual === 'com_meta' ? '' : 'none'}">
+          <label>Meta</label>
+          <input type="number" step="any" id="in-meta" value="${item?.meta ?? ''}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Periodicidade</label>
+          <select id="in-periodicidade">
+            ${Object.entries(PERIODICIDADE).map(([v, l]) => `<option value="${v}" ${item?.periodicidade === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" id="grupo-polaridade" style="display:${classificacaoAtual === 'com_meta' ? '' : 'none'}">
+          <label>Polaridade</label>
+          <select id="in-polaridade">
+            ${Object.entries(POLARIDADE).map(([v, l]) => `<option value="${v}" ${item?.polaridade === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Objetivo vinculado</label>
+          <select id="in-objetivo">
+            <option value="">—</option>
+            ${objetivos.map((o) => `<option value="${o.id}" ${item?.objetivo_id === o.id ? 'selected' : ''}>${escapeHtml(o.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Responsável pela apuração</label>
+          <select id="in-responsavel">
+            <option value="">—</option>
+            ${membros.map((m) => `<option value="${m.usuario_id}" ${item?.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Salvar</button>
+    </form>
+  `);
+
+  modal.querySelector('#in-classificacao').addEventListener('change', (e) => {
+    const ehComMeta = e.target.value === 'com_meta';
+    modal.querySelector('#grupo-meta').style.display = ehComMeta ? '' : 'none';
+    modal.querySelector('#grupo-polaridade').style.display = ehComMeta ? '' : 'none';
+  });
+
+  modal.querySelector('#in-unidade').addEventListener('change', (e) => {
+    modal.querySelector('#in-unidade-custom').style.display = e.target.value === 'outro' ? '' : 'none';
+  });
+
+  modal.querySelector('#form-indicador').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const classificacao = modal.querySelector('#in-classificacao').value;
+    const ehComMeta = classificacao === 'com_meta';
+    if (ehComMeta && !modal.querySelector('#in-meta').value) return toast('Informe a meta para um indicador "Com meta".', 'erro');
+
+    const unidadeSelecionada = modal.querySelector('#in-unidade').value;
+    const unidade = unidadeSelecionada === 'outro' ? modal.querySelector('#in-unidade-custom').value.trim() : unidadeSelecionada;
+
+    const payload = {
+      empresa_id: empresaAtual.id,
+      nome: modal.querySelector('#in-nome').value.trim(),
+      descricao: modal.querySelector('#in-descricao').value.trim() || null,
+      formula: modal.querySelector('#in-formula').value.trim(),
+      classificacao,
+      unidade,
+      meta: ehComMeta ? Number(modal.querySelector('#in-meta').value) : null,
+      periodicidade: modal.querySelector('#in-periodicidade').value,
+      polaridade: ehComMeta ? modal.querySelector('#in-polaridade').value : null,
+      objetivo_id: modal.querySelector('#in-objetivo').value || null,
+      responsavel_id: modal.querySelector('#in-responsavel').value || null,
+    };
+    const query = item
+      ? supabase.from('indicadores').update(payload).eq('id', item.id)
+      : supabase.from('indicadores').insert(payload);
+    const { error } = await query;
+    if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
+    toast('Indicador salvo com sucesso.', 'sucesso');
+    fecharModal();
+    render(container, state);
+  });
+}
+
+async function abrirResultados(state, indicador) {
+  const { supabase, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
+
+  const { data: resultadosData, error } = await supabase
+    .from('resultados_indicadores')
+    .select('*')
+    .eq('indicador_id', indicador.id)
+    .order('periodo');
+
+  if (error) return toast('Erro ao carregar resultados: ' + error.message, 'erro');
+
+  // Ordenação explícita por período (defensiva: garante ordem cronológica mesmo que
+  // algum registro antigo tenha sido salvo antes da validação de ano em dataValida()).
+  const resultados = [...resultadosData].sort((a, b) => a.periodo.localeCompare(b.periodo));
+  const anos = [...new Set(resultados.map((r) => r.periodo.slice(0, 4)))].sort();
+  let anoFiltroAtivo = null; // null = todos os anos
+
+  const modal = abrirModal(`Resultados — ${escapeHtml(indicador.nome)}`, `
+    ${podeEditar ? `
+      <form id="form-resultado">
+        <input type="hidden" id="res-id">
+        <div class="form-row" style="align-items:end">
+          <div class="form-group">
+            <label>Período</label>
+            <input type="date" id="res-periodo" required>
+          </div>
+          <div class="form-group">
+            <label>Valor realizado</label>
+            <input type="number" step="any" id="res-valor" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Observação</label>
+          <input type="text" id="res-observacao">
+        </div>
+        <div class="form-row">
+          <div class="form-group"><button class="btn btn-primary btn-block" type="submit" id="btn-salvar-resultado">Adicionar</button></div>
+          <div class="form-group" id="grupo-cancelar-edicao" style="display:none">
+            <button class="btn btn-secondary btn-block" type="button" id="btn-cancelar-edicao-resultado">Cancelar edição</button>
+          </div>
+        </div>
+      </form>
+      <hr class="sep">
+    ` : ''}
+    ${anos.length > 1 ? `
+      <div class="filters" id="resultados-filtro-anos">
+        <button type="button" class="filter-btn ano-filtro-btn active" data-ano="">Todos</button>
+        ${anos.map((a) => `<button type="button" class="filter-btn ano-filtro-btn" data-ano="${a}">${a}</button>`).join('')}
+      </div>
+    ` : ''}
+    <canvas id="grafico-resultado" height="140"></canvas>
+    <hr class="sep">
+    <div id="resultados-tabela-area"></div>
+  `);
+
+  function renderResultadosFiltrados() {
+    const filtrados = anoFiltroAtivo ? resultados.filter((r) => r.periodo.startsWith(anoFiltroAtivo)) : resultados;
+
+    const area = modal.querySelector('#resultados-tabela-area');
+    area.innerHTML = filtrados.length ? `
+      <table class="table">
+        <thead><tr><th>Período</th><th>Realizado</th><th>Observação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+        <tbody>
+          ${filtrados.map((r) => `
+            <tr>
+              <td>${r.periodo}</td>
+              <td>${formatarValor(r.valor_realizado, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}</td>
+              <td>${escapeHtml(r.observacao || '')}</td>
+              ${podeEditar ? `<td class="table-actions">
+                <button class="icon-btn" data-editar-resultado="${r.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn" data-excluir-resultado="${r.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+              </td>` : ''}
+            </tr>`).join('')}
+        </tbody>
+      </table>` : `<p class="text-muted">Nenhum resultado apurado${anoFiltroAtivo ? ' em ' + anoFiltroAtivo : ' ainda'}.</p>`;
+
+    desenharGrafico(filtrados, indicador);
+
+    area.querySelectorAll('[data-editar-resultado]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const r = resultados.find((x) => x.id === btn.dataset.editarResultado);
+        modal.querySelector('#res-id').value = r.id;
+        modal.querySelector('#res-periodo').value = r.periodo;
+        modal.querySelector('#res-valor').value = r.valor_realizado;
+        modal.querySelector('#res-observacao').value = r.observacao || '';
+        modal.querySelector('#btn-salvar-resultado').textContent = 'Salvar edição';
+        modal.querySelector('#grupo-cancelar-edicao').style.display = '';
+        modal.querySelector('#res-periodo').focus();
+      });
+    });
+
+    area.querySelectorAll('[data-excluir-resultado]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir este resultado?'))) return;
+        const { error: errDel } = await supabase.from('resultados_indicadores').delete().eq('id', btn.dataset.excluirResultado);
+        if (errDel) return toast('Erro ao excluir: ' + errDel.message, 'erro');
+        fecharModal();
+        abrirResultados(state, indicador);
+      });
+    });
+  }
+
+  modal.querySelectorAll('.ano-filtro-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      anoFiltroAtivo = btn.dataset.ano || null;
+      modal.querySelectorAll('.ano-filtro-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      renderResultadosFiltrados();
+    });
+  });
+
+  renderResultadosFiltrados();
+
+  const form = modal.querySelector('#form-resultado');
+  if (form) {
+    const btnCancelar = modal.querySelector('#btn-cancelar-edicao-resultado');
+    const grupoCancelar = modal.querySelector('#grupo-cancelar-edicao');
+    const btnSalvar = modal.querySelector('#btn-salvar-resultado');
+
+    btnCancelar.addEventListener('click', () => {
+      form.reset();
+      modal.querySelector('#res-id').value = '';
+      btnSalvar.textContent = 'Adicionar';
+      grupoCancelar.style.display = 'none';
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const periodo = modal.querySelector('#res-periodo').value;
+      if (!dataValida(periodo)) return toast('Período inválido: informe uma data real.', 'erro');
+      const payload = {
+        indicador_id: indicador.id,
+        periodo,
+        valor_realizado: Number(modal.querySelector('#res-valor').value),
+        observacao: modal.querySelector('#res-observacao').value.trim() || null,
+      };
+      const { error: errIns } = await supabase.from('resultados_indicadores').upsert(payload, { onConflict: 'indicador_id,periodo' });
+      if (errIns) return toast('Erro ao salvar resultado: ' + errIns.message, 'erro');
+      toast('Resultado salvo com sucesso.', 'sucesso');
+      fecharModal();
+      abrirResultados(state, indicador);
+    });
+  }
+}
+
+// Visualização em tela cheia, pensada para projetar numa reunião: nome do indicador em destaque,
+// meta/último resultado grandes, gráfico ampliado e um campo de análise (salvo em indicadores.analise)
+// para registrar a discussão/interpretação do resultado direto durante a reunião.
+async function abrirApresentacao(state, indicador) {
+  const { supabase, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
+
+  const { data: resultadosData, error } = await supabase
+    .from('resultados_indicadores')
+    .select('*')
+    .eq('indicador_id', indicador.id)
+    .order('periodo');
+  if (error) return toast('Erro ao carregar resultados: ' + error.message, 'erro');
+
+  const resultados = [...resultadosData].sort((a, b) => a.periodo.localeCompare(b.periodo));
+  const ultimo = resultados[resultados.length - 1] || null;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'apresentacao-overlay';
+  overlay.innerHTML = `
+    <button class="apresentacao-fechar" id="apr-fechar" title="Fechar"><i class="ti ti-x"></i></button>
+    <div class="apresentacao-conteudo">
+      <h1>${escapeHtml(indicador.nome)}</h1>
+      <p class="apresentacao-subtitulo">${escapeHtml(indicador.descricao || '')}</p>
+      <div class="apresentacao-meta-row">
+        <div class="apresentacao-meta-item">
+          <span>Meta</span>
+          <strong>${indicador.classificacao === 'com_meta' && indicador.meta !== null ? `${formatarValor(indicador.meta, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}` : '—'}</strong>
+        </div>
+        <div class="apresentacao-meta-item">
+          <span>Último resultado</span>
+          <strong>${ultimo ? `${formatarValor(ultimo.valor_realizado, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}` : 'Sem dados'}</strong>
+        </div>
+        <div class="apresentacao-meta-item">
+          <span>Período</span>
+          <strong>${ultimo ? formatarMesAno(ultimo.periodo) : '—'}</strong>
+        </div>
+      </div>
+      <div class="apresentacao-grafico-box">
+        <canvas id="apresentacao-grafico" height="90"></canvas>
+      </div>
+      <div class="apresentacao-analise">
+        <label>Análise para discussão</label>
+        <textarea id="apr-analise" placeholder="Descreva aqui a análise/interpretação deste indicador..." ${podeEditar ? '' : 'readonly'}>${escapeHtml(indicador.analise || '')}</textarea>
+        ${podeEditar ? '<button class="btn btn-primary" id="apr-salvar-analise"><i class="ti ti-device-floppy"></i> Salvar análise</button>' : ''}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const fechar = () => overlay.remove();
+  overlay.querySelector('#apr-fechar').addEventListener('click', fechar);
+  const onEsc = (e) => { if (e.key === 'Escape') { fechar(); document.removeEventListener('keydown', onEsc); } };
+  document.addEventListener('keydown', onEsc);
+
+  if (window.Chart) {
+    new Chart(overlay.querySelector('#apresentacao-grafico'), {
+      type: 'line',
+      data: {
+        labels: resultados.map((r) => formatarMesAno(r.periodo)),
+        datasets: [
+          { label: 'Realizado', data: resultados.map((r) => r.valor_realizado), borderColor: '#E8B84B', backgroundColor: 'rgba(232,184,75,0.15)', tension: 0.25, borderWidth: 3 },
+          { label: 'Meta', data: resultados.map(() => indicador.meta), borderColor: '#252538', borderDash: [6, 4], pointRadius: 0 },
+        ],
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 14 } } } } },
+    });
+  }
+
+  const btnSalvarAnalise = overlay.querySelector('#apr-salvar-analise');
+  if (btnSalvarAnalise) {
+    btnSalvarAnalise.addEventListener('click', async () => {
+      const analise = overlay.querySelector('#apr-analise').value.trim() || null;
+      const { error: errAnalise } = await supabase.from('indicadores').update({ analise }).eq('id', indicador.id);
+      if (errAnalise) return toast('Erro ao salvar análise: ' + errAnalise.message, 'erro');
+      indicador.analise = analise;
+      toast('Análise salva com sucesso.', 'sucesso');
+    });
+  }
+}
+
+function desenharGrafico(resultados, indicador) {
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  const canvas = document.getElementById('grafico-resultado');
+  if (!canvas || !window.Chart) return;
+  chartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: resultados.map((r) => formatarMesAno(r.periodo)),
+      datasets: [
+        {
+          label: 'Realizado',
+          data: resultados.map((r) => r.valor_realizado),
+          borderColor: '#E8B84B',
+          backgroundColor: 'rgba(232,184,75,0.15)',
+          tension: 0.25,
+        },
+        {
+          label: 'Meta',
+          data: resultados.map(() => indicador.meta),
+          borderColor: '#252538',
+          borderDash: [6, 4],
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } },
+  });
+}
