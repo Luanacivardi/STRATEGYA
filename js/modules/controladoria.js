@@ -245,6 +245,20 @@ function abrirFormulario(state, container, departamentos, membros, conta = null)
   });
 }
 
+// Baixa um arquivo do bucket privado e converte pra data URL (base64), garantindo que a imagem já
+// esteja pronta no HTML antes do window.print() disparar — evita imagem "sumida" na impressão por
+// o navegador não ter tido tempo de carregar a URL assinada a tempo.
+async function baixarComoDataUrl(supabase, caminho) {
+  const { data: blob, error } = await supabase.storage.from('contas-anexos').download(caminho);
+  if (error || !blob) return null;
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
 // ---------- Imprimir conta: dados gerais + último gráfico/relatório enviado + análises de todos os meses ----------
 async function imprimirConta(state, conta) {
   const { supabase, empresaAtual } = state;
@@ -274,10 +288,10 @@ async function imprimirConta(state, conta) {
   if (ultimoAnexo) {
     const ehImagem = ultimoAnexo.arquivo_tipo === 'png' || ultimoAnexo.arquivo_tipo === 'jpg';
     if (ehImagem) {
-      const { data: signed, error: errSigned } = await supabase.storage.from('contas-anexos').createSignedUrl(ultimoAnexo.arquivo_url, 300);
-      ultimoAnexoHtml = errSigned
-        ? '<p class="text-muted">Não foi possível carregar o arquivo.</p>'
-        : `<img src="${signed.signedUrl}" alt="${escapeHtml(ultimoAnexo.arquivo_nome)}" style="max-width:100%;max-height:400px">`;
+      const dataUrl = await baixarComoDataUrl(supabase, ultimoAnexo.arquivo_url);
+      ultimoAnexoHtml = dataUrl
+        ? `<img src="${dataUrl}" alt="${escapeHtml(ultimoAnexo.arquivo_nome)}" style="max-width:100%;max-height:400px">`
+        : '<p class="text-muted">Não foi possível carregar o arquivo.</p>';
     } else {
       ultimoAnexoHtml = `<p><i class="ti ${TIPO_ARQUIVO_ICONE[ultimoAnexo.arquivo_tipo]}"></i> ${escapeHtml(ultimoAnexo.arquivo_nome)} (${TIPO_ARQUIVO_LABEL[ultimoAnexo.arquivo_tipo]})</p>`;
     }
