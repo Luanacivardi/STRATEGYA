@@ -194,7 +194,7 @@ const btnPermissoes = document.getElementById('btn-permissoes');
 async function carregarEmpresas() {
   const { data, error } = await supabase
     .from('usuarios_empresas')
-    .select('papel, empresas(id, nome, cnpj, cor_primaria, cor_destaque, logo_url, modulos_habilitados)')
+    .select('papel, empresas(id, nome, cnpj, cor_primaria, cor_destaque, cor_texto, logo_url, modulos_habilitados)')
     .eq('usuario_id', state.user.id);
 
   if (error) {

@@ -15,7 +15,7 @@ function ajustarCor(hex, amount) {
   return rgbParaHex(r + (alvo - r) * f, g + (alvo - g) * f, b + (alvo - b) * f);
 }
 
-const PADRAO = { cor_primaria: '#252538', cor_destaque: '#E8B84B', logo_url: null };
+const PADRAO = { cor_primaria: '#252538', cor_destaque: '#E8B84B', cor_texto: '#ffffff', logo_url: null };
 
 // Lê a imagem de um logo e extrai as duas cores mais dominantes (ignorando fundo branco/preto puro)
 export function extrairCoresDoLogo(file) {
@@ -73,6 +73,7 @@ export function extrairCoresDoLogo(file) {
 export function aplicarTema(empresa) {
   const navy = empresa?.cor_primaria || PADRAO.cor_primaria;
   const gold = empresa?.cor_destaque || PADRAO.cor_destaque;
+  const textoNavy = empresa?.cor_texto || PADRAO.cor_texto;
   const root = document.documentElement.style;
 
   root.setProperty('--navy', navy);
@@ -83,6 +84,7 @@ export function aplicarTema(empresa) {
   root.setProperty('--gold-light', ajustarCor(gold, 20));
   root.setProperty('--gold-bg', ajustarCor(gold, 88));
   root.setProperty('--bg-warning', ajustarCor(gold, 88));
+  root.setProperty('--navy-text', textoNavy);
 
   const headerIcon = document.getElementById('header-icon');
   const headerLogoImg = document.getElementById('header-logo-img');
