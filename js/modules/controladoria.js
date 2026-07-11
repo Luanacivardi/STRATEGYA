@@ -250,7 +250,10 @@ function abrirFormulario(state, container, departamentos, membros, conta = null)
 // o navegador não ter tido tempo de carregar a URL assinada a tempo.
 async function baixarComoDataUrl(supabase, caminho) {
   const { data: blob, error } = await supabase.storage.from('contas-anexos').download(caminho);
-  if (error || !blob) return null;
+  if (error || !blob) {
+    console.error('Erro ao baixar anexo para impressão:', error);
+    return null;
+  }
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);

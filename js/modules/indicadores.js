@@ -456,19 +456,38 @@ async function abrirResultados(state, indicador) {
 // Visualização em tela cheia, pensada para projetar numa reunião: nome do indicador em destaque,
 // meta/último resultado grandes, gráfico ampliado e um campo de análise (salvo em indicadores.analise)
 // para registrar a discussão/interpretação do resultado direto durante a reunião.
+// Histórico de análises da apresentação — mais recente primeiro, com data e autor.
+function renderHistoricoAnalises(analises, nomeMembroPorId) {
+  if (!analises.length) return '<p class="text-muted" style="font-size:13px">Nenhuma análise registrada ainda.</p>';
+  return analises.map((a) => `
+    <div style="background:var(--bg-white);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+      <div class="text-muted" style="font-size:11px;margin-bottom:4px">
+        ${new Date(a.created_at).toLocaleString('pt-BR')} · ${escapeHtml(nomeMembroPorId.get(a.usuario_id) || '—')}
+      </div>
+      <div style="font-size:14px">${escapeHtml(a.texto)}</div>
+    </div>
+  `).join('');
+}
+
 async function abrirApresentacao(state, indicador) {
   const { supabase, papelAtual, empresaAtual, user } = state;
   const podeEditar = papelAtual !== 'usuario';
 
-  const { data: resultadosData, error } = await supabase
-    .from('resultados_indicadores')
-    .select('*')
-    .eq('indicador_id', indicador.id)
-    .order('periodo');
+  const [{ data: resultadosData, error }, { data: analisesData, error: errAnalises }, membros] = await Promise.all([
+    supabase.from('resultados_indicadores').select('*').eq('indicador_id', indicador.id).order('periodo'),
+    supabase.from('indicador_analises').select('*').eq('indicador_id', indicador.id).order('created_at', { ascending: false }),
+    supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
+  ]);
   if (error) return toast('Erro ao carregar resultados: ' + error.message, 'erro');
+  if (errAnalises) return toast('Erro ao carregar análises: ' + errAnalises.message, 'erro');
 
   const resultados = [...resultadosData].sort((a, b) => a.periodo.localeCompare(b.periodo));
   const ultimo = resultados[resultados.length - 1] || null;
+  let analises = analisesData || [];
+  const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+
+  // Observações registradas junto com cada resultado lançado (do mais recente pro mais antigo)
+  const observacoes = [...resultados].reverse().filter((r) => (r.observacao || '').trim());
 
   const overlay = document.createElement('div');
   overlay.className = 'apresentacao-overlay';
@@ -494,13 +513,31 @@ async function abrirApresentacao(state, indicador) {
       <div class="apresentacao-grafico-box">
         <canvas id="apresentacao-grafico" height="90"></canvas>
       </div>
+
+      ${observacoes.length ? `
+        <div class="apresentacao-analise" style="margin-bottom:1.5rem">
+          <label><i class="ti ti-notes"></i> Observações lançadas junto com os resultados</label>
+          <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-top:10px">
+            ${observacoes.map((r) => `
+              <div style="background:var(--bg-white);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+                <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">${formatarMesAno(r.periodo)}</div>
+                <div style="font-size:14px">${escapeHtml(r.observacao)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
       <div class="apresentacao-analise">
-        <label>Análise para discussão</label>
-        <textarea id="apr-analise" placeholder="Descreva aqui a análise/interpretação deste indicador..." ${podeEditar ? '' : 'readonly'}>${escapeHtml(indicador.analise || '')}</textarea>
+        <label>Nova análise para discussão</label>
+        <textarea id="apr-analise" placeholder="Descreva aqui a análise/interpretação deste indicador..." ${podeEditar ? '' : 'readonly'}></textarea>
         ${podeEditar ? `
           <button class="btn btn-primary" id="apr-salvar-analise"><i class="ti ti-device-floppy"></i> Salvar análise</button>
-          <p class="text-muted" style="font-size:12px;margin-top:8px">Ao salvar, esta análise também fica registrada na Ata de Reunião aberta de hoje.</p>
+          <p class="text-muted" style="font-size:12px;margin-top:8px">Ao salvar, esta análise fica registrada abaixo com a data, e também na Ata de Reunião aberta de hoje.</p>
         ` : ''}
+        <div id="apr-historico-analises" style="margin-top:1.25rem;display:flex;flex-direction:column;gap:10px">
+          ${renderHistoricoAnalises(analises, nomeMembroPorId)}
+        </div>
       </div>
     </div>
   `;
@@ -528,21 +565,31 @@ async function abrirApresentacao(state, indicador) {
   const btnSalvarAnalise = overlay.querySelector('#apr-salvar-analise');
   if (btnSalvarAnalise) {
     btnSalvarAnalise.addEventListener('click', async () => {
-      const analise = overlay.querySelector('#apr-analise').value.trim() || null;
-      const { error: errAnalise } = await supabase.from('indicadores').update({ analise }).eq('id', indicador.id);
+      const textoArea = overlay.querySelector('#apr-analise');
+      const analise = textoArea.value.trim();
+      if (!analise) return toast('Escreva a análise antes de salvar.', 'erro');
+
+      const { data: novaAnalise, error: errAnalise } = await supabase
+        .from('indicador_analises')
+        .insert({ empresa_id: empresaAtual.id, indicador_id: indicador.id, texto: analise, usuario_id: user.id })
+        .select()
+        .single();
       if (errAnalise) return toast('Erro ao salvar análise: ' + errAnalise.message, 'erro');
+
+      // Mantém indicadores.analise como "última análise" pra quem lê fora da apresentação.
+      await supabase.from('indicadores').update({ analise }).eq('id', indicador.id);
       indicador.analise = analise;
 
-      if (analise) {
-        const { error: errAta } = await registrarAnaliseNaAtaDoDia(supabase, empresaAtual.id, indicador.id, analise);
-        if (errAta) {
-          toast('Análise salva no indicador, mas houve erro ao registrar na ata: ' + errAta.message, 'erro');
-          return;
-        }
-        toast('Análise salva — registrada na Ata de Reunião aberta de hoje.', 'sucesso');
-      } else {
-        toast('Análise salva com sucesso.', 'sucesso');
+      analises = [novaAnalise, ...analises];
+      overlay.querySelector('#apr-historico-analises').innerHTML = renderHistoricoAnalises(analises, nomeMembroPorId);
+      textoArea.value = '';
+
+      const { error: errAta } = await registrarAnaliseNaAtaDoDia(supabase, empresaAtual.id, indicador.id, analise);
+      if (errAta) {
+        toast('Análise salva, mas houve erro ao registrar na ata: ' + errAta.message, 'erro');
+        return;
       }
+      toast('Análise salva — registrada abaixo e na Ata de Reunião aberta de hoje.', 'sucesso');
     });
   }
 }
