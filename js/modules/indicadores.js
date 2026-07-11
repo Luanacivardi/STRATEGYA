@@ -457,7 +457,7 @@ async function abrirResultados(state, indicador) {
 // meta/último resultado grandes, gráfico ampliado e um campo de análise (salvo em indicadores.analise)
 // para registrar a discussão/interpretação do resultado direto durante a reunião.
 async function abrirApresentacao(state, indicador) {
-  const { supabase, papelAtual } = state;
+  const { supabase, papelAtual, empresaAtual, user } = state;
   const podeEditar = papelAtual !== 'usuario';
 
   const { data: resultadosData, error } = await supabase
@@ -497,7 +497,10 @@ async function abrirApresentacao(state, indicador) {
       <div class="apresentacao-analise">
         <label>Análise para discussão</label>
         <textarea id="apr-analise" placeholder="Descreva aqui a análise/interpretação deste indicador..." ${podeEditar ? '' : 'readonly'}>${escapeHtml(indicador.analise || '')}</textarea>
-        ${podeEditar ? '<button class="btn btn-primary" id="apr-salvar-analise"><i class="ti ti-device-floppy"></i> Salvar análise</button>' : ''}
+        ${podeEditar ? `
+          <button class="btn btn-primary" id="apr-salvar-analise"><i class="ti ti-device-floppy"></i> Salvar análise</button>
+          <p class="text-muted" style="font-size:12px;margin-top:8px">Ao salvar, esta análise também fica registrada na Ata de Reunião aberta de hoje.</p>
+        ` : ''}
       </div>
     </div>
   `;
@@ -529,9 +532,53 @@ async function abrirApresentacao(state, indicador) {
       const { error: errAnalise } = await supabase.from('indicadores').update({ analise }).eq('id', indicador.id);
       if (errAnalise) return toast('Erro ao salvar análise: ' + errAnalise.message, 'erro');
       indicador.analise = analise;
-      toast('Análise salva com sucesso.', 'sucesso');
+
+      if (analise) {
+        const { error: errAta } = await registrarAnaliseNaAtaDoDia(supabase, empresaAtual.id, indicador.id, analise);
+        if (errAta) {
+          toast('Análise salva no indicador, mas houve erro ao registrar na ata: ' + errAta.message, 'erro');
+          return;
+        }
+        toast('Análise salva — registrada na Ata de Reunião aberta de hoje.', 'sucesso');
+      } else {
+        toast('Análise salva com sucesso.', 'sucesso');
+      }
     });
   }
+}
+
+// Encontra a ata aberta de hoje (cria uma nova se não existir) e registra/atualiza a análise
+// deste indicador nela (rac_indicadores). Assim, todas as análises escritas no mesmo dia —
+// de indicadores diferentes — ficam acumuladas na mesma ata, com status "aberta".
+async function registrarAnaliseNaAtaDoDia(supabase, empresaId, indicadorId, texto) {
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const { data: ataExistente, error: errBusca } = await supabase
+    .from('reunioes_analise_critica')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .eq('data', hoje)
+    .eq('status', 'aberta')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (errBusca) return { error: errBusca };
+
+  let ataId = ataExistente?.id;
+  if (!ataId) {
+    const { data: novaAta, error: errCriar } = await supabase
+      .from('reunioes_analise_critica')
+      .insert({ empresa_id: empresaId, data: hoje, status: 'aberta' })
+      .select('id')
+      .single();
+    if (errCriar) return { error: errCriar };
+    ataId = novaAta.id;
+  }
+
+  const { error: errUpsert } = await supabase
+    .from('rac_indicadores')
+    .upsert({ reuniao_id: ataId, indicador_id: indicadorId, consideracoes: texto }, { onConflict: 'reuniao_id,indicador_id' });
+  return { error: errUpsert };
 }
 
 function desenharGrafico(resultados, indicador) {
