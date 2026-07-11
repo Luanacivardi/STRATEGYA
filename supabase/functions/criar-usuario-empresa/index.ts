@@ -85,6 +85,4 @@ Deno.serve(async (req: Request) => {
 
     return resposta({ success: true, contaNova }, 200);
   } catch (err) {
-    return resposta({ error: err instanceof Error ? err.message : 'Erro inesperado.' }, 500);
-  }
-});
+    return resposta({ error: err inst
