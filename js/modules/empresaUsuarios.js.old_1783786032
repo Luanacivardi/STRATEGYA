@@ -1,10 +1,12 @@
+
 import { toast, escapeHtml, confirmar, abrirModal, fecharModal } from '../ui.js';
 import { aplicarTema, extrairCoresDoLogo, corTextoIdeal } from '../tema.js';
-import { abrirModalNovaEmpresa, MODULOS_SISTEMA } from '../app.js';
+import { abrirModalNovaEmpresa } from '../app.js';
 import * as historico from './historico.js';
 import { abrirSnapshot } from './snapshotViewer.js';
 
 const PAPEL_LABEL = { orbeex: 'ORBEEX', admin: 'Administrador', usuario: 'Usuário' };
+const NIVEL_EDICAO_LABEL = { leitura: 'Somente leitura', proprio: 'Edição só do que é responsável', total: 'Edição total' };
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual, user } = state;
@@ -20,20 +22,21 @@ export async function render(container, state) {
   const membros = [...membrosRaw].sort((a, b) => (a.nome || a.email).localeCompare(b.nome || b.email));
 
   let departamentos = [];
-  let modulosRestritos = [];
+  let permissoesEdicao = [];
   let ciclos = [];
   if (podeGerenciar) {
-    const [resDeptos, resRestricoes, resCiclos] = await Promise.all([
+    const [resDeptos, resPermissoes, resCiclos] = await Promise.all([
       supabase.from('departamentos').select('*').eq('empresa_id', empresaAtual.id).order('nome'),
-      supabase.from('modulos_restritos').select('*').eq('empresa_id', empresaAtual.id),
+      supabase.from('permissoes_edicao').select('*').eq('empresa_id', empresaAtual.id),
       supabase.from('ciclos_pe').select('*').eq('empresa_id', empresaAtual.id).order('ano', { ascending: false }),
     ]);
     departamentos = resDeptos.data || [];
-    modulosRestritos = resRestricoes.data || [];
+    permissoesEdicao = resPermissoes.data || [];
     ciclos = resCiclos.data || [];
   }
   const nomeDeptoPorId = new Map(departamentos.map((d) => [d.id, d.nome]));
-  const modulosDisponiveisEmpresa = MODULOS_SISTEMA.filter((m) => (empresaAtual.modulos_habilitados || []).includes(m.id));
+  const nivelPorDepto = new Map(permissoesEdicao.filter((p) => p.departamento_id).map((p) => [p.departamento_id, p.nivel]));
+  const nivelPorUsuario = new Map(permissoesEdicao.filter((p) => p.usuario_id).map((p) => [p.usuario_id, p.nivel]));
 
   container.innerHTML = `
     <div class="card">
@@ -116,25 +119,28 @@ export async function render(container, state) {
     ${podeGerenciar ? `
     <div class="card">
       <div class="card-header"><span><i class="ti ti-sitemap"></i> Departamentos</span></div>
-      <p class="text-muted" style="margin-bottom:1rem">Organize os colaboradores por setor. Departamentos também podem ser usados para liberar acesso a módulos específicos (botão "Módulos").</p>
+      <p class="text-muted" style="margin-bottom:1rem">Organize os colaboradores por setor. A permissão de edição definida aqui vale para todo colaborador do departamento com papel "Usuário" — pode ser sobrescrita individualmente na edição de cada colaborador.</p>
       <form id="form-novo-departamento" class="form-row" style="align-items:end;margin-bottom:1rem">
         <div class="form-group" style="flex:1"><label>Novo departamento</label><input type="text" id="novo-departamento-nome" placeholder="Ex: Comercial, Produção, Qualidade..." required></div>
         <div class="form-group"><button class="btn btn-secondary" type="submit"><i class="ti ti-plus"></i> Adicionar</button></div>
       </form>
       ${departamentos.length ? `
         <table class="table">
-          <thead><tr><th>Departamento</th><th>Colaboradores</th><th>Módulos liberados</th><th></th></tr></thead>
+          <thead><tr><th>Departamento</th><th>Colaboradores</th><th>Permissão de edição</th><th></th></tr></thead>
           <tbody>
             ${departamentos.map((d) => {
               const qtd = membros.filter((m) => m.departamento_id === d.id).length;
-              const restricoesDepto = modulosRestritos.filter((r) => r.departamento_id === d.id);
+              const nivelAtual = nivelPorDepto.get(d.id) || 'leitura';
               return `
               <tr>
                 <td><strong>${escapeHtml(d.nome)}</strong></td>
                 <td>${qtd}</td>
-                <td>${restricoesDepto.length ? `<span class="badge badge-neutral">${restricoesDepto.length} de ${modulosDisponiveisEmpresa.length}</span>` : '<span class="text-muted">Todos (sem restrição)</span>'}</td>
+                <td>
+                  <select class="filter-select filter-select-sm" data-permissao-depto="${d.id}">
+                    ${Object.entries(NIVEL_EDICAO_LABEL).map(([v, l]) => `<option value="${v}" ${nivelAtual === v ? 'selected' : ''}>${l}</option>`).join('')}
+                  </select>
+                </td>
                 <td class="table-actions">
-                  <button class="icon-btn" data-modulos-depto="${d.id}" title="Configurar módulos"><i class="ti ti-apps"></i></button>
                   <button class="icon-btn" data-excluir-depto="${d.id}" title="Excluir departamento"><i class="ti ti-trash"></i></button>
                 </td>
               </tr>`;
@@ -184,17 +190,19 @@ export async function render(container, state) {
         <hr class="sep">
       ` : ''}
       <table class="table">
-        <thead><tr><th>Nome</th><th>Papel</th><th>Departamento</th><th>Status</th>${podeGerenciar ? '<th></th>' : ''}</tr></thead>
+        <thead><tr><th>Nome</th><th>Papel</th><th>Departamento</th><th>Permissão</th><th>Status</th>${podeGerenciar ? '<th></th>' : ''}</tr></thead>
         <tbody>
-          ${membros.map((m) => `
+          ${membros.map((m) => {
+            const nivelEfetivo = m.papel !== 'usuario' ? 'total' : (nivelPorUsuario.get(m.usuario_id) || nivelPorDepto.get(m.departamento_id) || 'leitura');
+            return `
             <tr>
               <td>${escapeHtml(m.nome || m.email)}</td>
               <td><span class="badge badge-neutral">${PAPEL_LABEL[m.papel]}</span></td>
               <td>${escapeHtml(nomeDeptoPorId.get(m.departamento_id) || '—')}</td>
+              <td><span class="badge badge-neutral">${NIVEL_EDICAO_LABEL[nivelEfetivo]}</span></td>
               <td><span class="badge ${m.ativo ? 'badge-success' : 'badge-danger'}">${m.ativo ? 'Ativo' : 'Inativo'}</span></td>
               ${podeGerenciar ? `<td class="table-actions">
                 <button class="icon-btn" data-editar-usuario="${m.usuario_id}" title="Editar colaborador"><i class="ti ti-pencil"></i></button>
-                <button class="icon-btn" data-modulos-usuario="${m.usuario_id}" data-nome-usuario="${escapeHtml(m.nome || m.email)}" title="Configurar módulos deste colaborador"><i class="ti ti-apps"></i></button>
                 <button class="icon-btn" data-alterar-senha="${m.usuario_id}" title="Alterar senha"><i class="ti ti-key"></i></button>
                 ${m.usuario_id !== user.id ? `
                   <button class="icon-btn" data-toggle-ativo="${m.usuario_id}" data-ativo="${m.ativo}" title="${m.ativo ? 'Inativar' : 'Reativar'}"><i class="ti ${m.ativo ? 'ti-user-off' : 'ti-user-check'}"></i></button>
@@ -203,7 +211,8 @@ export async function render(container, state) {
                   ` : `<span class="text-muted" title="Cadastros ORBEEX só podem ser removidos por outro usuário ORBEEX"><i class="ti ti-lock"></i></span>`}
                 ` : ''}
               </td>` : ''}
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -379,39 +388,15 @@ export async function render(container, state) {
     });
   });
 
-  container.querySelectorAll('[data-modulos-depto]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const depto = departamentos.find((d) => d.id === btn.dataset.modulosDepto);
-      const jaConfigurado = new Set(modulosRestritos.filter((r) => r.departamento_id === depto.id).map((r) => r.modulo_id));
-      abrirModalModulosPermitidos(state, container, {
-        titulo: `Módulos — Departamento "${depto.nome}"`,
-        modulosDisponiveis: modulosDisponiveisEmpresa,
-        jaConfigurado,
-        aoSalvar: async (idsPermitidos) => {
-          await supabase.from('modulos_restritos').delete().eq('departamento_id', depto.id);
-          if (idsPermitidos) {
-            await supabase.from('modulos_restritos').insert(idsPermitidos.map((modulo_id) => ({ empresa_id: empresaAtual.id, departamento_id: depto.id, modulo_id })));
-          }
-        },
-      });
-    });
-  });
-
-  container.querySelectorAll('[data-modulos-usuario]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const usuarioId = btn.dataset.modulosUsuario;
-      const jaConfigurado = new Set(modulosRestritos.filter((r) => r.usuario_id === usuarioId).map((r) => r.modulo_id));
-      abrirModalModulosPermitidos(state, container, {
-        titulo: `Módulos — ${btn.dataset.nomeUsuario}`,
-        modulosDisponiveis: modulosDisponiveisEmpresa,
-        jaConfigurado,
-        aoSalvar: async (idsPermitidos) => {
-          await supabase.from('modulos_restritos').delete().eq('usuario_id', usuarioId).eq('empresa_id', empresaAtual.id);
-          if (idsPermitidos) {
-            await supabase.from('modulos_restritos').insert(idsPermitidos.map((modulo_id) => ({ empresa_id: empresaAtual.id, usuario_id: usuarioId, modulo_id })));
-          }
-        },
-      });
+  container.querySelectorAll('[data-permissao-depto]').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const deptoId = sel.dataset.permissaoDepto;
+      const nivel = sel.value;
+      const { error: errNivel } = await supabase.from('permissoes_edicao')
+        .upsert({ empresa_id: empresaAtual.id, departamento_id: deptoId, nivel }, { onConflict: 'departamento_id' });
+      if (errNivel) return toast('Erro ao salvar permissão: ' + errNivel.message, 'erro');
+      toast('Permissão de edição do departamento atualizada.', 'sucesso');
+      render(container, state);
     });
   });
 
@@ -463,7 +448,7 @@ export async function render(container, state) {
   container.querySelectorAll('[data-editar-usuario]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const membro = membros.find((m) => m.usuario_id === btn.dataset.editarUsuario);
-      abrirModalEditarUsuario(state, container, membro, departamentos);
+      abrirModalEditarUsuario(state, container, membro, departamentos, nivelPorUsuario.get(membro.usuario_id) || '');
     });
   });
 
@@ -497,7 +482,7 @@ export async function render(container, state) {
   });
 }
 
-function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
+function abrirModalEditarUsuario(state, container, membro, departamentos = [], nivelPessoalAtual = '') {
   const { supabase, empresaAtual, papelAtual, user } = state;
   const ehOrbeex = papelAtual === 'orbeex';
   const editandoSiMesmo = membro.usuario_id === user.id;
@@ -529,6 +514,14 @@ function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
           ${departamentos.map((d) => `<option value="${d.id}" ${membro.departamento_id === d.id ? 'selected' : ''}>${escapeHtml(d.nome)}</option>`).join('')}
         </select>
       </div>
+      <div class="form-group">
+        <label>Permissão de edição pessoal</label>
+        <select id="edit-nivel-edicao">
+          <option value="" ${nivelPessoalAtual === '' ? 'selected' : ''}>— usar a do departamento —</option>
+          ${Object.entries(NIVEL_EDICAO_LABEL).map(([v, l]) => `<option value="${v}" ${nivelPessoalAtual === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <p class="text-muted" style="margin-top:4px;font-size:12px">Só se aplica ao papel "Usuário". Sobrescreve a permissão do departamento quando definida.</p>
+      </div>
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
   `);
@@ -538,6 +531,7 @@ function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
     const nome = modal.querySelector('#edit-nome').value.trim();
     const papel = modal.querySelector('#edit-papel').value;
     const departamentoId = modal.querySelector('#edit-departamento').value || null;
+    const nivelPessoalNovo = modal.querySelector('#edit-nivel-edicao').value;
 
     const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
       body: { empresaId: empresaAtual.id, usuarioId: membro.usuario_id, nome },
@@ -556,55 +550,19 @@ function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
       if (errDepto) return toast('Salvo, mas houve erro ao definir o departamento: ' + errDepto.message, 'erro');
     }
 
-    toast('Usuário atualizado.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-}
-
-// Modal reutilizável para configurar a lista de módulos permitidos de um departamento ou usuário
-// específico (ver tabela modulos_restritos). `jaConfigurado` é o Set de módulos já liberados;
-// se vazio, o toggle "restringir" começa desligado (comportamento padrão: sem restrição).
-function abrirModalModulosPermitidos(state, container, { titulo, modulosDisponiveis, jaConfigurado, aoSalvar }) {
-  const restricaoAtiva = jaConfigurado.size > 0;
-
-  const modal = abrirModal(titulo, `
-    <form id="form-modulos-permitidos">
-      <label class="checkbox-linha" style="margin-bottom:1rem;display:flex;align-items:center;gap:8px">
-        <input type="checkbox" id="mp-restringir" ${restricaoAtiva ? 'checked' : ''}>
-        <span>Restringir acesso a módulos específicos</span>
-      </label>
-      <div id="mp-lista" style="display:${restricaoAtiva ? '' : 'none'};display:flex;flex-direction:column;gap:8px">
-        ${modulosDisponiveis.length ? modulosDisponiveis.map((m) => `
-          <label style="display:flex;align-items:center;gap:8px">
-            <input type="checkbox" class="mp-modulo" value="${m.id}" ${jaConfigurado.has(m.id) ? 'checked' : ''}>
-            <i class="ti ${m.icone}"></i> ${escapeHtml(m.nome)}
-          </label>
-        `).join('') : '<p class="text-muted">Nenhum módulo habilitado para esta empresa ainda.</p>'}
-      </div>
-      <p class="text-muted" style="margin-top:1rem;font-size:12px">Sem restrição, o acesso segue os módulos habilitados para toda a empresa (Permissões).</p>
-      <button class="btn btn-primary btn-block" type="submit" style="margin-top:1rem">Salvar</button>
-    </form>
-  `);
-
-  modal.querySelector('#mp-restringir').addEventListener('change', (e) => {
-    modal.querySelector('#mp-lista').style.display = e.target.checked ? 'flex' : 'none';
-  });
-
-  modal.querySelector('#form-modulos-permitidos').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const restringir = modal.querySelector('#mp-restringir').checked;
-    if (!restringir) {
-      await aoSalvar(null);
-      toast('Restrição removida — acesso volta ao padrão da empresa.', 'sucesso');
-      fecharModal();
-      render(container, state);
-      return;
+    if (nivelPessoalNovo !== nivelPessoalAtual) {
+      if (nivelPessoalNovo === '') {
+        const { error: errRemoverNivel } = await supabase.from('permissoes_edicao')
+          .delete().eq('usuario_id', membro.usuario_id).eq('empresa_id', empresaAtual.id);
+        if (errRemoverNivel) return toast('Salvo, mas houve erro ao remover a permissão pessoal: ' + errRemoverNivel.message, 'erro');
+      } else {
+        const { error: errNivel } = await supabase.from('permissoes_edicao')
+          .upsert({ empresa_id: empresaAtual.id, usuario_id: membro.usuario_id, nivel: nivelPessoalNovo }, { onConflict: 'usuario_id,empresa_id' });
+        if (errNivel) return toast('Salvo, mas houve erro ao definir a permissão pessoal: ' + errNivel.message, 'erro');
+      }
     }
-    const selecionados = [...modal.querySelectorAll('.mp-modulo:checked')].map((c) => c.value);
-    if (!selecionados.length) return toast('Selecione pelo menos um módulo, ou desmarque "Restringir".', 'erro');
-    await aoSalvar(selecionados);
-    toast('Módulos permitidos atualizados.', 'sucesso');
+
+    toast('Usuário atualizado.', 'sucesso');
     fecharModal();
     render(container, state);
   });
