@@ -25,12 +25,13 @@ export async function render(container, state) {
     </div>
     ${itens.length ? `
       <table class="table">
-        <thead><tr><th>Nome</th><th>Necessidades e expectativas</th><th>Influência</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+        <thead><tr><th>Nome</th><th>Necessidades de partes interessadas</th><th>Satisfação de partes interessadas</th><th>Influência</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
         <tbody>
           ${itens.map((p) => `
             <tr>
               <td>${escapeHtml(p.nome)}</td>
               <td>${escapeHtml(p.necessidades || '—')}</td>
+              <td>${escapeHtml(p.satisfacao || '—')}</td>
               <td><span class="badge ${INFLUENCIA_BADGE[p.nivel_influencia]}">${INFLUENCIA_LABEL[p.nivel_influencia]}</span></td>
               ${podeEditar ? `<td class="table-actions">
                 <button class="icon-btn" data-editar="${p.id}" title="Editar"><i class="ti ti-pencil"></i></button>
@@ -71,8 +72,12 @@ function abrirFormulario(state, container, item = null) {
         <input type="text" id="pi-nome" placeholder="Cliente, colaborador, fornecedor..." required value="${item ? escapeHtml(item.nome) : ''}">
       </div>
       <div class="form-group">
-        <label>Necessidades e expectativas</label>
-        <textarea id="pi-necessidades">${item ? escapeHtml(item.necessidades || '') : ''}</textarea>
+        <label>Necessidades de partes interessadas</label>
+        <textarea id="pi-necessidades" placeholder="O que essa parte interessada espera/precisa?">${item ? escapeHtml(item.necessidades || '') : ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Satisfação de partes interessadas</label>
+        <textarea id="pi-satisfacao" placeholder="Como essa parte interessada avalia/percebe a empresa hoje?">${item ? escapeHtml(item.satisfacao || '') : ''}</textarea>
       </div>
       <div class="form-group">
         <label>Nível de influência/impacto</label>
@@ -92,6 +97,7 @@ function abrirFormulario(state, container, item = null) {
       empresa_id: empresaAtual.id,
       nome: modal.querySelector('#pi-nome').value.trim(),
       necessidades: modal.querySelector('#pi-necessidades').value.trim(),
+      satisfacao: modal.querySelector('#pi-satisfacao').value.trim(),
       nivel_influencia: modal.querySelector('#pi-influencia').value,
     };
     const query = item

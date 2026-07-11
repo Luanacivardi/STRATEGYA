@@ -3,7 +3,7 @@ import { listarObjetivos } from './objetivos.js';
 import * as todo from './todo.js';
 
 const STATUS_LABEL = { nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', concluido: 'Concluído', atrasado: 'Atrasado' };
-const ORIGEM_LABEL = { objetivo: 'Objetivo', indicador: 'Indicador', risco: 'Risco/Oportunidade', nc: 'Não Conformidade', rac: 'Ata de Reunião' };
+const ORIGEM_LABEL = { objetivo: 'Objetivo', indicador: 'Indicador', risco: 'Risco/Oportunidade', nc: 'Não Conformidade', rac: 'Ata de Reunião', conta_gerencial: 'Controladoria' };
 
 let filtroOrigemObjetivo = null; // quando vem da tela de Objetivos, já chega filtrado
 let grupoAtivo = 'planos'; // 'planos' | 'todo'
@@ -23,6 +23,7 @@ function renderFiltrosGrupo() {
     <div class="filters">
       <button class="filter-btn ${grupoAtivo === 'planos' ? 'active' : ''}" data-grupo="planos">Planos de Ação</button>
       <button class="filter-btn ${grupoAtivo === 'todo' ? 'active' : ''}" data-grupo="todo">Tarefas</button>
+      <button class="filter-btn ${grupoAtivo === 'indicadores' ? 'active' : ''}" data-grupo="indicadores">Indicadores dos Planos</button>
     </div>`;
 }
 
@@ -33,13 +34,14 @@ function wireFiltrosGrupo(container, state) {
 }
 
 async function carregarOrigens(supabase, empresaId) {
-  const [objetivos, { data: indicadoresData }, { data: riscosData }, { data: atasData }] = await Promise.all([
+  const [objetivos, { data: indicadoresData }, { data: riscosData }, { data: atasData }, { data: contasData }] = await Promise.all([
     listarObjetivos(supabase, empresaId),
     supabase.from('indicadores').select('id, nome').eq('empresa_id', empresaId),
     supabase.from('riscos_oportunidades').select('id, descricao').eq('empresa_id', empresaId),
     supabase.from('reunioes_analise_critica').select('id, data').eq('empresa_id', empresaId),
+    supabase.from('contas_gerenciais').select('id, codigo, nome').eq('empresa_id', empresaId),
   ]);
-  return { objetivos, indicadores: indicadoresData || [], riscos: riscosData || [], atas: atasData || [] };
+  return { objetivos, indicadores: indicadoresData || [], riscos: riscosData || [], atas: atasData || [], contas: contasData || [] };
 }
 
 function nomeOrigem(plano, origens) {
@@ -48,11 +50,13 @@ function nomeOrigem(plano, origens) {
   if (plano.origem === 'indicador') return origens.indicadores.find((i) => i.id === plano.origem_id)?.nome || '—';
   if (plano.origem === 'risco') return origens.riscos.find((r) => r.id === plano.origem_id)?.descricao || '—';
   if (plano.origem === 'rac') { const a = origens.atas.find((x) => x.id === plano.origem_id); return a ? `Ata de ${a.data}` : '—'; }
+  if (plano.origem === 'conta_gerencial') { const c = origens.contas.find((x) => x.id === plano.origem_id); return c ? `${c.codigo} — ${c.nome}` : '—'; }
   return '—';
 }
 
 export async function render(container, state) {
   if (grupoAtivo === 'todo') return renderTodoGrupo(container, state);
+  if (grupoAtivo === 'indicadores') return renderIndicadoresGrupo(container, state);
   return renderPlanos(container, state);
 }
 
@@ -66,6 +70,102 @@ async function renderTodoGrupo(container, state) {
   `;
   wireFiltrosGrupo(container, state);
   await todo.renderCorpo(container.querySelector('#planos-todo-corpo'), state);
+}
+
+async function renderIndicadoresGrupo(container, state) {
+  const { supabase, empresaAtual } = state;
+
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header"><span><i class="ti ti-list-check"></i> Ações</span></div>
+      ${renderFiltrosGrupo()}
+      <div id="planos-indicadores-corpo">Carregando...</div>
+    </div>
+  `;
+  wireFiltrosGrupo(container, state);
+
+  const area = container.querySelector('#planos-indicadores-corpo');
+  let planos, origens;
+  try {
+    const [resPlanos, origensData] = await Promise.all([
+      supabase.from('planos_acao').select('*').eq('empresa_id', empresaAtual.id),
+      carregarOrigens(supabase, empresaAtual.id),
+    ]);
+    if (resPlanos.error) throw resPlanos.error;
+    planos = resPlanos.data;
+    origens = origensData;
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-warning">Erro ao carregar indicadores: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  if (!planos.length) {
+    area.innerHTML = '<div class="empty-state"><i class="ti ti-chart-line"></i>Nenhum plano de ação cadastrado ainda.</div>';
+    return;
+  }
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const total = planos.length;
+  const porStatus = {};
+  Object.keys(STATUS_LABEL).forEach((s) => { porStatus[s] = 0; });
+  planos.forEach((p) => { porStatus[p.status] = (porStatus[p.status] || 0) + 1; });
+
+  const atrasados = planos.filter((p) => p.status !== 'concluido' && p.quando && p.quando < hoje).length;
+  const percentualMedio = Math.round(planos.reduce((s, p) => s + (p.percentual_conclusao || 0), 0) / total);
+
+  const porOrigem = {};
+  planos.forEach((p) => {
+    const chave = p.origem ? ORIGEM_LABEL[p.origem] : 'Avulso';
+    porOrigem[chave] = (porOrigem[chave] || 0) + 1;
+  });
+
+  const corStatus = { nao_iniciado: '#94a3b8', em_andamento: '#E8B84B', concluido: '#10b981', atrasado: '#ef4444' };
+
+  area.innerHTML = `
+    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1.25rem">
+      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+        <div class="text-muted" style="font-size:12px">Total de planos</div>
+        <div style="font-size:24px;font-weight:700">${total}</div>
+      </div>
+      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+        <div class="text-muted" style="font-size:12px">% médio de conclusão</div>
+        <div style="font-size:24px;font-weight:700">${percentualMedio}%</div>
+      </div>
+      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+        <div class="text-muted" style="font-size:12px">Planos atrasados</div>
+        <div style="font-size:24px;font-weight:700;color:${atrasados ? '#ef4444' : 'inherit'}">${atrasados}</div>
+      </div>
+      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+        <div class="text-muted" style="font-size:12px">Concluídos</div>
+        <div style="font-size:24px;font-weight:700">${porStatus.concluido || 0}</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px;margin-bottom:1rem">
+      <p style="font-weight:700;color:var(--navy);margin-bottom:10px">Por status</p>
+      ${Object.entries(STATUS_LABEL).map(([v, l]) => {
+        const qtd = porStatus[v] || 0;
+        const pct = total ? Math.round((qtd / total) * 100) : 0;
+        return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:110px;font-size:13px">${l}</span>
+            <div style="flex:1;background:var(--surface-1);border-radius:4px;height:16px;overflow:hidden">
+              <div style="width:${pct}%;background:${corStatus[v]};height:100%"></div>
+            </div>
+            <span style="width:60px;text-align:right;font-size:13px">${qtd} (${pct}%)</span>
+          </div>`;
+      }).join('')}
+    </div>
+
+    <div class="card" style="padding:14px">
+      <p style="font-weight:700;color:var(--navy);margin-bottom:10px">Por origem</p>
+      ${Object.entries(porOrigem).map(([label, qtd]) => `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span>${escapeHtml(label)}</span><span class="badge badge-neutral">${qtd}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 async function renderPlanos(container, state) {
@@ -377,6 +477,7 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     if (origem === 'objetivo') return origens.objetivos.map((o) => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join('');
     if (origem === 'indicador') return origens.indicadores.map((i) => `<option value="${i.id}">${escapeHtml(i.nome)}</option>`).join('');
     if (origem === 'risco') return origens.riscos.map((r) => `<option value="${r.id}">${escapeHtml(r.descricao)}</option>`).join('');
+    if (origem === 'conta_gerencial') return origens.contas.map((c) => `<option value="${c.id}">${escapeHtml(c.codigo)} — ${escapeHtml(c.nome)}</option>`).join('');
     return '';
   };
 
@@ -394,6 +495,7 @@ function abrirFormulario(state, container, origens, membros, item = null) {
             <option value="objetivo" ${item?.origem === 'objetivo' ? 'selected' : ''}>Objetivo</option>
             <option value="indicador" ${item?.origem === 'indicador' ? 'selected' : ''}>Indicador</option>
             <option value="risco" ${item?.origem === 'risco' ? 'selected' : ''}>Risco/Oportunidade</option>
+            <option value="conta_gerencial" ${item?.origem === 'conta_gerencial' ? 'selected' : ''}>Controladoria</option>
           </select>
         </div>
         <div class="form-group" id="grupo-origem-id" style="${item?.origem ? '' : 'display:none'}">
@@ -440,6 +542,29 @@ function abrirFormulario(state, container, origens, membros, item = null) {
           <select id="pa-status">
             ${Object.entries(STATUS_LABEL).map(([v, l]) => `<option value="${v}" ${item?.status === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Ferramentas da qualidade (opcional)</label>
+        <div class="filters" style="margin-bottom:0">
+          <button type="button" class="filter-btn ${item?.analise_5porques?.length ? 'active' : ''}" id="btn-toggle-5porques"><i class="ti ti-help-circle"></i> 5 Porquês</button>
+          <button type="button" class="filter-btn ${item?.analise_ishikawa ? 'active' : ''}" id="btn-toggle-ishikawa"><i class="ti ti-sitemap"></i> Ishikawa</button>
+        </div>
+        <div id="grupo-5porques" style="${item?.analise_5porques?.length ? '' : 'display:none'};margin-top:10px">
+          ${[0, 1, 2, 3, 4].map((i) => `
+            <div class="form-group">
+              <label style="font-weight:400;font-size:12px">${i + 1}º Por quê${i === 0 ? ' (problema)' : ''}</label>
+              <input type="text" class="pa-5porques-item" data-indice="${i}" value="${escapeHtml((item?.analise_5porques || [])[i] || '')}">
+            </div>
+          `).join('')}
+        </div>
+        <div id="grupo-ishikawa" style="${item?.analise_ishikawa ? '' : 'display:none'};margin-top:10px">
+          ${[['metodo', 'Método'], ['maquina', 'Máquina'], ['mao_de_obra', 'Mão de obra'], ['material', 'Material'], ['meio_ambiente', 'Meio ambiente'], ['medida', 'Medida']].map(([chave, label]) => `
+            <div class="form-group">
+              <label style="font-weight:400;font-size:12px">${label}</label>
+              <textarea class="pa-ishikawa-item" data-chave="${chave}" rows="2">${escapeHtml((item?.analise_ishikawa || {})[chave] || '')}</textarea>
+            </div>
+          `).join('')}
         </div>
       </div>
       ${item ? `<p class="text-muted">% de conclusão: <strong id="pa-percentual-display">${item.percentual_conclusao}%</strong> (calculado automaticamente a partir das tarefas abaixo)</p>` : ''}
@@ -492,6 +617,7 @@ function abrirFormulario(state, container, origens, membros, item = null) {
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
   `);
+  modal.classList.add('modal-xl');
 
   modal.querySelector('#pa-origem').addEventListener('change', (e) => {
     const grupo = modal.querySelector('#grupo-origem-id');
@@ -505,6 +631,18 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     select.innerHTML = optionsOrigem(e.target.value);
   });
 
+  const toggleFerramenta = (btnId, grupoId) => {
+    const btn = modal.querySelector(btnId);
+    const grupo = modal.querySelector(grupoId);
+    btn.addEventListener('click', () => {
+      const abrir = grupo.style.display === 'none';
+      grupo.style.display = abrir ? '' : 'none';
+      btn.classList.toggle('active', abrir);
+    });
+  };
+  toggleFerramenta('#btn-toggle-5porques', '#grupo-5porques');
+  toggleFerramenta('#btn-toggle-ishikawa', '#grupo-ishikawa');
+
   if (item) montarAcoesMicro(state, modal, item, membros);
 
   modal.querySelector('#form-plano').addEventListener('submit', async (e) => {
@@ -512,6 +650,14 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     const quando = modal.querySelector('#pa-quando').value;
     if (quando && !dataValida(quando)) return toast('Data "Quando" inválida.', 'erro');
     const origem = modal.querySelector('#pa-origem').value || null;
+
+    const valores5porques = [...modal.querySelectorAll('.pa-5porques-item')].map((el) => el.value.trim());
+    const preenchido5porques = valores5porques.some((v) => v);
+
+    const ishikawa = {};
+    modal.querySelectorAll('.pa-ishikawa-item').forEach((el) => { ishikawa[el.dataset.chave] = el.value.trim(); });
+    const preenchidoIshikawa = Object.values(ishikawa).some((v) => v);
+
     const payload = {
       empresa_id: empresaAtual.id,
       titulo: modal.querySelector('#pa-titulo').value.trim(),
@@ -525,6 +671,8 @@ function abrirFormulario(state, container, origens, membros, item = null) {
       como: modal.querySelector('#pa-como').value.trim(),
       quanto_custa: modal.querySelector('#pa-quanto-custa').value || null,
       status: modal.querySelector('#pa-status').value,
+      analise_5porques: preenchido5porques ? valores5porques : null,
+      analise_ishikawa: preenchidoIshikawa ? ishikawa : null,
     };
 
     const arquivo = modal.querySelector('#pa-evidencia').files[0];
@@ -538,7 +686,10 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     planoId = salvo.id;
 
     if (arquivo) {
-      const caminho = `${empresaAtual.id}/${planoId}/${arquivo.name}`;
+      const nomeSanitizado = arquivo.name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .replace(/[^a-zA-Z0-9._-]/g, '_'); // troca espaços e demais caracteres especiais por "_"
+      const caminho = `${empresaAtual.id}/${planoId}/${nomeSanitizado}`;
       const { error: errUpload } = await supabase.storage.from('evidencias-planos').upload(caminho, arquivo, { upsert: true });
       if (errUpload) {
         toast('Plano salvo, mas houve erro ao enviar a evidência: ' + errUpload.message, 'erro');

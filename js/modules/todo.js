@@ -5,6 +5,14 @@ import { listarObjetivos } from './objetivos.js';
 const STATUS_LABEL = { pendente: 'Pendente', concluido: 'Concluído' };
 const ORIGEM_LABEL = { manual: 'Manual', plano: 'Plano de Ação', ata: 'Ata de Reunião' };
 
+// Tarefas manuais criadas a partir de uma análise da Controladoria (têm conta_id) mostram a tag
+// "Controladoria" em vez de "Manual", mas continuam sendo tratadas como 'manual' internamente
+// (mesma tabela todo_itens, mesmo fluxo de editar/concluir/excluir).
+function labelOrigem(l) {
+  if (l.origem === 'manual' && l.raw?.conta_id) return 'Controladoria';
+  return ORIGEM_LABEL[l.origem];
+}
+
 // Consolida 3 fontes de atividades num único painel de Tarefas: itens manuais, tarefas dos planos de ação,
 // e ações das atas de reunião. Cada linha guarda o registro bruto da origem, para permitir concluir/editar
 // direto por aqui (persistindo na tabela de origem), além de "voltar" pra origem (aba + filtro).
@@ -14,6 +22,7 @@ async function carregarLinhas(supabase, empresaAtual) {
     { data: planos },
     { data: atas },
     { data: indicadoresData },
+    { data: contasData },
     membros,
     objetivos,
   ] = await Promise.all([
@@ -21,6 +30,7 @@ async function carregarLinhas(supabase, empresaAtual) {
     supabase.from('planos_acao').select('id, numero, titulo, origem, origem_id').eq('empresa_id', empresaAtual.id),
     supabase.from('reunioes_analise_critica').select('id, data').eq('empresa_id', empresaAtual.id),
     supabase.from('indicadores').select('id, nome, objetivo_id').eq('empresa_id', empresaAtual.id),
+    supabase.from('contas_gerenciais').select('id, codigo, nome').eq('empresa_id', empresaAtual.id),
     supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
     listarObjetivos(supabase, empresaAtual.id),
   ]);
@@ -29,6 +39,7 @@ async function carregarLinhas(supabase, empresaAtual) {
   const objetivoIdPorIndicador = new Map((indicadoresData || []).map((i) => [i.id, i.objetivo_id]));
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const planoPorId = new Map((planos || []).map((p) => [p.id, p]));
+  const contaPorId = new Map((contasData || []).map((c) => [c.id, c]));
 
   const planoIds = (planos || []).map((p) => p.id);
   const { data: itensPlanos } = planoIds.length
@@ -55,6 +66,7 @@ async function carregarLinhas(supabase, empresaAtual) {
 
   (todoManual || []).forEach((t) => {
     const objetivoId = t.indicador_id ? objetivoIdPorIndicador.get(t.indicador_id) : null;
+    const conta = t.conta_id ? contaPorId.get(t.conta_id) : null;
     linhas.push({
       origem: 'manual',
       id: t.id,
@@ -66,6 +78,7 @@ async function carregarLinhas(supabase, empresaAtual) {
       prazo: t.prazo,
       statusKey: t.status,
       evolucao: t.evolucao,
+      refLabel: conta ? `${conta.codigo} — ${conta.nome}` : null,
       raw: t,
     });
   });
@@ -118,7 +131,7 @@ function exportarCsv(linhas) {
   const cabecalho = ['Origem', 'Descrição', 'Responsável', 'Indicador', 'Prazo', 'Status', 'Evolução'];
   const escaparCsv = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
   const linhasCsv = linhas.map((l) => [
-    ORIGEM_LABEL[l.origem], l.descricao, l.responsavelNome, l.indicadorNome, l.prazo || '', STATUS_LABEL[l.statusKey], l.evolucao || '',
+    labelOrigem(l), l.descricao, l.responsavelNome, l.indicadorNome, l.prazo || '', STATUS_LABEL[l.statusKey], l.evolucao || '',
   ].map(escaparCsv).join(','));
   const csv = [cabecalho.map(escaparCsv).join(','), ...linhasCsv].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -234,7 +247,7 @@ export async function renderCorpo(container, state) {
           ${filtradas.map((l) => { const chave = `${l.origem}:${l.id}`; return `
             <tr>
               <td><input type="checkbox" class="todo-checkbox" data-chave="${chave}" ${selecionadas.has(chave) ? 'checked' : ''}></td>
-              <td><span class="badge badge-neutral">${ORIGEM_LABEL[l.origem]}</span>${l.refLabel ? `<br><span class="text-muted">${escapeHtml(l.refLabel)}</span>` : ''}</td>
+              <td><span class="badge badge-neutral">${labelOrigem(l)}</span>${l.refLabel ? `<br><span class="text-muted">${escapeHtml(l.refLabel)}</span>` : ''}</td>
               <td>${escapeHtml(l.descricao)}${l.evolucao ? `<br><span class="text-muted"><i class="ti ti-notes"></i> ${escapeHtml(l.evolucao)}</span>` : ''}</td>
               <td>${escapeHtml(l.responsavelNome)}</td>
               <td>${escapeHtml(l.indicadorNome)}</td>
@@ -321,7 +334,7 @@ export async function renderCorpo(container, state) {
   container.querySelector('#btn-todo-pdf').addEventListener('click', () => imprimirTarefasEmLote(alvoAtual()));
   container.querySelector('#btn-todo-email').addEventListener('click', () => {
     const alvo = alvoAtual();
-    const corpo = alvo.map((l) => `${ORIGEM_LABEL[l.origem]} — ${l.descricao}\nResponsável: ${l.responsavelNome} | Prazo: ${l.prazo || '—'} | Status: ${STATUS_LABEL[l.statusKey]}\n`).join('\n');
+    const corpo = alvo.map((l) => `${labelOrigem(l)} — ${l.descricao}\nResponsável: ${l.responsavelNome} | Prazo: ${l.prazo || '—'} | Status: ${STATUS_LABEL[l.statusKey]}\n`).join('\n');
     enviarPorEmail('Tarefas', corpo || 'Nenhuma tarefa encontrada.');
   });
 
@@ -342,7 +355,7 @@ function imprimirTarefasEmLote(linhas) {
         <tbody>
           ${linhas.map((l) => `
             <tr>
-              <td>${ORIGEM_LABEL[l.origem]}${l.refLabel ? `<br><span class="text-muted">${escapeHtml(l.refLabel)}</span>` : ''}</td>
+              <td>${labelOrigem(l)}${l.refLabel ? `<br><span class="text-muted">${escapeHtml(l.refLabel)}</span>` : ''}</td>
               <td>${escapeHtml(l.descricao)}</td>
               <td>${escapeHtml(l.responsavelNome)}</td>
               <td>${escapeHtml(l.indicadorNome)}</td>
@@ -361,7 +374,7 @@ function imprimirTarefa(linha) {
   if (!linha) return;
   imprimirSecao(`
     <h2 style="margin-bottom:4px">Tarefa</h2>
-    <p class="text-muted">${ORIGEM_LABEL[linha.origem]}${linha.refLabel ? ' — ' + escapeHtml(linha.refLabel) : ''}</p>
+    <p class="text-muted">${labelOrigem(linha)}${linha.refLabel ? ' — ' + escapeHtml(linha.refLabel) : ''}</p>
     <hr class="sep">
     <table class="print-detalhe-tabela">
       <tbody>
