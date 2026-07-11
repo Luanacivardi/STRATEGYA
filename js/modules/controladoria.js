@@ -102,7 +102,6 @@ export async function render(container, state) {
                 <td><span class="badge ${c.ativo ? 'badge-success' : 'badge-danger'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 <td class="table-actions">
                   <button class="icon-btn" data-detalhes="${c.id}" title="Análises e anexos"><i class="ti ti-folder-open"></i></button>
-                  <button class="icon-btn" data-visualizar-graficos="${c.id}" title="Ver relatórios e gráficos"><i class="ti ti-eye"></i></button>
                   ${podeEditar ? `
                     <button class="icon-btn" data-editar="${c.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${c.id}" title="Excluir"><i class="ti ti-trash"></i></button>
@@ -129,13 +128,6 @@ export async function render(container, state) {
     btn.addEventListener('click', () => {
       const conta = contas.find((c) => c.id === btn.dataset.detalhes);
       abrirDetalheConta(state, container, conta, membros);
-    });
-  });
-
-  container.querySelectorAll('[data-visualizar-graficos]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const conta = contas.find((c) => c.id === btn.dataset.visualizarGraficos);
-      abrirDetalheConta(state, container, conta, membros, 'anexos');
     });
   });
 
@@ -251,6 +243,7 @@ let abaDetalheAtiva = 'analises';
 async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'analises') {
   abaDetalheAtiva = abaInicial;
   const modal = abrirModal(`${conta.codigo} — ${conta.nome}`, '<div id="detalhe-conta-corpo">Carregando...</div>');
+  modal.classList.add('modal-xl');
   await renderDetalheConta(state, containerPai, modal, conta, membros);
 }
 
