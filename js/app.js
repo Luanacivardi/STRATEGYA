@@ -8,7 +8,7 @@ import * as planosAcao from './modules/planosAcao.js';
 import * as indicadores from './modules/indicadores.js';
 import * as atasReuniao from './modules/atasReuniao.js';
 import * as riscos from './modules/riscosOportunidades.js';
-import * as documentos from './modules/documentos.js';
+import * as controladoria from './modules/controladoria.js';
 import * as empresaUsuarios from './modules/empresaUsuarios.js';
 import * as permissoes from './modules/permissoes.js';
 
@@ -21,22 +21,26 @@ export const state = {
 };
 
 // Abas internas do módulo Planejamento Estratégico
-// (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos)
-const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, planos: planosAcao, indicadores, atas: atasReuniao };
+// (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos;
+// Ações virou módulo próprio — ver MODULOS_SIMPLES)
+const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, riscos, indicadores, atas: atasReuniao };
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'riscos-oportunidades': riscos, documentos };
+const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria };
 
 // Módulos do sistema — "planejamento-estrategico" e "riscos-oportunidades" já implementados;
 // os demais aparecem no menu como "em breve" para deixar a estrutura do SGI visível.
 export const MODULOS_SISTEMA = [
   { id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true,
-    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, planos de ação, indicadores e atas de reunião.' },
-  { id: 'riscos-oportunidades', nome: 'Riscos e Oportunidades', icone: 'ti-alert-triangle', disponivel: true,
-    descricao: 'Identificação e tratamento de riscos e oportunidades, com matriz de probabilidade x impacto.' },
-  { id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: true,
-    descricao: 'Controle de documentos e registros da qualidade: numeração automática, ciclo de aprovação com assinatura eletrônica, revisões e lista mestra.' },
+    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, riscos e oportunidades, indicadores e atas de reunião.' },
+  { id: 'acoes', nome: 'Ações', icone: 'ti-list-check', disponivel: true,
+    descricao: 'Planos de ação e tarefas vinculados a objetivos, indicadores, riscos, não conformidades e atas de reunião.' },
+  { id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true,
+    descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.' },
+  { id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: false,
+    descricao: 'Controle de documentos e registros da qualidade.',
+    teaser: 'Nunca mais perca a versão certa de um documento.' },
   { id: 'nao-conformidades', nome: 'Não Conformidades', icone: 'ti-alert-octagon', disponivel: false,
     descricao: 'Registro e tratamento de não conformidades e ações corretivas.',
     teaser: 'Transforme problemas recorrentes em ações que resolvem de vez.' },
@@ -380,7 +384,12 @@ function abrirModalNovaEmpresa() {
 // Cada empresa tem sua própria lista de módulos habilitados (definida em Permissões, só por ORBEEX).
 // Módulos ainda não implementados (disponivel: false), mesmo que habilitados para a empresa,
 // levam a um placeholder "em construção".
+// Exceção: para o papel ORBEEX, "Ações" e "Controladoria" ficam sempre visíveis em qualquer
+// empresa, independente do que foi habilitado — a equipe ORBEEX precisa acessá-los sempre.
+const MODULOS_SEMPRE_VISIVEIS_ORBEEX = ['acoes', 'controladoria'];
+
 function moduloHabilitadoParaEmpresa(moduloId) {
+  if (state.papelAtual === 'orbeex' && MODULOS_SEMPRE_VISIVEIS_ORBEEX.includes(moduloId)) return true;
   return (state.empresaAtual?.modulos_habilitados || []).includes(moduloId);
 }
 
@@ -467,7 +476,6 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     tabAtiva = btn.dataset.tab;
     if (tabAtiva === 'indicadores') indicadores.filtrarPorObjetivo(null);
-    if (tabAtiva === 'planos') planosAcao.irParaGrupo('planos');
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     renderConteudoAtivo();
@@ -537,15 +545,26 @@ async function renderConteudoAtivo() {
 
 // Navegação vinda de outros módulos (ex: clicar num item da SWOT abre a análise em Riscos e Oportunidades)
 document.addEventListener('strategya:abrir-risco', async (e) => {
-  moduloAtivo = 'riscos-oportunidades';
+  tabAtiva = 'riscos';
+  moduloAtivo = 'planejamento-estrategico';
   viewAtual = 'modulo';
   renderModuleRail();
   await renderConteudoAtivo();
-  riscos.abrirEdicaoPorId(state, areaModuloSimples, e.detail.id);
+  riscos.abrirEdicaoPorId(state, document.getElementById('tab-riscos'), e.detail.id);
 });
 
-// Troca de aba dentro do Planejamento Estratégico (ex: "ver planos de ação" a partir de um Objetivo)
+// Troca de aba dentro do Planejamento Estratégico (ex: "ver indicadores" a partir de um Objetivo)
 document.addEventListener('strategya:mudar-aba', (e) => {
+  // "Ações" virou módulo próprio (não é mais aba do Planejamento Estratégico)
+  if (e.detail.aba === 'planos') {
+    planosAcao.irParaGrupo(e.detail.grupo || 'planos');
+    moduloAtivo = 'acoes';
+    viewAtual = 'modulo';
+    renderModuleRail();
+    renderConteudoAtivo();
+    return;
+  }
+
   tabAtiva = e.detail.aba;
   moduloAtivo = 'planejamento-estrategico';
   viewAtual = 'modulo';
@@ -554,7 +573,6 @@ document.addEventListener('strategya:mudar-aba', (e) => {
     indicadores.filtrarPorObjetivo(e.detail.objetivoId || null);
     if (e.detail.indicadorId) indicadores.abrirIndicadorPorId(e.detail.indicadorId);
   }
-  if (tabAtiva === 'planos') planosAcao.irParaGrupo(e.detail.grupo || 'planos');
   renderModuleRail();
   renderConteudoAtivo();
 });
