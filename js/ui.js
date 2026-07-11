@@ -94,10 +94,19 @@ export function imprimirSecao(htmlConteudo) {
   if (!area) return;
   area.innerHTML = htmlConteudo;
   document.body.classList.add('imprimindo-secao');
-  window.print();
+
   const limpar = () => { document.body.classList.remove('imprimindo-secao'); area.innerHTML = ''; };
-  window.addEventListener('afterprint', limpar, { once: true });
-  setTimeout(limpar, 60000);
+
+  // Garante que toda imagem (ex: gráfico anexado) já esteja carregada/decodificada antes de abrir
+  // a janela de impressão — sem isso, o navegador pode imprimir a página com a imagem em branco.
+  const imagens = [...area.querySelectorAll('img')];
+  const prontas = imagens.map((img) => (img.decode ? img.decode().catch(() => {}) : new Promise((res) => { img.onload = res; img.onerror = res; })));
+
+  Promise.all(prontas).then(() => {
+    window.print();
+    window.addEventListener('afterprint', limpar, { once: true });
+    setTimeout(limpar, 60000);
+  });
 }
 
 export function escapeHtml(str) {
