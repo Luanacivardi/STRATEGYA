@@ -297,6 +297,7 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
 }
 .modal-overlay.open { display: flex; }
 .modal { background: var(--surface-2); border-radius: var(--radius); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.modal-xl { max-width: 1100px; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.4rem; border-bottom: 2px solid var(--gold); }
 .modal-header h3 { font-size: 15px; color: var(--navy); }
 .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); line-height: 1; }
@@ -354,6 +355,47 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 17px; display: inline-flex; align-items: center; justify-content: center; }
 .icon-btn:hover { color: var(--navy); }
 .table-actions .icon-btn { font-size: 18px; }
+
+/* ===== IDENTIDADE VISUAL (branding) ===== */
+.brand-editor { display: grid; grid-template-columns: 1fr 300px; gap: 2rem; align-items: start; }
+@media (max-width: 800px) { .brand-editor { grid-template-columns: 1fr; } }
+
+.brand-logo-upload { display: flex; align-items: center; gap: 14px; margin-bottom: 1.25rem; }
+.brand-logo-preview {
+  width: 72px; height: 72px; border-radius: 12px; background: var(--surface-1); border: 2px dashed var(--border);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; overflow: hidden;
+  transition: border-color 0.15s;
+}
+.brand-logo-preview:hover { border-color: var(--gold); }
+.brand-logo-preview i { font-size: 26px; color: var(--text-secondary); }
+.brand-logo-preview img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+.brand-logo-upload input[type="file"] { font-size: 12px; max-width: 220px; }
+
+.brand-swatches { display: flex; gap: 18px; flex-wrap: wrap; }
+.brand-swatch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.brand-swatch-dot {
+  position: relative; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  border: 3px solid var(--surface-2); box-shadow: 0 0 0 1px var(--border), 0 2px 6px rgba(37,37,56,0.15);
+  transition: transform 0.15s; overflow: hidden;
+}
+.brand-swatch:hover .brand-swatch-dot { transform: scale(1.08); }
+.brand-swatch-dot-fonte { box-shadow: 0 0 0 1px var(--border), 0 2px 6px rgba(37,37,56,0.15); }
+.brand-swatch-dot input[type="color"] { position: absolute; inset: -4px; opacity: 0; cursor: pointer; width: calc(100% + 8px); height: calc(100% + 8px); }
+.brand-swatch-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; line-height: 1.4; }
+.brand-swatch-label small { font-family: monospace; font-size: 11px; color: var(--text-primary); letter-spacing: 0.3px; }
+
+.brand-preview-titulo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 700; margin-bottom: 8px; }
+.brand-preview-box { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: 0 1px 4px rgba(37,37,56,0.08); }
+.brand-preview-topbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; transition: background 0.15s; }
+.brand-preview-logo { display: flex; align-items: center; }
+.brand-preview-logo img { height: 20px; max-width: 60px; object-fit: contain; }
+.brand-preview-brand { font-size: 13px; font-weight: 700; letter-spacing: 0.3px; transition: color 0.15s; }
+.brand-preview-card { background: var(--surface-2); padding: 12px; }
+.brand-preview-card-header {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding-bottom: 8px;
+  margin-bottom: 8px; border-bottom: 2px solid; transition: color 0.15s, border-color 0.15s;
+}
+.brand-preview-card-body { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 
 /* ===== MAPA ESTRATÉGICO (BSC) ===== */
 .bsc-lane { margin-bottom: 1rem; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
@@ -447,6 +489,7 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 }
 .macro-apoio-box:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
+.macro-item-nome { font-size: 13px; font-weight: 700; color: var(--navy); text-align: center; }
 .macro-item-nome { font-size: 13px; font-weight: 700; color: var(--navy); text-align: center; }
 .macro-item-desc { font-size: 11px; color: var(--text-secondary); text-align: center; margin-top: 4px; }
 .macro-item-actions { display: flex; justify-content: center; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
