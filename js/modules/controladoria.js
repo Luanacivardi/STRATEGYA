@@ -400,7 +400,8 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
               <td>${escapeHtml(nomeMembroPorId.get(a.usuario_id) || '—')}</td>
               <td>${fmtData(a.created_at)}</td>
               <td class="table-actions">
-                <button class="icon-btn" data-baixar-anexo="${a.id}" title="Abrir/baixar"><i class="ti ti-download"></i></button>
+                <button class="icon-btn" data-visualizar-anexo="${a.id}" title="Visualizar e analisar"><i class="ti ti-eye"></i></button>
+                <button class="icon-btn" data-baixar-anexo="${a.id}" title="Baixar"><i class="ti ti-download"></i></button>
                 <button class="icon-btn" data-excluir-anexo="${a.id}" title="Excluir"><i class="ti ti-trash"></i></button>
               </td>
             </tr>
@@ -446,6 +447,14 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
     renderDetalheConta(state, null, modal, conta, [...nomeMembroPorId].map(([usuario_id, nome]) => ({ usuario_id, nome })));
   });
 
+  areaAba.querySelectorAll('[data-visualizar-anexo]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const anexo = anexos.find((a) => a.id === btn.dataset.visualizarAnexo);
+      const membros = [...nomeMembroPorId].map(([usuario_id, nome]) => ({ usuario_id, nome }));
+      abrirVisualizacaoAnexo(state, conta, anexo, membros);
+    });
+  });
+
   areaAba.querySelectorAll('[data-baixar-anexo]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const anexo = anexos.find((a) => a.id === btn.dataset.baixarAnexo);
@@ -466,6 +475,133 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
       renderDetalheConta(state, null, modal, conta, [...nomeMembroPorId].map(([usuario_id, nome]) => ({ usuario_id, nome })));
     });
   });
+}
+
+// ---------- Visualizar anexo (imagem/relatório) em tela cheia + registrar análise vinculada a ele ----------
+// Mesmo padrão visual do botão "Apresentar" dos Indicadores (apresentacao-overlay).
+async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
+  const { supabase, user } = state;
+  const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+  const ehImagem = anexo.arquivo_tipo === 'png' || anexo.arquivo_tipo === 'jpg';
+
+  let analises;
+  try {
+    const { data, error } = await supabase.from('contas_analises').select('*').eq('anexo_id', anexo.id).order('created_at', { ascending: false });
+    if (error) throw error;
+    analises = data || [];
+  } catch (err) {
+    return toast('Erro ao carregar análises: ' + err.message, 'erro');
+  }
+
+  const { data: signed, error: errSigned } = await supabase.storage.from('contas-anexos').createSignedUrl(anexo.arquivo_url, 600);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'apresentacao-overlay';
+  overlay.innerHTML = `
+    <button class="apresentacao-fechar" id="av-fechar" title="Fechar"><i class="ti ti-x"></i></button>
+    <div class="apresentacao-conteudo">
+      <h1>${escapeHtml(anexo.arquivo_nome)}</h1>
+      <p class="apresentacao-subtitulo">${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}</p>
+      <div class="apresentacao-meta-row">
+        <div class="apresentacao-meta-item"><span>Competência</span><strong>${fmtCompetencia(anexo.competencia)}</strong></div>
+        <div class="apresentacao-meta-item"><span>Enviado por</span><strong style="font-size:16px">${escapeHtml(nomeMembroPorId.get(anexo.usuario_id) || '—')}</strong></div>
+        <div class="apresentacao-meta-item"><span>Data do upload</span><strong style="font-size:16px">${fmtData(anexo.created_at)}</strong></div>
+      </div>
+      <div class="apresentacao-grafico-box" style="text-align:center">
+        ${errSigned ? '<p class="text-muted">Não foi possível carregar o arquivo.</p>'
+          : ehImagem
+            ? `<img src="${signed.signedUrl}" alt="${escapeHtml(anexo.arquivo_nome)}" style="max-width:100%;max-height:60vh;border-radius:8px">`
+            : `<a href="${signed.signedUrl}" target="_blank" class="btn btn-primary"><i class="ti ti-external-link"></i> Abrir ${TIPO_ARQUIVO_LABEL[anexo.arquivo_tipo]}</a>`}
+      </div>
+      <div class="apresentacao-analise">
+        <label>Registrar análise deste ${ehImagem ? 'gráfico' : 'arquivo'}</label>
+        <textarea id="av-texto" placeholder="O que este gráfico/relatório mostra? Está dentro da meta?"></textarea>
+        <label class="checkbox-linha" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px">
+          <input type="checkbox" id="av-houve-desvio">
+          <span style="font-weight:400">Houve desvio em relação à meta</span>
+        </label>
+        <div id="av-grupo-justificativa" style="display:none;margin-bottom:12px">
+          <label style="font-size:13px">Justificativa do desvio</label>
+          <textarea id="av-justificativa" style="min-height:80px"></textarea>
+        </div>
+        <button class="btn btn-primary" id="av-salvar-analise"><i class="ti ti-device-floppy"></i> Registrar análise</button>
+
+        <div id="av-lista-analises" style="margin-top:1.5rem">
+          ${renderListaAnalisesAnexo(analises, nomeMembroPorId)}
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const fechar = () => { overlay.remove(); document.removeEventListener('keydown', onEsc); };
+  overlay.querySelector('#av-fechar').addEventListener('click', fechar);
+  const onEsc = (e) => { if (e.key === 'Escape') fechar(); };
+  document.addEventListener('keydown', onEsc);
+
+  const chkDesvio = overlay.querySelector('#av-houve-desvio');
+  chkDesvio.addEventListener('change', (e) => {
+    overlay.querySelector('#av-grupo-justificativa').style.display = e.target.checked ? '' : 'none';
+  });
+
+  const wireAcoesAnalise = () => {
+    overlay.querySelectorAll('[data-criar-plano-anexo]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const analise = analises.find((a) => a.id === btn.dataset.criarPlanoAnexo);
+        abrirFormularioPlanoDeAcaoDaAnalise(state, null, conta, analise, membros);
+      });
+    });
+    overlay.querySelectorAll('[data-criar-tarefa-anexo]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const analise = analises.find((a) => a.id === btn.dataset.criarTarefaAnexo);
+        abrirFormularioTarefaDaAnalise(state, conta, analise, membros);
+      });
+    });
+  };
+  wireAcoesAnalise();
+
+  overlay.querySelector('#av-salvar-analise').addEventListener('click', async () => {
+    const texto = overlay.querySelector('#av-texto').value.trim();
+    if (!texto) return toast('Escreva a análise antes de registrar.', 'erro');
+    const houveDesvio = chkDesvio.checked;
+    const payload = {
+      empresa_id: state.empresaAtual.id,
+      conta_id: conta.id,
+      anexo_id: anexo.id,
+      competencia: anexo.competencia,
+      texto_analise: texto,
+      houve_desvio: houveDesvio,
+      justificativa_desvio: houveDesvio ? overlay.querySelector('#av-justificativa').value.trim() : null,
+      usuario_id: user.id,
+    };
+    const { data: nova, error } = await supabase.from('contas_analises').insert(payload).select().single();
+    if (error) return toast('Erro ao registrar análise: ' + error.message, 'erro');
+    toast('Análise registrada.', 'sucesso');
+    analises = [nova, ...analises];
+    overlay.querySelector('#av-texto').value = '';
+    overlay.querySelector('#av-houve-desvio').checked = false;
+    overlay.querySelector('#av-grupo-justificativa').style.display = 'none';
+    overlay.querySelector('#av-justificativa').value = '';
+    overlay.querySelector('#av-lista-analises').innerHTML = renderListaAnalisesAnexo(analises, nomeMembroPorId);
+    wireAcoesAnalise();
+  });
+}
+
+function renderListaAnalisesAnexo(analises, nomeMembroPorId) {
+  if (!analises.length) return '<div class="empty-state"><i class="ti ti-notes"></i>Nenhuma análise registrada para este arquivo ainda.</div>';
+  return analises.map((a) => `
+    <div class="card" style="padding:12px;margin-bottom:10px">
+      <div class="text-muted" style="font-size:12px">${escapeHtml(nomeMembroPorId.get(a.usuario_id) || '—')} · ${fmtData(a.created_at)}
+        ${a.houve_desvio ? '<span class="badge badge-danger" style="margin-left:6px">Desvio</span>' : ''}
+      </div>
+      <p style="margin:8px 0 4px">${escapeHtml(a.texto_analise)}</p>
+      ${a.houve_desvio && a.justificativa_desvio ? `<p class="text-muted" style="font-size:13px"><strong>Justificativa:</strong> ${escapeHtml(a.justificativa_desvio)}</p>` : ''}
+      <div class="table-actions" style="margin-top:8px">
+        <button class="btn btn-secondary btn-sm" data-criar-plano-anexo="${a.id}"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
+        <button class="btn btn-secondary btn-sm" data-criar-tarefa-anexo="${a.id}"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
+      </div>
+    </div>
+  `).join('');
 }
 
 // ---------- "Criar Plano de Ação" a partir de uma análise ----------
