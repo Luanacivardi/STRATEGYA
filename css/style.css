@@ -522,9 +522,11 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .print-swot-quad ul { padding-left: 18px; font-size: 13px; }
 .print-swot-quad li { margin-bottom: 4px; }
 
-/* Marca d'água de rastreabilidade (Documentos): "CÓPIA NÃO CONTROLADA" por padrão; o setor
-   Qualidade pode alternar o documento para "CÓPIA CONTROLADA" (ver documentos.js), mudando a cor. */
-.print-watermark { display: none; }
+/* Impressão/PDF de Documentos (Procedimento/IT/Registro/Manual/Política) — layout inspirado nos
+   modelos padrão da qualidade: cabeçalho com logo + tipo/nome + código e selo de cópia
+   controlada/não controlada, seções numeradas e rodapé com revisão/empresa/classificação.
+   Ver gerarCabecalhoDocumento/gerarRodapeDocumento/gerarCorpoDocumento em documentos.js. */
+.doc-header, .doc-footer { display: none; }
 
 @media print {
   .topbar, .module-rail, .tabs, .btn, .modal-overlay, .toast-box, #sem-empresa { display: none !important; }
@@ -532,12 +534,37 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
   .card { box-shadow: none; border: 1px solid #ccc; }
   body { background: #fff; }
 
-  .print-watermark {
-    display: block; position: fixed; top: 45%; left: 0; width: 100%; text-align: center;
-    font-size: 60px; font-weight: 800; color: rgba(200, 0, 0, 0.15); transform: rotate(-30deg);
-    z-index: 9999; pointer-events: none; letter-spacing: 4px; text-transform: uppercase;
+  /* O documento tem cabeçalho/rodapé próprios — não duplica com o timbre genérico do sistema */
+  body.imprimindo-documento .print-letterhead { display: none !important; }
+  body.imprimindo-documento #print-secao { padding-top: 84px; padding-bottom: 50px; }
+
+  .doc-header {
+    display: flex !important; position: fixed; top: 0; left: 0; right: 0; align-items: stretch;
+    border: 1.5px solid #000; height: 68px; background: #fff; z-index: 10000;
   }
-  .print-watermark.controlada { color: rgba(0, 120, 0, 0.15); }
+  .doc-header-logo { flex: 0 0 150px; display: flex; align-items: center; justify-content: center; border-right: 1.5px solid #000; padding: 6px; overflow: hidden; }
+  .doc-header-logo img { max-height: 50px; max-width: 130px; object-fit: contain; }
+  .doc-header-logo span { font-weight: 700; font-size: 13px; text-align: center; }
+  .doc-header-titulo { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; font-weight: 800; padding: 4px 12px; border-right: 1.5px solid #000; }
+  .doc-header-codigo { flex: 0 0 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+  .doc-header-numero { font-size: 21px; font-weight: 800; }
+  .doc-header-copia { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #c00000; text-transform: uppercase; }
+
+  .doc-footer {
+    display: block !important; position: fixed; bottom: 0; left: 0; right: 0; text-align: center;
+    font-size: 10px; padding: 6px 10px; border-top: 1px solid #999; background: #fff; z-index: 10000;
+  }
+  .doc-footer b.codigo, .doc-footer b.empresa, .doc-footer b.classificacao { color: #c00000; }
+  .doc-footer .sep { color: #2f5496; font-weight: 700; }
+
+  .doc-aviso-rascunho { background: #fff3cd; border: 1px solid #e8b84b; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 700; margin-bottom: 14px; }
+  .doc-secao-titulo { font-size: 13.5px; font-weight: 800; text-transform: uppercase; margin: 16px 0 4px; }
+  .doc-secao-texto { font-size: 12.5px; line-height: 1.5; margin: 0 0 4px; white-space: pre-wrap; }
+
+  table.doc-elaboracao-tabela, table.doc-revisoes-tabela { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+  table.doc-elaboracao-tabela th, table.doc-elaboracao-tabela td,
+  table.doc-revisoes-tabela th, table.doc-revisoes-tabela td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
+  table.doc-elaboracao-tabela th, table.doc-revisoes-tabela th { background: #666; color: #fff; font-weight: 700; }
 
   .print-letterhead {
     display: flex !important; align-items: center; gap: 16px; padding-bottom: 12px; margin-bottom: 16px;
