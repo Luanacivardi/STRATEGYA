@@ -66,6 +66,7 @@ const viewLoading = document.getElementById('view-loading');
 const viewLogin = document.getElementById('view-login');
 const viewApp = document.getElementById('view-app');
 const viewRedefinirSenha = document.getElementById('view-redefinir-senha');
+const viewConfirmeEmail = document.getElementById('view-confirme-email');
 const formLogin = document.getElementById('form-login');
 const loginErro = document.getElementById('login-erro');
 const btnToggleCadastro = document.getElementById('btn-toggle-cadastro');
@@ -136,12 +137,20 @@ formLogin.addEventListener('submit', async (e) => {
   btnLoginSubmit.disabled = true;
   btnLoginSubmit.textContent = modoCadastro ? 'Criando conta...' : 'Entrando...';
   try {
-    const { error } = modoCadastro
-      ? await supabase.auth.signUp({ email, password: senha })
-      : await supabase.auth.signInWithPassword({ email, password: senha });
-    if (error) throw error;
     if (modoCadastro) {
-      toast('Conta criada! Verifique seu e-mail se a confirmação estiver ativa.', 'sucesso');
+      const { data, error } = await supabase.auth.signUp({ email, password: senha });
+      if (error) throw error;
+      // Com "Confirm email" ativo nas configurações de Auth do Supabase, o cadastro não abre
+      // sessão até o e-mail ser confirmado (data.session vem nulo) — leva direto para a tela de
+      // confirmação em vez de deixar a pessoa "presa" na tela de login sem entender o motivo.
+      if (!data.session) {
+        mostrarTelaConfirmeEmail(email);
+      } else {
+        toast('Conta criada com sucesso.', 'sucesso');
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+      if (error) throw error;
     }
   } catch (err) {
     loginErro.textContent = err.message || 'Erro ao autenticar.';
@@ -150,6 +159,34 @@ formLogin.addEventListener('submit', async (e) => {
     btnLoginSubmit.disabled = false;
     btnLoginSubmit.textContent = textoOriginal;
   }
+});
+
+// ---------- CONFIRMAÇÃO DE E-MAIL (primeiro acesso) ----------
+function mostrarTelaConfirmeEmail(email) {
+  viewLoading.style.display = 'none';
+  viewLogin.style.display = 'none';
+  viewApp.style.display = 'none';
+  viewRedefinirSenha.style.display = 'none';
+  document.getElementById('confirme-email-endereco').textContent = email;
+  document.getElementById('confirme-email-erro').style.display = 'none';
+  viewConfirmeEmail.style.display = 'flex';
+}
+
+document.getElementById('btn-reenviar-confirmacao').addEventListener('click', async () => {
+  const email = document.getElementById('confirme-email-endereco').textContent;
+  const erroBox = document.getElementById('confirme-email-erro');
+  erroBox.style.display = 'none';
+  const { error } = await supabase.auth.resend({ type: 'signup', email });
+  if (error) {
+    erroBox.textContent = error.message;
+    erroBox.style.display = 'flex';
+    return;
+  }
+  toast('E-mail de confirmação reenviado.', 'sucesso');
+});
+
+document.getElementById('btn-confirme-email-sair').addEventListener('click', async () => {
+  await supabase.auth.signOut();
 });
 
 document.getElementById('btn-logout').addEventListener('click', async () => {
@@ -167,8 +204,19 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 
   state.user = session?.user || null;
+
+  // Reforço no app: mesmo que a sessão já exista, um usuário sem e-mail confirmado não entra no
+  // sistema (cobre o caso de "Confirm email" ter sido ativado depois de contas já criadas, ou
+  // qualquer sessão antiga sem confirmação pendente).
+  if (state.user && !state.user.email_confirmed_at) {
+    viewApp.style.display = 'none';
+    mostrarTelaConfirmeEmail(state.user.email);
+    return;
+  }
+
   if (state.user) {
     viewLogin.style.display = 'none';
+    viewConfirmeEmail.style.display = 'none';
     viewApp.style.display = 'block';
     const nomeExibicao = state.user.user_metadata?.nome || state.user.email;
     document.getElementById('topbar-user').textContent = nomeExibicao;
@@ -176,6 +224,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     carregarEmpresas();
   } else {
     viewApp.style.display = 'none';
+    viewConfirmeEmail.style.display = 'none';
     viewLogin.style.display = 'flex';
     aplicarTema(null);
   }
