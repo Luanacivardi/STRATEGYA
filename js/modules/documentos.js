@@ -451,7 +451,7 @@ function abrirDetalhe(state, container, doc, ctx) {
       <div id="dd-secoes">
         ${secoes.map((s, idx) => `
           <div class="form-group">
-            <label>${escapeHtml(s)}</label>
+            <label>${idx + 1}. ${escapeHtml(s.toUpperCase())}</label>
             <textarea data-secao="${idx}" ${emEdicao && podeEditar ? '' : 'readonly'} rows="3">${escapeHtml((doc.conteudo || {})[s] || '')}</textarea>
           </div>`).join('')}
       </div>
@@ -474,7 +474,7 @@ function abrirDetalhe(state, container, doc, ctx) {
     `);
 
     modal.querySelector('#dd-visualizar-pdf').addEventListener('click', () => visualizarPdfDocumento(state, doc, revisoes, ctx));
-    modal.querySelector('#dd-imprimir').addEventListener('click', () => imprimirDocumento(doc, revisoes, ctx));
+    modal.querySelector('#dd-imprimir').addEventListener('click', () => imprimirDocumento(state, doc, revisoes, ctx));
 
     const btnAlternarCopia = modal.querySelector('#dd-alternar-copia-controlada');
     if (btnAlternarCopia) btnAlternarCopia.addEventListener('click', async () => {
@@ -491,85 +491,136 @@ function abrirDetalhe(state, container, doc, ctx) {
   });
 }
 
-// Monta o conteúdo (timbre + tabela de rastreabilidade + seções + marca d'água) usado tanto na
-// visualização em PDF quanto na impressão direta — garante que os dois botões mostrem exatamente
-// a mesma informação, só muda a forma de abertura (nova aba x diálogo de impressão do navegador).
-function gerarHtmlDocumentoImpressao(doc, revisoes, ctx) {
-  const { nomeUsuario, nomeProcesso, documentos } = ctx;
-  const secoes = doc.tipos_documento.secoes || [];
-  const marca = doc.copia_controlada ? 'CÓPIA CONTROLADA' : 'CÓPIA NÃO CONTROLADA';
+// Cabeçalho no estilo dos modelos padrão (P e IT): logo | tipo+nome do documento | código +
+// selo de "cópia controlada/não controlada". Repetido no topo de cada página impressa.
+function gerarCabecalhoDocumento(doc, emp) {
+  const controlada = !!doc.copia_controlada;
   return `
-    <div class="print-watermark ${doc.copia_controlada ? 'controlada' : ''}">${marca}</div>
-    <h2>${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</h2>
-    <table class="print-detalhe-tabela">
-      <tr><th>Tipo</th><td>${escapeHtml(doc.tipos_documento.nome)}</td></tr>
-      <tr><th>Revisão</th><td>${String(doc.revisao_atual).padStart(2, '0')}</td></tr>
-      <tr><th>Status</th><td>${STATUS[doc.status]}</td></tr>
-      <tr><th>Processo</th><td>${escapeHtml(nomeProcesso(doc.processo_id))}</td></tr>
-      ${doc.procedimento_id ? `<tr><th>Procedimento</th><td>${escapeHtml(documentos.find((d) => d.id === doc.procedimento_id)?.numero || '—')}</td></tr>` : ''}
-      ${doc.it_id ? `<tr><th>IT</th><td>${escapeHtml(documentos.find((d) => d.id === doc.it_id)?.numero || '—')}</td></tr>` : ''}
-      <tr><th>Classificação</th><td>${CLASSIFICACAO[doc.classificacao]}</td></tr>
-      <tr><th>Elaborado por</th><td>${escapeHtml(nomeUsuario(doc.elaborado_por))}</td></tr>
-      ${doc.status === 'publicado' ? `<tr><th>Aprovado por</th><td>${escapeHtml(nomeUsuario(doc.aprovado_por))} em ${formatarData(doc.data_publicacao)}</td></tr>` : ''}
-      <tr><th>Situação da cópia</th><td>${marca}</td></tr>
-    </table>
-    ${secoes.map((s) => `
-      <div class="form-group">
-        <label><b>${escapeHtml(s)}</b></label>
-        <p>${escapeHtml((doc.conteudo || {})[s] || '—').replaceAll('\n', '<br>')}</p>
-      </div>`).join('')}
+    <div class="doc-header">
+      <div class="doc-header-logo">${emp?.logo_url ? `<img src="${emp.logo_url}" alt="">` : `<span>${escapeHtml(emp?.nome || '')}</span>`}</div>
+      <div class="doc-header-titulo">${escapeHtml(doc.tipos_documento.nome.toUpperCase())} — ${escapeHtml(doc.nome.toUpperCase())}</div>
+      <div class="doc-header-codigo">
+        <div class="doc-header-numero">${escapeHtml(doc.numero)}</div>
+        <div class="doc-header-copia">${controlada ? 'CÓPIA CONTROLADA' : 'CÓPIA NÃO CONTROLADA'}</div>
+      </div>
+    </div>
   `;
 }
 
-// "Imprimir": vai direto ao diálogo de impressão do navegador (reaproveita o mecanismo padrão
-// de impressão do sistema — timbre + #print-secao — usado em todos os outros módulos).
-function imprimirDocumento(doc, revisoes, ctx) {
-  imprimirSecao(gerarHtmlDocumentoImpressao(doc, revisoes, ctx));
+// Rodapé no estilo dos modelos: código/nome do documento, revisão, empresa e classificação da
+// informação, sempre destacados nas mesmas cores usadas nos templates de referência (P e IT).
+function gerarRodapeDocumento(doc, emp) {
+  return `
+    <div class="doc-footer">
+      <b class="codigo">${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</b>
+      <span class="sep">|</span> Revisão: ${String(doc.revisao_atual).padStart(2, '0')}
+      <span class="sep">|</span> <b class="empresa">${escapeHtml(emp?.nome || '')}</b>
+      <span class="sep">|</span> Documento: <b class="classificacao">${CLASSIFICACAO[doc.classificacao]}</b>
+      <span class="sep">|</span> Emitido em ${new Date().toLocaleDateString('pt-BR')}
+    </div>
+  `;
 }
 
-// "Visualizar PDF": abre uma aba própria, formatada e independente da tela do app, para o usuário
-// conferir o documento e, se quiser, usar "Salvar como PDF" do navegador — sem disparar o diálogo
-// de impressão automaticamente (diferença em relação ao botão "Imprimir").
+// Monta o corpo do documento (seções numeradas, igual à numeração 1., 2., 3.… dos modelos P e IT)
+// + rodapé de rastreabilidade (elaboração/aprovação e histórico de revisões). Usado tanto na
+// visualização em PDF quanto na impressão direta, para os dois botões mostrarem sempre o mesmo
+// conteúdo — só muda a forma de abertura (nova aba x diálogo de impressão do navegador).
+function gerarCorpoDocumento(doc, revisoes, ctx) {
+  const { nomeUsuario } = ctx;
+  const secoes = doc.tipos_documento.secoes || [];
+  const rascunho = doc.status !== 'publicado';
+
+  return `
+    ${rascunho ? `<p class="doc-aviso-rascunho">Documento em ${STATUS[doc.status].toLowerCase()} — esta impressão não é a versão publicada vigente.</p>` : ''}
+
+    ${secoes.map((s, idx) => `
+      <p class="doc-secao-titulo">${idx + 1}. ${escapeHtml(s.toUpperCase())}</p>
+      <p class="doc-secao-texto">${escapeHtml((doc.conteudo || {})[s] || '—').replaceAll('\n', '<br>')}</p>
+    `).join('')}
+
+    <table class="doc-elaboracao-tabela">
+      <tr><th>Elaborado por</th><th>Aprovado por</th></tr>
+      <tr>
+        <td>${escapeHtml(nomeUsuario(doc.elaborado_por))}</td>
+        <td>${doc.status === 'publicado' ? `${escapeHtml(nomeUsuario(doc.aprovado_por))} em ${formatarData(doc.data_publicacao)}` : '—'}</td>
+      </tr>
+    </table>
+
+    <p class="doc-secao-titulo" style="margin-top:18px">HISTÓRICO DE REVISÕES</p>
+    <table class="doc-revisoes-tabela">
+      <tr><th>Revisão</th><th>Data</th><th>Descrição</th></tr>
+      ${(revisoes || []).length ? revisoes.map((r) => `
+        <tr><td>${String(r.numero_revisao).padStart(2, '0')}</td><td>${formatarData(r.data)}</td><td>${escapeHtml(r.descricao_alteracao)}</td></tr>
+      `).join('') : '<tr><td colspan="3">Nenhuma revisão publicada ainda.</td></tr>'}
+    </table>
+  `;
+}
+
+// "Imprimir": vai direto ao diálogo de impressão do navegador. Diferente dos outros módulos, o
+// timbre genérico do STRATEGYA fica oculto (classe "imprimindo-documento") para não duplicar
+// cabeçalho — o documento usa o cabeçalho/rodapé próprios, no estilo dos modelos P/IT.
+function imprimirDocumento(state, doc, revisoes, ctx) {
+  const emp = state.empresaAtual;
+  document.body.classList.add('imprimindo-documento');
+  const limparClasse = () => document.body.classList.remove('imprimindo-documento');
+  window.addEventListener('afterprint', limparClasse, { once: true });
+  setTimeout(limparClasse, 60000);
+  imprimirSecao(`
+    ${gerarCabecalhoDocumento(doc, emp)}
+    ${gerarRodapeDocumento(doc, emp)}
+    <div class="doc-corpo">${gerarCorpoDocumento(doc, revisoes, ctx)}</div>
+  `);
+}
+
+// "Visualizar PDF": abre uma aba própria, formatada e independente da tela do app, no mesmo
+// layout do "Imprimir" — mas sem disparar o diálogo de impressão automaticamente, para o usuário
+// conferir antes e, se quiser, usar "Salvar como PDF" do navegador.
 function visualizarPdfDocumento(state, doc, revisoes, ctx) {
   const emp = state.empresaAtual;
-  const conteudo = gerarHtmlDocumentoImpressao(doc, revisoes, ctx);
+  const corpo = gerarCorpoDocumento(doc, revisoes, ctx);
   const janela = window.open('', '_blank');
   if (!janela) { toast('Seu navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.', 'erro'); return; }
   janela.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
     <title>${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</title>
     <style>
-      body { font-family: Arial, Helvetica, sans-serif; color: #222; padding: 32px; position: relative; }
-      .letterhead { display: flex; align-items: center; gap: 16px; padding-bottom: 12px; margin-bottom: 20px; border-bottom: 3px solid #E8B84B; }
-      .letterhead img { max-height: 56px; max-width: 160px; object-fit: contain; }
-      .empresa-nome { font-size: 16px; font-weight: 700; }
-      .sub { font-size: 11px; color: #444; }
-      .brand { margin-left: auto; text-align: right; font-size: 13px; font-weight: 700; }
-      .brand span { display: block; font-size: 9px; font-weight: 500; color: #666; text-transform: uppercase; }
-      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-      th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; font-size: 13px; vertical-align: top; }
-      th { width: 200px; background: #f4f4f4; font-weight: 700; }
-      .form-group { margin-top: 14px; }
-      .print-watermark {
-        position: fixed; top: 45%; left: 0; width: 100%; text-align: center; font-size: 60px; font-weight: 800;
-        color: rgba(200,0,0,0.15); transform: rotate(-30deg); z-index: 9999; pointer-events: none;
-        letter-spacing: 4px; text-transform: uppercase;
+      body { font-family: Arial, Helvetica, sans-serif; color: #222; margin: 0; padding: 90px 36px 60px; position: relative; }
+
+      .doc-header {
+        position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: stretch;
+        border: 1.5px solid #000; height: 68px; background: #fff; z-index: 10;
       }
-      .print-watermark.controlada { color: rgba(0,120,0,0.15); }
-      .toolbar { margin-bottom: 16px; }
-      .toolbar button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
-      @media print { .toolbar { display: none; } }
+      .doc-header-logo { flex: 0 0 150px; display: flex; align-items: center; justify-content: center; border-right: 1.5px solid #000; padding: 6px; overflow: hidden; }
+      .doc-header-logo img { max-height: 50px; max-width: 130px; object-fit: contain; }
+      .doc-header-logo span { font-weight: 700; font-size: 13px; text-align: center; }
+      .doc-header-titulo { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; font-weight: 800; padding: 4px 12px; border-right: 1.5px solid #000; }
+      .doc-header-codigo { flex: 0 0 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+      .doc-header-numero { font-size: 21px; font-weight: 800; }
+      .doc-header-copia { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #c00000; text-transform: uppercase; }
+
+      .doc-footer {
+        position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px;
+        padding: 6px 10px; border-top: 1px solid #999; background: #fff; z-index: 10;
+      }
+      .doc-footer b.codigo, .doc-footer b.empresa, .doc-footer b.classificacao { color: #c00000; }
+      .doc-footer .sep { color: #2f5496; font-weight: 700; }
+
+      .doc-aviso-rascunho { background: #fff3cd; border: 1px solid #e8b84b; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 700; margin-bottom: 14px; }
+      .doc-secao-titulo { font-size: 13.5px; font-weight: 800; text-transform: uppercase; margin: 16px 0 4px; }
+      .doc-secao-texto { font-size: 12.5px; line-height: 1.5; margin: 0 0 4px; white-space: pre-wrap; }
+
+      table.doc-elaboracao-tabela, table.doc-revisoes-tabela { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+      table.doc-elaboracao-tabela th, table.doc-elaboracao-tabela td,
+      table.doc-revisoes-tabela th, table.doc-revisoes-tabela td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
+      table.doc-elaboracao-tabela th, table.doc-revisoes-tabela th { background: #666; color: #fff; font-weight: 700; }
+
+      .toolbar { position: fixed; top: 76px; right: 20px; z-index: 20; }
+      .toolbar button { padding: 8px 16px; font-size: 13px; cursor: pointer; }
+      @media print { .toolbar { display: none; } body { padding-top: 78px; } }
     </style></head><body>
     <div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
-    <div class="letterhead">
-      ${emp?.logo_url ? `<img src="${emp.logo_url}" alt="">` : ''}
-      <div>
-        <div class="empresa-nome">${escapeHtml(emp?.nome || '')}</div>
-        ${emp?.cnpj ? `<div class="sub">CNPJ: ${escapeHtml(emp.cnpj)}</div>` : ''}
-        <div class="sub">Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
-      </div>
-      <div class="brand">STRATEGYA<span>by ORBEEX</span></div>
-    </div>
-    ${conteudo}
+    ${gerarCabecalhoDocumento(doc, emp)}
+    ${gerarRodapeDocumento(doc, emp)}
+    <div class="doc-corpo">${corpo}</div>
   </body></html>`);
   janela.document.close();
 }
