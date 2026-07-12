@@ -54,6 +54,23 @@ async function listarRevisoesObsoletas(supabase, empresaId) {
   return data;
 }
 
+async function listarDepartamentos(supabase, empresaId) {
+  const { data, error } = await supabase.from('departamentos').select('id, nome').eq('empresa_id', empresaId);
+  if (error) throw error;
+  return data;
+}
+
+// Quem pode alternar a marca d'água de "Cópia Não Controlada" para "Cópia Controlada" na impressão:
+// papel orbeex (equipe ORBEEX, suporte a todas as empresas) ou usuário do departamento Qualidade
+// cadastrado na empresa (mesma regra aplicada no servidor pela RPC definir_copia_controlada).
+function calcularPodeAlterarCopiaControlada(state, usuarios, departamentos) {
+  if (state.papelAtual === 'orbeex') return true;
+  const meu = usuarios.find((u) => u.usuario_id === state.user.id);
+  if (!meu || !meu.departamento_id) return false;
+  const dep = departamentos.find((d) => d.id === meu.departamento_id);
+  return !!dep && dep.nome.trim().toLowerCase() === 'qualidade';
+}
+
 async function hashConteudo(conteudo) {
   const bytes = new TextEncoder().encode(JSON.stringify(conteudo || {}));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -69,14 +86,15 @@ export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
   const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
-  let tipos, processos, documentos, usuarios, revisoesObsoletas;
+  let tipos, processos, documentos, usuarios, revisoesObsoletas, departamentos;
   try {
-    [tipos, processos, documentos, usuarios, revisoesObsoletas] = await Promise.all([
+    [tipos, processos, documentos, usuarios, revisoesObsoletas, departamentos] = await Promise.all([
       listarTiposDocumento(supabase),
       listarProcessos(supabase, empresaAtual.id),
       listarDocumentos(supabase, empresaAtual.id),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
       listarRevisoesObsoletas(supabase, empresaAtual.id),
+      listarDepartamentos(supabase, empresaAtual.id),
     ]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-warning">Erro ao carregar documentos: ${escapeHtml(err.message)}</div>`;
@@ -87,6 +105,7 @@ export async function render(container, state) {
   const nomeProcesso = (id) => processos.find((p) => p.id === id)?.nome || '—';
   const docsAtivos = documentos.filter((d) => d.status !== 'obsoleto');
   const docsAguardandoAprovacao = documentos.filter((d) => d.status === 'aprovacao');
+  const podeAlterarCopiaControlada = calcularPodeAlterarCopiaControlada(state, usuarios, departamentos);
 
   container.innerHTML = `
     <div class="card">
@@ -104,8 +123,8 @@ export async function render(container, state) {
   `;
 
   const corpo = container.querySelector('#documentos-corpo');
-  if (grupoAtivo === 'mestra') renderListaMestra(corpo, state, { tipos, processos, documentos: docsAtivos, usuarios, podeEditar, nomeUsuario, nomeProcesso });
-  else if (grupoAtivo === 'aprovacoes') renderAprovacoes(corpo, state, { documentos: docsAguardandoAprovacao, usuarios, nomeUsuario });
+  if (grupoAtivo === 'mestra') renderListaMestra(corpo, state, { tipos, processos, documentos: docsAtivos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada });
+  else if (grupoAtivo === 'aprovacoes') renderAprovacoes(corpo, state, { documentos: docsAguardandoAprovacao, usuarios, nomeUsuario, podeAlterarCopiaControlada });
   else renderObsoletos(corpo, { revisoes: revisoesObsoletas });
 
   container.querySelectorAll('[data-grupo]').forEach((btn) => {
@@ -116,7 +135,7 @@ export async function render(container, state) {
   if (btnNovo) btnNovo.addEventListener('click', () => abrirFormularioNovo(state, container, { tipos, processos, documentos }));
 }
 
-function renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso }) {
+function renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }) {
   const filtrados = documentos.filter((d) =>
     (!filtros.tipo || d.tipo_documento_id === filtros.tipo) &&
     (!filtros.status || d.status === filtros.status) &&
@@ -178,10 +197,10 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
       </table>` : '<div class="empty-state"><i class="ti ti-file-text"></i>Nenhum documento cadastrado.</div>'}
   `;
 
-  corpo.querySelector('#dc-filtro-tipo').addEventListener('change', (e) => { filtros.tipo = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso }); });
-  corpo.querySelector('#dc-filtro-status').addEventListener('change', (e) => { filtros.status = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso }); });
-  corpo.querySelector('#dc-filtro-processo').addEventListener('change', (e) => { filtros.processo = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso }); });
-  corpo.querySelector('#dc-filtro-classificacao').addEventListener('change', (e) => { filtros.classificacao = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso }); });
+  corpo.querySelector('#dc-filtro-tipo').addEventListener('change', (e) => { filtros.tipo = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
+  corpo.querySelector('#dc-filtro-status').addEventListener('change', (e) => { filtros.status = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
+  corpo.querySelector('#dc-filtro-processo').addEventListener('change', (e) => { filtros.processo = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
+  corpo.querySelector('#dc-filtro-classificacao').addEventListener('change', (e) => { filtros.classificacao = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
 
   corpo.querySelector('#dc-btn-csv').addEventListener('click', () => exportarCsv(filtrados));
   corpo.querySelector('#dc-btn-imprimir').addEventListener('click', () => imprimirListaMestra(filtrados));
@@ -189,7 +208,7 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
   corpo.querySelectorAll('[data-abrir]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const doc = documentos.find((d) => d.id === btn.dataset.abrir);
-      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso });
+      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada });
     });
   });
 }
@@ -223,7 +242,7 @@ function imprimirListaMestra(linhas) {
   `);
 }
 
-function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario }) {
+function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario, podeAlterarCopiaControlada }) {
   corpo.innerHTML = documentos.length ? `
     <table class="table">
       <thead><tr><th>Nº</th><th>Nome</th><th>Elaborado por</th><th>Aprovador solicitado</th><th></th></tr></thead>
@@ -252,7 +271,7 @@ function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario }) {
       const podeEditar = state.papelAtual !== 'usuario' || state.nivelEdicao === 'total';
       const nomeU = (id) => usuariosResp.find((u) => u.usuario_id === id)?.nome || usuariosResp.find((u) => u.usuario_id === id)?.email || '—';
       const nomeP = (id) => processos.find((p) => p.id === id)?.nome || '—';
-      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos: todos, usuarios: usuariosResp, podeEditar, nomeUsuario: nomeU, nomeProcesso: nomeP });
+      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos: todos, usuarios: usuariosResp, podeEditar, nomeUsuario: nomeU, nomeProcesso: nomeP, podeAlterarCopiaControlada });
     });
   });
 }
@@ -397,7 +416,7 @@ async function renderCamposCondicionais(state, camposEl, tipo, documentos) {
 }
 
 function abrirDetalhe(state, container, doc, ctx) {
-  const { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso } = ctx;
+  const { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada } = ctx;
   const tipo = doc.tipos_documento;
   const revisoesPromise = state.supabase.from('documentos_revisoes').select('*').eq('documento_id', doc.id).order('numero_revisao');
 
@@ -412,6 +431,15 @@ function abrirDetalhe(state, container, doc, ctx) {
         &nbsp;|&nbsp; <b>Processo:</b> ${escapeHtml(nomeProcesso(doc.processo_id))}
         ${doc.procedimento_id ? `&nbsp;|&nbsp; <b>Procedimento:</b> ${escapeHtml(documentos.find((d) => d.id === doc.procedimento_id)?.numero || '—')}` : ''}
         ${doc.it_id ? `&nbsp;|&nbsp; <b>IT:</b> ${escapeHtml(documentos.find((d) => d.id === doc.it_id)?.numero || '—')}` : ''}
+      </div>
+
+      <div id="dd-rastreabilidade" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid #ddd;border-radius:8px">
+        <span class="badge" style="${doc.copia_controlada ? 'background:#1e7d32;color:#fff' : 'background:#b3261e;color:#fff'}">
+          ${doc.copia_controlada ? 'CÓPIA CONTROLADA' : 'CÓPIA NÃO CONTROLADA'}
+        </span>
+        <button class="btn btn-secondary btn-sm" id="dd-visualizar-pdf" type="button"><i class="ti ti-file-type-pdf"></i> Visualizar PDF</button>
+        <button class="btn btn-secondary btn-sm" id="dd-imprimir" type="button"><i class="ti ti-printer"></i> Imprimir</button>
+        ${podeAlterarCopiaControlada ? `<button class="btn btn-secondary btn-sm" id="dd-alternar-copia-controlada" type="button">Marcar como ${doc.copia_controlada ? 'Cópia Não Controlada' : 'Cópia Controlada'}</button>` : ''}
       </div>
 
       ${doc.status === 'publicado' && revisaoVigentePublicada ? `
@@ -445,9 +473,105 @@ function abrirDetalhe(state, container, doc, ctx) {
       </table>
     `);
 
+    modal.querySelector('#dd-visualizar-pdf').addEventListener('click', () => visualizarPdfDocumento(state, doc, revisoes, ctx));
+    modal.querySelector('#dd-imprimir').addEventListener('click', () => imprimirDocumento(doc, revisoes, ctx));
+
+    const btnAlternarCopia = modal.querySelector('#dd-alternar-copia-controlada');
+    if (btnAlternarCopia) btnAlternarCopia.addEventListener('click', async () => {
+      const novoValor = !doc.copia_controlada;
+      const { error } = await state.supabase.rpc('definir_copia_controlada', { p_documento_id: doc.id, p_controlada: novoValor });
+      if (error) return toast('Erro ao alterar cópia controlada: ' + error.message, 'erro');
+      toast(`Documento marcado como ${novoValor ? 'Cópia Controlada' : 'Cópia Não Controlada'}.`, 'sucesso');
+      fecharModal();
+      render(container, state);
+    });
+
     const acoesEl = modal.querySelector('#dd-acoes');
     renderAcoes(state, container, modal, doc, ctx, acoesEl);
   });
+}
+
+// Monta o conteúdo (timbre + tabela de rastreabilidade + seções + marca d'água) usado tanto na
+// visualização em PDF quanto na impressão direta — garante que os dois botões mostrem exatamente
+// a mesma informação, só muda a forma de abertura (nova aba x diálogo de impressão do navegador).
+function gerarHtmlDocumentoImpressao(doc, revisoes, ctx) {
+  const { nomeUsuario, nomeProcesso, documentos } = ctx;
+  const secoes = doc.tipos_documento.secoes || [];
+  const marca = doc.copia_controlada ? 'CÓPIA CONTROLADA' : 'CÓPIA NÃO CONTROLADA';
+  return `
+    <div class="print-watermark ${doc.copia_controlada ? 'controlada' : ''}">${marca}</div>
+    <h2>${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</h2>
+    <table class="print-detalhe-tabela">
+      <tr><th>Tipo</th><td>${escapeHtml(doc.tipos_documento.nome)}</td></tr>
+      <tr><th>Revisão</th><td>${String(doc.revisao_atual).padStart(2, '0')}</td></tr>
+      <tr><th>Status</th><td>${STATUS[doc.status]}</td></tr>
+      <tr><th>Processo</th><td>${escapeHtml(nomeProcesso(doc.processo_id))}</td></tr>
+      ${doc.procedimento_id ? `<tr><th>Procedimento</th><td>${escapeHtml(documentos.find((d) => d.id === doc.procedimento_id)?.numero || '—')}</td></tr>` : ''}
+      ${doc.it_id ? `<tr><th>IT</th><td>${escapeHtml(documentos.find((d) => d.id === doc.it_id)?.numero || '—')}</td></tr>` : ''}
+      <tr><th>Classificação</th><td>${CLASSIFICACAO[doc.classificacao]}</td></tr>
+      <tr><th>Elaborado por</th><td>${escapeHtml(nomeUsuario(doc.elaborado_por))}</td></tr>
+      ${doc.status === 'publicado' ? `<tr><th>Aprovado por</th><td>${escapeHtml(nomeUsuario(doc.aprovado_por))} em ${formatarData(doc.data_publicacao)}</td></tr>` : ''}
+      <tr><th>Situação da cópia</th><td>${marca}</td></tr>
+    </table>
+    ${secoes.map((s) => `
+      <div class="form-group">
+        <label><b>${escapeHtml(s)}</b></label>
+        <p>${escapeHtml((doc.conteudo || {})[s] || '—').replaceAll('\n', '<br>')}</p>
+      </div>`).join('')}
+  `;
+}
+
+// "Imprimir": vai direto ao diálogo de impressão do navegador (reaproveita o mecanismo padrão
+// de impressão do sistema — timbre + #print-secao — usado em todos os outros módulos).
+function imprimirDocumento(doc, revisoes, ctx) {
+  imprimirSecao(gerarHtmlDocumentoImpressao(doc, revisoes, ctx));
+}
+
+// "Visualizar PDF": abre uma aba própria, formatada e independente da tela do app, para o usuário
+// conferir o documento e, se quiser, usar "Salvar como PDF" do navegador — sem disparar o diálogo
+// de impressão automaticamente (diferença em relação ao botão "Imprimir").
+function visualizarPdfDocumento(state, doc, revisoes, ctx) {
+  const emp = state.empresaAtual;
+  const conteudo = gerarHtmlDocumentoImpressao(doc, revisoes, ctx);
+  const janela = window.open('', '_blank');
+  if (!janela) { toast('Seu navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.', 'erro'); return; }
+  janela.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+    <title>${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; color: #222; padding: 32px; position: relative; }
+      .letterhead { display: flex; align-items: center; gap: 16px; padding-bottom: 12px; margin-bottom: 20px; border-bottom: 3px solid #E8B84B; }
+      .letterhead img { max-height: 56px; max-width: 160px; object-fit: contain; }
+      .empresa-nome { font-size: 16px; font-weight: 700; }
+      .sub { font-size: 11px; color: #444; }
+      .brand { margin-left: auto; text-align: right; font-size: 13px; font-weight: 700; }
+      .brand span { display: block; font-size: 9px; font-weight: 500; color: #666; text-transform: uppercase; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; font-size: 13px; vertical-align: top; }
+      th { width: 200px; background: #f4f4f4; font-weight: 700; }
+      .form-group { margin-top: 14px; }
+      .print-watermark {
+        position: fixed; top: 45%; left: 0; width: 100%; text-align: center; font-size: 60px; font-weight: 800;
+        color: rgba(200,0,0,0.15); transform: rotate(-30deg); z-index: 9999; pointer-events: none;
+        letter-spacing: 4px; text-transform: uppercase;
+      }
+      .print-watermark.controlada { color: rgba(0,120,0,0.15); }
+      .toolbar { margin-bottom: 16px; }
+      .toolbar button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
+      @media print { .toolbar { display: none; } }
+    </style></head><body>
+    <div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
+    <div class="letterhead">
+      ${emp?.logo_url ? `<img src="${emp.logo_url}" alt="">` : ''}
+      <div>
+        <div class="empresa-nome">${escapeHtml(emp?.nome || '')}</div>
+        ${emp?.cnpj ? `<div class="sub">CNPJ: ${escapeHtml(emp.cnpj)}</div>` : ''}
+        <div class="sub">Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
+      </div>
+      <div class="brand">STRATEGYA<span>by ORBEEX</span></div>
+    </div>
+    ${conteudo}
+  </body></html>`);
+  janela.document.close();
 }
 
 function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
