@@ -164,16 +164,16 @@ export async function render(container, state) {
         <span><i class="ti ti-file-text"></i> Documentos</span>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-novo-documento"><i class="ti ti-plus"></i> Novo</button>' : ''}
       </div>
-      <div class="filters" style="margin-bottom:8px">
-        <button class="filter-btn ${familiaAtiva === 'documentos' ? 'active' : ''}" data-familia="documentos"><i class="ti ti-file-text"></i> Documentos (Procedimento, IT, Manual, Política)</button>
-        <button class="filter-btn ${familiaAtiva === 'registros' ? 'active' : ''}" data-familia="registros"><i class="ti ti-clipboard-list"></i> Registros</button>
-      </div>
-      <div class="filters">
-        <button class="filter-btn ${grupoAtivo === 'mestra' ? 'active' : ''}" data-grupo="mestra">Lista Mestra</button>
-        <button class="filter-btn ${grupoAtivo === 'aprovacoes' ? 'active' : ''}" data-grupo="aprovacoes">Aguardando Aprovação ${docsAguardandoAprovacao.length ? '(' + docsAguardandoAprovacao.length + ')' : ''}</button>
-        <button class="filter-btn ${grupoAtivo === 'obsoletos' ? 'active' : ''}" data-grupo="obsoletos">Obsoletos</button>
-        <button class="filter-btn ${grupoAtivo === 'monitoramento' ? 'active' : ''}" data-grupo="monitoramento"><i class="ti ti-chart-bar"></i> Monitoramento</button>
-      </div>
+      <nav class="tabs" style="margin-bottom:0">
+        <button class="tab-btn ${familiaAtiva === 'documentos' ? 'active' : ''}" data-familia="documentos"><i class="ti ti-file-text"></i> Documentos (Procedimento, IT, Manual, Política)</button>
+        <button class="tab-btn ${familiaAtiva === 'registros' ? 'active' : ''}" data-familia="registros"><i class="ti ti-clipboard-list"></i> Registros</button>
+      </nav>
+      <nav class="tabs">
+        <button class="tab-btn ${grupoAtivo === 'mestra' ? 'active' : ''}" data-grupo="mestra"><i class="ti ti-list-details"></i> Lista Mestra</button>
+        <button class="tab-btn ${grupoAtivo === 'aprovacoes' ? 'active' : ''}" data-grupo="aprovacoes"><i class="ti ti-checkbox"></i> Aguardando Aprovação ${docsAguardandoAprovacao.length ? '(' + docsAguardandoAprovacao.length + ')' : ''}</button>
+        <button class="tab-btn ${grupoAtivo === 'obsoletos' ? 'active' : ''}" data-grupo="obsoletos"><i class="ti ti-archive"></i> Obsoletos</button>
+        <button class="tab-btn ${grupoAtivo === 'monitoramento' ? 'active' : ''}" data-grupo="monitoramento"><i class="ti ti-chart-bar"></i> Monitoramento</button>
+      </nav>
       <div id="documentos-corpo"></div>
     </div>
   `;
