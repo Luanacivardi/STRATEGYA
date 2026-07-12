@@ -522,11 +522,22 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .print-swot-quad ul { padding-left: 18px; font-size: 13px; }
 .print-swot-quad li { margin-bottom: 4px; }
 
+/* Marca d'água de rastreabilidade (Documentos): "CÓPIA NÃO CONTROLADA" por padrão; o setor
+   Qualidade pode alternar o documento para "CÓPIA CONTROLADA" (ver documentos.js), mudando a cor. */
+.print-watermark { display: none; }
+
 @media print {
   .topbar, .module-rail, .tabs, .btn, .modal-overlay, .toast-box, #sem-empresa { display: none !important; }
   .container { max-width: 100%; padding: 0; }
   .card { box-shadow: none; border: 1px solid #ccc; }
   body { background: #fff; }
+
+  .print-watermark {
+    display: block; position: fixed; top: 45%; left: 0; width: 100%; text-align: center;
+    font-size: 60px; font-weight: 800; color: rgba(200, 0, 0, 0.15); transform: rotate(-30deg);
+    z-index: 9999; pointer-events: none; letter-spacing: 4px; text-transform: uppercase;
+  }
+  .print-watermark.controlada { color: rgba(0, 120, 0, 0.15); }
 
   .print-letterhead {
     display: flex !important; align-items: center; gap: 16px; padding-bottom: 12px; margin-bottom: 16px;
