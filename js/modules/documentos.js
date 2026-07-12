@@ -1,4 +1,5 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao } from '../ui.js';
+import { abrirDetalhe } from './documentosDetalhe.js';
 
 export const STATUS = {
   elaboracao: 'Elaboração',
@@ -14,8 +15,16 @@ export const CLASSIFICACAO = {
   restrito: 'Restrito',
 };
 
-let grupoAtivo = 'mestra'; // 'mestra' | 'aprovacoes' | 'obsoletos'
+export const BUCKET_ARQUIVOS = 'documentos-arquivos';
+export const ACCEPT_ARQUIVO = '.doc,.docx,.odt,.pdf';
+
+let familiaAtiva = 'documentos';
+let grupoAtivo = 'mestra';
 let filtros = { tipo: '', status: '', processo: '', classificacao: '' };
+
+export function ehRegistro(tipo) {
+  return tipo.chave === 'registro';
+}
 
 async function listarTiposDocumento(supabase) {
   const { data, error } = await supabase.from('tipos_documento').select('*').order('nome');
@@ -26,13 +35,27 @@ async function listarTiposDocumento(supabase) {
 async function listarProcessos(supabase, empresaId) {
   const { data, error } = await supabase
     .from('macrofluxo_processos')
-    .select('id, nome')
+    .select('id, nome, numero')
     .eq('empresa_id', empresaId)
     .eq('tipo', 'principal')
     .order('nome');
   if (error) throw error;
   return data;
 }
+
+// Rótulo do processo puxando o número cadastrado no Macrofluxo (ex: "3.1 - Compras"), quando existir.
+function rotuloProcesso(p) {
+  if (!p) return '—';
+  return p.numero ? `${p.numero} - ${p.nome}` : p.nome;
+}
+
+const BADGE_STATUS = {
+  elaboracao: 'badge-neutral',
+  revisao: 'badge-warning',
+  aprovacao: 'badge-warning',
+  publicado: 'badge-success',
+  obsoleto: 'badge-danger',
+};
 
 async function listarDocumentos(supabase, empresaId) {
   const { data, error } = await supabase
@@ -46,7 +69,7 @@ async function listarDocumentos(supabase, empresaId) {
 async function listarRevisoesObsoletas(supabase, empresaId) {
   const { data, error } = await supabase
     .from('documentos_revisoes')
-    .select('*, documentos!inner(numero, nome, empresa_id, tipos_documento(nome))')
+    .select('*, documentos!inner(numero, nome, empresa_id, tipos_documento(nome, chave))')
     .eq('documentos.empresa_id', empresaId)
     .eq('status_final', 'obsoleto')
     .order('data', { ascending: false });
@@ -60,9 +83,6 @@ async function listarDepartamentos(supabase, empresaId) {
   return data;
 }
 
-// Quem pode alternar a marca d'água de "Cópia Não Controlada" para "Cópia Controlada" na impressão:
-// papel orbeex (equipe ORBEEX, suporte a todas as empresas) ou usuário do departamento Qualidade
-// cadastrado na empresa (mesma regra aplicada no servidor pela RPC definir_copia_controlada).
 function calcularPodeAlterarCopiaControlada(state, usuarios, departamentos) {
   if (state.papelAtual === 'orbeex') return true;
   const meu = usuarios.find((u) => u.usuario_id === state.user.id);
@@ -71,15 +91,40 @@ function calcularPodeAlterarCopiaControlada(state, usuarios, departamentos) {
   return !!dep && dep.nome.trim().toLowerCase() === 'qualidade';
 }
 
-async function hashConteudo(conteudo) {
+export async function hashConteudo(conteudo) {
   const bytes = new TextEncoder().encode(JSON.stringify(conteudo || {}));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function formatarData(iso) {
+export function formatarData(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('pt-BR');
+}
+
+export function formatarTamanho(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function sanitizarNomeArquivo(nome) {
+  return nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+export async function uploadArquivoDocumento(supabase, empresaId, documentoId, arquivo) {
+  const nomeSanitizado = sanitizarNomeArquivo(arquivo.name);
+  const caminho = empresaId + '/' + documentoId + '/' + Date.now() + '_' + nomeSanitizado;
+  const { error } = await supabase.storage.from(BUCKET_ARQUIVOS).upload(caminho, arquivo);
+  if (error) throw error;
+  return { arquivo_url: caminho, arquivo_nome: arquivo.name, arquivo_tamanho: arquivo.size };
+}
+
+export async function abrirArquivoDocumento(supabase, caminho) {
+  const { data, error } = await supabase.storage.from(BUCKET_ARQUIVOS).createSignedUrl(caminho, 300);
+  if (error) return toast('Erro ao gerar link do arquivo: ' + error.message, 'erro');
+  window.open(data.signedUrl, '_blank');
 }
 
 export async function render(container, state) {
@@ -97,45 +142,61 @@ export async function render(container, state) {
       listarDepartamentos(supabase, empresaAtual.id),
     ]);
   } catch (err) {
-    container.innerHTML = `<div class="alert alert-warning">Erro ao carregar documentos: ${escapeHtml(err.message)}</div>`;
+    container.innerHTML = '<div class="alert alert-warning">Erro ao carregar documentos: ' + escapeHtml(err.message) + '</div>';
     return;
   }
 
   const nomeUsuario = (id) => usuarios.find((u) => u.usuario_id === id)?.nome || usuarios.find((u) => u.usuario_id === id)?.email || '—';
-  const nomeProcesso = (id) => processos.find((p) => p.id === id)?.nome || '—';
-  const docsAtivos = documentos.filter((d) => d.status !== 'obsoleto');
-  const docsAguardandoAprovacao = documentos.filter((d) => d.status === 'aprovacao');
+  const nomeProcesso = (id) => rotuloProcesso(processos.find((p) => p.id === id));
   const podeAlterarCopiaControlada = calcularPodeAlterarCopiaControlada(state, usuarios, departamentos);
+  // ADM e ORBEEX podem excluir documento em qualquer situação (além da regra normal: elaboração + revisão 0).
+  const podeExcluirSempre = papelAtual === 'admin' || papelAtual === 'orbeex';
+
+  const tiposFamilia = tipos.filter((t) => ehRegistro(t) === (familiaAtiva === 'registros'));
+  const documentosFamilia = documentos.filter((d) => ehRegistro(d.tipos_documento) === (familiaAtiva === 'registros'));
+  const docsAtivos = documentosFamilia.filter((d) => d.status !== 'obsoleto');
+  const docsAguardandoAprovacao = documentosFamilia.filter((d) => d.status === 'aprovacao');
+  const revisoesObsoletasFamilia = revisoesObsoletas.filter((r) => ehRegistro(r.documentos.tipos_documento) === (familiaAtiva === 'registros'));
 
   container.innerHTML = `
     <div class="card">
       <div class="card-header">
         <span><i class="ti ti-file-text"></i> Documentos</span>
-        ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-novo-documento"><i class="ti ti-plus"></i> Novo Documento</button>' : ''}
+        ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-novo-documento"><i class="ti ti-plus"></i> Novo</button>' : ''}
+      </div>
+      <div class="filters" style="margin-bottom:8px">
+        <button class="filter-btn ${familiaAtiva === 'documentos' ? 'active' : ''}" data-familia="documentos"><i class="ti ti-file-text"></i> Documentos (Procedimento, IT, Manual, Política)</button>
+        <button class="filter-btn ${familiaAtiva === 'registros' ? 'active' : ''}" data-familia="registros"><i class="ti ti-clipboard-list"></i> Registros</button>
       </div>
       <div class="filters">
         <button class="filter-btn ${grupoAtivo === 'mestra' ? 'active' : ''}" data-grupo="mestra">Lista Mestra</button>
-        <button class="filter-btn ${grupoAtivo === 'aprovacoes' ? 'active' : ''}" data-grupo="aprovacoes">Aguardando Aprovação ${docsAguardandoAprovacao.length ? `(${docsAguardandoAprovacao.length})` : ''}</button>
+        <button class="filter-btn ${grupoAtivo === 'aprovacoes' ? 'active' : ''}" data-grupo="aprovacoes">Aguardando Aprovação ${docsAguardandoAprovacao.length ? '(' + docsAguardandoAprovacao.length + ')' : ''}</button>
         <button class="filter-btn ${grupoAtivo === 'obsoletos' ? 'active' : ''}" data-grupo="obsoletos">Obsoletos</button>
+        <button class="filter-btn ${grupoAtivo === 'monitoramento' ? 'active' : ''}" data-grupo="monitoramento"><i class="ti ti-chart-bar"></i> Monitoramento</button>
       </div>
       <div id="documentos-corpo"></div>
     </div>
   `;
 
   const corpo = container.querySelector('#documentos-corpo');
-  if (grupoAtivo === 'mestra') renderListaMestra(corpo, state, { tipos, processos, documentos: docsAtivos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada });
-  else if (grupoAtivo === 'aprovacoes') renderAprovacoes(corpo, state, { documentos: docsAguardandoAprovacao, usuarios, nomeUsuario, podeAlterarCopiaControlada });
-  else renderObsoletos(corpo, { revisoes: revisoesObsoletas });
+  if (grupoAtivo === 'mestra') renderListaMestra(corpo, state, { tipos, processos, documentos: docsAtivos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre, ehRegistros: familiaAtiva === 'registros' });
+  else if (grupoAtivo === 'aprovacoes') renderAprovacoes(corpo, state, { documentos: docsAguardandoAprovacao, usuarios, nomeUsuario, podeAlterarCopiaControlada, podeExcluirSempre });
+  else if (grupoAtivo === 'monitoramento') renderMonitoramento(corpo, { documentos, tipos, revisoesObsoletas }, (grupo) => { grupoAtivo = grupo; render(container, state); });
+  else renderObsoletos(corpo, { revisoes: revisoesObsoletasFamilia });
+
+  container.querySelectorAll('[data-familia]').forEach((btn) => {
+    btn.addEventListener('click', () => { familiaAtiva = btn.dataset.familia; grupoAtivo = 'mestra'; render(container, state); });
+  });
 
   container.querySelectorAll('[data-grupo]').forEach((btn) => {
     btn.addEventListener('click', () => { grupoAtivo = btn.dataset.grupo; render(container, state); });
   });
 
   const btnNovo = container.querySelector('#btn-novo-documento');
-  if (btnNovo) btnNovo.addEventListener('click', () => abrirFormularioNovo(state, container, { tipos, processos, documentos }));
+  if (btnNovo) btnNovo.addEventListener('click', () => abrirFormularioNovo(state, container, { tipos: tiposFamilia, processos, documentos }));
 }
 
-function renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }) {
+function renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre, ehRegistros }) {
   const filtrados = documentos.filter((d) =>
     (!filtros.tipo || d.tipo_documento_id === filtros.tipo) &&
     (!filtros.status || d.status === filtros.status) &&
@@ -143,13 +204,15 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
     (!filtros.classificacao || d.classificacao === filtros.classificacao)
   ).sort((a, b) => a.numero.localeCompare(b.numero));
 
+  const tiposFiltro = tipos.filter((t) => ehRegistro(t) === ehRegistros);
+
   corpo.innerHTML = `
     <div class="form-row" style="margin:12px 0">
       <div class="form-group">
         <label>Tipo</label>
         <select id="dc-filtro-tipo">
           <option value="">Todos</option>
-          ${tipos.map((t) => `<option value="${t.id}" ${filtros.tipo === t.id ? 'selected' : ''}>${escapeHtml(t.nome)}</option>`).join('')}
+          ${tiposFiltro.map((t) => `<option value="${t.id}" ${filtros.tipo === t.id ? 'selected' : ''}>${escapeHtml(t.nome)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -163,7 +226,7 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
         <label>Processo</label>
         <select id="dc-filtro-processo">
           <option value="">Todos</option>
-          ${processos.map((p) => `<option value="${p.id}" ${filtros.processo === p.id ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}
+          ${processos.map((p) => `<option value="${p.id}" ${filtros.processo === p.id ? 'selected' : ''}>${escapeHtml(rotuloProcesso(p))}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -174,75 +237,101 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
         </select>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <button class="btn btn-secondary btn-sm" id="dc-btn-csv"><i class="ti ti-download"></i> CSV</button>
-      <button class="btn btn-secondary btn-sm" id="dc-btn-imprimir"><i class="ti ti-printer"></i> Imprimir</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <span class="text-muted">${filtrados.length} ${ehRegistros ? 'registro(s)' : 'documento(s)'} encontrado(s)</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" id="dc-btn-csv"><i class="ti ti-download"></i> CSV</button>
+        <button class="btn btn-secondary btn-sm" id="dc-btn-imprimir"><i class="ti ti-printer"></i> Imprimir</button>
+      </div>
     </div>
     ${filtrados.length ? `
       <table class="table">
-        <thead><tr><th>Nº</th><th>Nome</th><th>Tipo</th><th>Rev.</th><th>Data</th><th>Status</th><th>Classificação</th><th></th></tr></thead>
+        <thead><tr>
+          <th>Nº</th><th>Nome</th><th>Tipo</th><th>Processo</th><th>Rev.</th><th>Data</th><th>Status</th><th>Classificação</th>
+          ${ehRegistros ? '<th>Retenção</th>' : ''}
+          <th>Arquivo</th><th></th>
+        </tr></thead>
         <tbody>
           ${filtrados.map((d) => `
             <tr>
               <td>${escapeHtml(d.numero)}</td>
               <td>${escapeHtml(d.nome)}</td>
               <td>${escapeHtml(d.tipos_documento.nome)}</td>
+              <td>${escapeHtml(nomeProcesso(d.processo_id))}</td>
               <td>${String(d.revisao_atual).padStart(2, '0')}</td>
               <td>${formatarData(d.data_publicacao || d.created_at)}</td>
-              <td><span class="badge">${STATUS[d.status]}</span></td>
+              <td><span class="badge ${BADGE_STATUS[d.status] || 'badge-neutral'}">${STATUS[d.status]}</span></td>
               <td>${CLASSIFICACAO[d.classificacao]}</td>
+              ${ehRegistros ? `<td>${d.tempo_retencao_meses ? d.tempo_retencao_meses + ' meses' : '—'}</td>` : ''}
+              <td>${d.arquivo_url ? `<button class="icon-btn" data-baixar="${d.id}" title="Abrir arquivo"><i class="ti ti-file-download"></i></button>` : '—'}</td>
               <td class="table-actions"><button class="icon-btn" data-abrir="${d.id}" title="Abrir"><i class="ti ti-eye"></i></button></td>
             </tr>`).join('')}
         </tbody>
-      </table>` : '<div class="empty-state"><i class="ti ti-file-text"></i>Nenhum documento cadastrado.</div>'}
+      </table>` : `<div class="empty-state"><i class="ti ti-file-text"></i>Nenhum ${ehRegistros ? 'registro' : 'documento'} cadastrado.</div>`}
   `;
 
-  corpo.querySelector('#dc-filtro-tipo').addEventListener('change', (e) => { filtros.tipo = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
-  corpo.querySelector('#dc-filtro-status').addEventListener('change', (e) => { filtros.status = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
-  corpo.querySelector('#dc-filtro-processo').addEventListener('change', (e) => { filtros.processo = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
-  corpo.querySelector('#dc-filtro-classificacao').addEventListener('change', (e) => { filtros.classificacao = e.target.value; renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada }); });
+  const rerender = () => renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre, ehRegistros });
+  corpo.querySelector('#dc-filtro-tipo').addEventListener('change', (e) => { filtros.tipo = e.target.value; rerender(); });
+  corpo.querySelector('#dc-filtro-status').addEventListener('change', (e) => { filtros.status = e.target.value; rerender(); });
+  corpo.querySelector('#dc-filtro-processo').addEventListener('change', (e) => { filtros.processo = e.target.value; rerender(); });
+  corpo.querySelector('#dc-filtro-classificacao').addEventListener('change', (e) => { filtros.classificacao = e.target.value; rerender(); });
 
-  corpo.querySelector('#dc-btn-csv').addEventListener('click', () => exportarCsv(filtrados));
-  corpo.querySelector('#dc-btn-imprimir').addEventListener('click', () => imprimirListaMestra(filtrados));
+  corpo.querySelector('#dc-btn-csv').addEventListener('click', () => exportarCsv(filtrados, ehRegistros));
+  corpo.querySelector('#dc-btn-imprimir').addEventListener('click', () => imprimirListaMestra(filtrados, ehRegistros));
+
+  corpo.querySelectorAll('[data-baixar]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const doc = documentos.find((d) => d.id === btn.dataset.baixar);
+      abrirArquivoDocumento(state.supabase, doc.arquivo_url);
+    });
+  });
 
   corpo.querySelectorAll('[data-abrir]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const doc = documentos.find((d) => d.id === btn.dataset.abrir);
-      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada });
+      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre });
     });
   });
 }
 
-function exportarCsv(linhas) {
-  const cabecalho = ['Nº', 'Nome', 'Tipo', 'Revisão', 'Data', 'Status', 'Classificação'];
-  const escaparCsv = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+function exportarCsv(linhas, ehRegistros) {
+  const cabecalho = ['Nº', 'Nome', 'Tipo', 'Revisão', 'Data', 'Status', 'Classificação'].concat(ehRegistros ? ['Retenção (meses)', 'Local de Arquivamento'] : []).concat(['Arquivo']);
+  const escaparCsv = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
   const linhasCsv = linhas.map((d) => [
     d.numero, d.nome, d.tipos_documento.nome, String(d.revisao_atual).padStart(2, '0'),
     formatarData(d.data_publicacao || d.created_at), STATUS[d.status], CLASSIFICACAO[d.classificacao],
-  ].map(escaparCsv).join(','));
+  ].concat(ehRegistros ? [d.tempo_retencao_meses || '', d.local_armazenamento || ''] : []).concat([d.arquivo_nome || '']).map(escaparCsv).join(','));
   const csv = [cabecalho.map(escaparCsv).join(','), ...linhasCsv].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `lista_mestra_documentos_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = 'lista_mestra_' + (ehRegistros ? 'registros' : 'documentos') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function imprimirListaMestra(linhas) {
+function imprimirListaMestra(linhas, ehRegistros) {
   imprimirSecao(`
-    <h2>Lista Mestra de Documentos</h2>
+    <h2>Lista Mestra de ${ehRegistros ? 'Registros' : 'Documentos'}</h2>
     <table class="table">
-      <thead><tr><th>Nº</th><th>Nome</th><th>Tipo</th><th>Rev.</th><th>Data</th><th>Status</th><th>Classificação</th></tr></thead>
+      <thead><tr>
+        <th>Nº</th><th>Nome</th><th>Tipo</th><th>Rev.</th><th>Data</th><th>Status</th><th>Classificação</th>
+        ${ehRegistros ? '<th>Retenção</th>' : ''}
+      </tr></thead>
       <tbody>
-        ${linhas.map((d) => `<tr><td>${escapeHtml(d.numero)}</td><td>${escapeHtml(d.nome)}</td><td>${escapeHtml(d.tipos_documento.nome)}</td><td>${String(d.revisao_atual).padStart(2, '0')}</td><td>${formatarData(d.data_publicacao || d.created_at)}</td><td>${STATUS[d.status]}</td><td>${CLASSIFICACAO[d.classificacao]}</td></tr>`).join('')}
+        ${linhas.map((d) => `<tr>
+          <td>${escapeHtml(d.numero)}</td><td>${escapeHtml(d.nome)}</td><td>${escapeHtml(d.tipos_documento.nome)}</td>
+          <td>${String(d.revisao_atual).padStart(2, '0')}</td><td>${formatarData(d.data_publicacao || d.created_at)}</td>
+          <td>${STATUS[d.status]}</td><td>${CLASSIFICACAO[d.classificacao]}</td>
+          ${ehRegistros ? `<td>${d.tempo_retencao_meses ? d.tempo_retencao_meses + ' meses' : '—'}</td>` : ''}
+        </tr>`).join('')}
       </tbody>
     </table>
   `);
 }
 
-function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario, podeAlterarCopiaControlada }) {
+function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario, podeAlterarCopiaControlada, podeExcluirSempre }) {
   corpo.innerHTML = documentos.length ? `
     <table class="table">
       <thead><tr><th>Nº</th><th>Nome</th><th>Elaborado por</th><th>Aprovador solicitado</th><th></th></tr></thead>
@@ -270,8 +359,8 @@ function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario, pod
       ]);
       const podeEditar = state.papelAtual !== 'usuario' || state.nivelEdicao === 'total';
       const nomeU = (id) => usuariosResp.find((u) => u.usuario_id === id)?.nome || usuariosResp.find((u) => u.usuario_id === id)?.email || '—';
-      const nomeP = (id) => processos.find((p) => p.id === id)?.nome || '—';
-      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos: todos, usuarios: usuariosResp, podeEditar, nomeUsuario: nomeU, nomeProcesso: nomeP, podeAlterarCopiaControlada });
+      const nomeP = (id) => rotuloProcesso(processos.find((p) => p.id === id));
+      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos: todos, usuarios: usuariosResp, podeEditar, nomeUsuario: nomeU, nomeProcesso: nomeP, podeAlterarCopiaControlada, podeExcluirSempre });
     });
   });
 }
@@ -297,6 +386,64 @@ function renderObsoletos(corpo, { revisoes }) {
   `;
 }
 
+// Aba "Monitoramento": visão geral (documentos + registros, das duas famílias) para gestão da Qualidade.
+function renderMonitoramento(corpo, { documentos, revisoesObsoletas }, irPara) {
+  const naoObsoletos = documentos.filter((d) => d.status !== 'obsoleto');
+  const totalDocumentos = naoObsoletos.filter((d) => !ehRegistro(d.tipos_documento)).length;
+  const totalRegistros = naoObsoletos.filter((d) => ehRegistro(d.tipos_documento)).length;
+  const emElaboracao = naoObsoletos.filter((d) => d.status === 'elaboracao' || d.status === 'revisao').length;
+  const aguardandoAprovacao = naoObsoletos.filter((d) => d.status === 'aprovacao').length;
+  const publicados = naoObsoletos.filter((d) => d.status === 'publicado').length;
+  const totalObsoletos = documentos.filter((d) => d.status === 'obsoleto').length;
+
+  const hoje = new Date();
+  const calcularVencimento = (d) => {
+    const base = new Date(d.data_publicacao || d.created_at);
+    const vencimento = new Date(base);
+    vencimento.setMonth(vencimento.getMonth() + d.tempo_retencao_meses);
+    return { base, vencimento, dias: Math.round((vencimento - hoje) / (1000 * 60 * 60 * 24)) };
+  };
+  const registrosVencendo = naoObsoletos
+    .filter((d) => ehRegistro(d.tipos_documento) && d.tempo_retencao_meses && (d.data_publicacao || d.created_at))
+    .map((d) => Object.assign({ doc: d }, calcularVencimento(d)))
+    .filter((r) => r.dias <= 60)
+    .sort((a, b) => a.dias - b.dias);
+
+  const semaforo = (dias) => (dias < 0 ? 'vermelho' : dias <= 30 ? 'amarelo' : 'verde');
+
+  corpo.innerHTML = `
+    <div class="dashboard-grid">
+      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Documentos ativos</div><div class="dashboard-card-value">${totalDocumentos}</div></div>
+      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Registros ativos</div><div class="dashboard-card-value">${totalRegistros}</div></div>
+      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Em elaboração/revisão</div><div class="dashboard-card-value">${emElaboracao}</div></div>
+      <div class="dashboard-card" data-atalho="aprovacoes"><div class="dashboard-card-label">Aguardando aprovação</div><div class="dashboard-card-value">${aguardandoAprovacao}</div></div>
+      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Publicados</div><div class="dashboard-card-value">${publicados}</div></div>
+      <div class="dashboard-card" data-atalho="obsoletos"><div class="dashboard-card-label">Obsoletos (histórico)</div><div class="dashboard-card-value">${totalObsoletos}</div></div>
+    </div>
+
+    <h4>Registros com retenção vencendo em até 60 dias (ISO 9001 — cláusula 7.5.3.2)</h4>
+    ${registrosVencendo.length ? `
+      <table class="table">
+        <thead><tr><th>Nº</th><th>Nome</th><th>Emissão</th><th>Retenção</th><th>Vencimento</th><th>Situação</th></tr></thead>
+        <tbody>
+          ${registrosVencendo.map((r) => `
+            <tr>
+              <td>${escapeHtml(r.doc.numero)}</td>
+              <td>${escapeHtml(r.doc.nome)}</td>
+              <td>${formatarData(r.base.toISOString())}</td>
+              <td>${r.doc.tempo_retencao_meses} meses</td>
+              <td>${formatarData(r.vencimento.toISOString())}</td>
+              <td><span class="semaforo-dot semaforo-${semaforo(r.dias)}"></span>${r.dias < 0 ? 'Vencido' : r.dias + ' dia(s)'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '<div class="empty-state"><i class="ti ti-clock"></i>Nenhum registro com retenção vencendo em breve.</div>'}
+  `;
+
+  corpo.querySelectorAll('[data-atalho]').forEach((el) => {
+    el.addEventListener('click', () => irPara(el.dataset.atalho));
+  });
+}
+
 function abrirFormularioNovo(state, container, { tipos, documentos }) {
   const modal = abrirModal('Novo Documento', `
     <form id="form-novo-documento">
@@ -310,6 +457,10 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
       <div class="form-group">
         <label>Nome</label>
         <input type="text" id="nd-nome" required>
+      </div>
+      <div class="form-group">
+        <label>Arquivo do documento (Word ou PDF) *</label>
+        <input type="file" id="nd-arquivo" accept="${ACCEPT_ARQUIVO}" required>
       </div>
       <div id="nd-campos-condicionais"></div>
       <button class="btn btn-primary btn-block" type="submit">Criar rascunho</button>
@@ -331,6 +482,9 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
     const tipo = tipos.find((t) => t.id === tipoId);
     if (!tipo) return toast('Selecione um tipo de documento.', 'erro');
 
+    const arquivo = modal.querySelector('#nd-arquivo').files[0];
+    if (!arquivo) return toast('Anexe o arquivo do documento (Word ou PDF).', 'erro');
+
     const processoId = modal.querySelector('#nd-processo')?.value || null;
     const procedimentoId = modal.querySelector('#nd-procedimento')?.value || null;
     const itId = modal.querySelector('#nd-it')?.value || null;
@@ -339,7 +493,31 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
     if (tipo.exige_processo && !processoId) return toast('Este tipo de documento exige um Processo vinculado.', 'erro');
     if (tipo.exige_procedimento && !procedimentoId) return toast('Este tipo de documento exige um Procedimento vinculado.', 'erro');
 
-    const payload = {
+    let tempoRetencao = null, localArmazenamento = null, formaDescarte = null;
+    if (ehRegistro(tipo)) {
+      tempoRetencao = modal.querySelector('#nd-retencao')?.value;
+      localArmazenamento = modal.querySelector('#nd-local-armazenamento')?.value?.trim();
+      formaDescarte = modal.querySelector('#nd-forma-descarte')?.value?.trim() || null;
+      if (!tempoRetencao) return toast('Informe o tempo de retenção do registro (cláusula 7.5.3.2 da ISO 9001).', 'erro');
+      if (!localArmazenamento) return toast('Informe o local de arquivamento do registro.', 'erro');
+    }
+
+    const btnSubmit = modal.querySelector('button[type="submit"]');
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Enviando arquivo...';
+
+    const novoId = crypto.randomUUID();
+    let arquivoInfo;
+    try {
+      arquivoInfo = await uploadArquivoDocumento(supabase, empresaAtual.id, novoId, arquivo);
+    } catch (err) {
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = 'Criar rascunho';
+      return toast('Erro ao enviar arquivo: ' + err.message, 'erro');
+    }
+
+    const payload = Object.assign({
+      id: novoId,
       empresa_id: empresaAtual.id,
       tipo_documento_id: tipoId,
       nome: modal.querySelector('#nd-nome').value.trim(),
@@ -348,11 +526,22 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
       it_id: itId,
       classificacao,
       elaborado_por: user.id,
-      conteudo: Object.fromEntries((tipo.secoes || []).map((s) => [s, ''])),
-    };
+      arquivo_url: arquivoInfo.arquivo_url,
+      arquivo_nome: arquivoInfo.arquivo_nome,
+      arquivo_tamanho: arquivoInfo.arquivo_tamanho,
+    }, ehRegistro(tipo) ? {
+      tempo_retencao_meses: Number(tempoRetencao),
+      local_armazenamento: localArmazenamento,
+      forma_descarte: formaDescarte,
+    } : {});
 
     const { error } = await supabase.from('documentos').insert(payload);
-    if (error) return toast('Erro ao criar documento: ' + error.message, 'erro');
+    if (error) {
+      await supabase.storage.from(BUCKET_ARQUIVOS).remove([arquivoInfo.arquivo_url]);
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = 'Criar rascunho';
+      return toast('Erro ao criar documento: ' + error.message, 'erro');
+    }
     toast('Documento criado em Elaboração.', 'sucesso');
     fecharModal();
     render(container, state);
@@ -371,7 +560,7 @@ async function renderCamposCondicionais(state, camposEl, tipo, documentos) {
         <label>Processo${tipo.exige_processo ? ' *' : ''}</label>
         <select id="nd-processo" ${tipo.exige_processo ? 'required' : ''}>
           <option value="">—</option>
-          ${processos.map((p) => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}
+          ${processos.map((p) => `<option value="${p.id}">${escapeHtml(rotuloProcesso(p))}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -381,14 +570,30 @@ async function renderCamposCondicionais(state, camposEl, tipo, documentos) {
           ${procedimentos.map((p) => `<option value="${p.id}">${escapeHtml(p.numero)} - ${escapeHtml(p.nome)}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group">
-        <label>IT (opcional)</label>
-        <select id="nd-it">
-          <option value="">—</option>
-          ${its.map((i) => `<option value="${i.id}" data-procedimento="${i.procedimento_id || ''}">${escapeHtml(i.numero)} - ${escapeHtml(i.nome)}</option>`).join('')}
-        </select>
-      </div>
     </div>
+    <div class="form-group">
+      <label>IT ${tipo.chave === 'registro' ? 'vinculada (recomendado para a numeração hierárquica)' : '(opcional)'}</label>
+      <select id="nd-it">
+        <option value="">—</option>
+        ${its.map((i) => `<option value="${i.id}" data-procedimento="${i.procedimento_id || ''}">${escapeHtml(i.numero)} - ${escapeHtml(i.nome)}</option>`).join('')}
+      </select>
+    </div>
+    ${tipo.chave === 'registro' ? `
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tempo de retenção (meses) *</label>
+          <input type="number" id="nd-retencao" min="1" required>
+        </div>
+        <div class="form-group">
+          <label>Local de arquivamento *</label>
+          <input type="text" id="nd-local-armazenamento" required placeholder="Ex: Pasta física — Arquivo Qualidade">
+        </div>
+        <div class="form-group">
+          <label>Forma de descarte</label>
+          <input type="text" id="nd-forma-descarte" placeholder="Ex: Trituração após o prazo de retenção">
+        </div>
+      </div>
+    ` : ''}
     <div class="form-group">
       <label>Classificação da Informação</label>
       <select id="nd-classificacao">
@@ -402,6 +607,7 @@ async function renderCamposCondicionais(state, camposEl, tipo, documentos) {
   const selIt = camposEl.querySelector('#nd-it');
 
   function filtrarItsPorProcedimento(procedimentoId) {
+    if (!selIt) return;
     [...selIt.options].forEach((opt) => {
       if (!opt.value) return;
       opt.hidden = procedimentoId ? opt.dataset.procedimento !== procedimentoId : false;
@@ -412,405 +618,5 @@ async function renderCamposCondicionais(state, camposEl, tipo, documentos) {
     const proc = procedimentos.find((p) => p.id === selProcedimento.value);
     if (proc && proc.processo_id) { selProcesso.value = proc.processo_id; }
     filtrarItsPorProcedimento(selProcedimento.value);
-  });
-}
-
-function abrirDetalhe(state, container, doc, ctx) {
-  const { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada } = ctx;
-  const tipo = doc.tipos_documento;
-  const revisoesPromise = state.supabase.from('documentos_revisoes').select('*').eq('documento_id', doc.id).order('numero_revisao');
-
-  revisoesPromise.then(({ data: revisoes }) => {
-    const secoes = tipo.secoes || [];
-    const emEdicao = doc.status !== 'publicado' && doc.status !== 'obsoleto';
-    const revisaoVigentePublicada = (revisoes || []).find((r) => r.status_final === 'publicado');
-
-    const modal = abrirModal(`${doc.numero} — ${escapeHtml(doc.nome)}`, `
-      <div class="alert" style="margin-bottom:12px">
-        <b>Status:</b> ${STATUS[doc.status]} &nbsp;|&nbsp; <b>Revisão:</b> ${String(doc.revisao_atual).padStart(2, '0')}
-        &nbsp;|&nbsp; <b>Processo:</b> ${escapeHtml(nomeProcesso(doc.processo_id))}
-        ${doc.procedimento_id ? `&nbsp;|&nbsp; <b>Procedimento:</b> ${escapeHtml(documentos.find((d) => d.id === doc.procedimento_id)?.numero || '—')}` : ''}
-        ${doc.it_id ? `&nbsp;|&nbsp; <b>IT:</b> ${escapeHtml(documentos.find((d) => d.id === doc.it_id)?.numero || '—')}` : ''}
-      </div>
-
-      <div id="dd-rastreabilidade" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid #ddd;border-radius:8px">
-        <span class="badge" style="${doc.copia_controlada ? 'background:#1e7d32;color:#fff' : 'background:#b3261e;color:#fff'}">
-          ${doc.copia_controlada ? 'CÓPIA CONTROLADA' : 'CÓPIA NÃO CONTROLADA'}
-        </span>
-        <button class="btn btn-secondary btn-sm" id="dd-visualizar-pdf" type="button"><i class="ti ti-file-type-pdf"></i> Visualizar PDF</button>
-        <button class="btn btn-secondary btn-sm" id="dd-imprimir" type="button"><i class="ti ti-printer"></i> Imprimir</button>
-        ${podeAlterarCopiaControlada ? `<button class="btn btn-secondary btn-sm" id="dd-alternar-copia-controlada" type="button">Marcar como ${doc.copia_controlada ? 'Cópia Não Controlada' : 'Cópia Controlada'}</button>` : ''}
-      </div>
-
-      ${doc.status === 'publicado' && revisaoVigentePublicada ? `
-        <p class="text-muted">Elaborado por ${escapeHtml(nomeUsuario(doc.elaborado_por))} · Aprovado por ${escapeHtml(nomeUsuario(doc.aprovado_por))} em ${formatarData(doc.data_publicacao)}</p>
-      ` : ''}
-
-      ${doc.status !== 'publicado' && revisaoVigentePublicada ? `<div class="alert alert-warning">Existe uma nova revisão em andamento. O conteúdo abaixo é o rascunho — a versão PUBLICADA vigente é a da tabela de histórico.</div>` : ''}
-
-      <div id="dd-secoes">
-        ${secoes.map((s, idx) => `
-          <div class="form-group">
-            <label>${idx + 1}. ${escapeHtml(s.toUpperCase())}</label>
-            <textarea data-secao="${idx}" ${emEdicao && podeEditar ? '' : 'readonly'} rows="3">${escapeHtml((doc.conteudo || {})[s] || '')}</textarea>
-          </div>`).join('')}
-      </div>
-
-      <div id="dd-acoes" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"></div>
-
-      <h4>Histórico de Revisões</h4>
-      <table class="table">
-        <thead><tr><th>Rev.</th><th>Data</th><th>Descrição</th><th>Situação</th></tr></thead>
-        <tbody>
-          ${(revisoes || []).length ? revisoes.map((r) => `
-            <tr>
-              <td>${String(r.numero_revisao).padStart(2, '0')}</td>
-              <td>${formatarData(r.data)}</td>
-              <td>${escapeHtml(r.descricao_alteracao)}</td>
-              <td><span class="badge">${r.status_final === 'publicado' ? 'Vigente' : 'Obsoleta'}</span></td>
-            </tr>`).join('') : '<tr><td colspan="4" class="text-muted">Nenhuma revisão publicada ainda.</td></tr>'}
-        </tbody>
-      </table>
-    `);
-
-    modal.querySelector('#dd-visualizar-pdf').addEventListener('click', () => visualizarPdfDocumento(state, doc, revisoes, ctx));
-    modal.querySelector('#dd-imprimir').addEventListener('click', () => imprimirDocumento(state, doc, revisoes, ctx));
-
-    const btnAlternarCopia = modal.querySelector('#dd-alternar-copia-controlada');
-    if (btnAlternarCopia) btnAlternarCopia.addEventListener('click', async () => {
-      const novoValor = !doc.copia_controlada;
-      const { error } = await state.supabase.rpc('definir_copia_controlada', { p_documento_id: doc.id, p_controlada: novoValor });
-      if (error) return toast('Erro ao alterar cópia controlada: ' + error.message, 'erro');
-      toast(`Documento marcado como ${novoValor ? 'Cópia Controlada' : 'Cópia Não Controlada'}.`, 'sucesso');
-      fecharModal();
-      render(container, state);
-    });
-
-    const acoesEl = modal.querySelector('#dd-acoes');
-    renderAcoes(state, container, modal, doc, ctx, acoesEl);
-  });
-}
-
-// Cabeçalho no estilo dos modelos padrão (P e IT): logo | tipo+nome do documento | código +
-// selo de "cópia controlada/não controlada". Repetido no topo de cada página impressa.
-function gerarCabecalhoDocumento(doc, emp) {
-  const controlada = !!doc.copia_controlada;
-  return `
-    <div class="doc-header">
-      <div class="doc-header-logo">${emp?.logo_url ? `<img src="${emp.logo_url}" alt="">` : `<span>${escapeHtml(emp?.nome || '')}</span>`}</div>
-      <div class="doc-header-titulo">${escapeHtml(doc.tipos_documento.nome.toUpperCase())} — ${escapeHtml(doc.nome.toUpperCase())}</div>
-      <div class="doc-header-codigo">
-        <div class="doc-header-numero">${escapeHtml(doc.numero)}</div>
-        <div class="doc-header-copia">${controlada ? 'CÓPIA CONTROLADA' : 'CÓPIA NÃO CONTROLADA'}</div>
-      </div>
-    </div>
-  `;
-}
-
-// Rodapé no estilo dos modelos: código/nome do documento, revisão, empresa e classificação da
-// informação, sempre destacados nas mesmas cores usadas nos templates de referência (P e IT).
-function gerarRodapeDocumento(doc, emp) {
-  return `
-    <div class="doc-footer">
-      <b class="codigo">${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</b>
-      <span class="sep">|</span> Revisão: ${String(doc.revisao_atual).padStart(2, '0')}
-      <span class="sep">|</span> <b class="empresa">${escapeHtml(emp?.nome || '')}</b>
-      <span class="sep">|</span> Documento: <b class="classificacao">${CLASSIFICACAO[doc.classificacao]}</b>
-      <span class="sep">|</span> Emitido em ${new Date().toLocaleDateString('pt-BR')}
-    </div>
-  `;
-}
-
-// Monta o corpo do documento (seções numeradas, igual à numeração 1., 2., 3.… dos modelos P e IT)
-// + rodapé de rastreabilidade (elaboração/aprovação e histórico de revisões). Usado tanto na
-// visualização em PDF quanto na impressão direta, para os dois botões mostrarem sempre o mesmo
-// conteúdo — só muda a forma de abertura (nova aba x diálogo de impressão do navegador).
-function gerarCorpoDocumento(doc, revisoes, ctx) {
-  const { nomeUsuario } = ctx;
-  const secoes = doc.tipos_documento.secoes || [];
-  const rascunho = doc.status !== 'publicado';
-
-  return `
-    ${rascunho ? `<p class="doc-aviso-rascunho">Documento em ${STATUS[doc.status].toLowerCase()} — esta impressão não é a versão publicada vigente.</p>` : ''}
-
-    ${secoes.map((s, idx) => `
-      <p class="doc-secao-titulo">${idx + 1}. ${escapeHtml(s.toUpperCase())}</p>
-      <p class="doc-secao-texto">${escapeHtml((doc.conteudo || {})[s] || '—').replaceAll('\n', '<br>')}</p>
-    `).join('')}
-
-    <table class="doc-elaboracao-tabela">
-      <tr><th>Elaborado por</th><th>Aprovado por</th></tr>
-      <tr>
-        <td>${escapeHtml(nomeUsuario(doc.elaborado_por))}</td>
-        <td>${doc.status === 'publicado' ? `${escapeHtml(nomeUsuario(doc.aprovado_por))} em ${formatarData(doc.data_publicacao)}` : '—'}</td>
-      </tr>
-    </table>
-
-    <p class="doc-secao-titulo" style="margin-top:18px">HISTÓRICO DE REVISÕES</p>
-    <table class="doc-revisoes-tabela">
-      <tr><th>Revisão</th><th>Data</th><th>Descrição</th></tr>
-      ${(revisoes || []).length ? revisoes.map((r) => `
-        <tr><td>${String(r.numero_revisao).padStart(2, '0')}</td><td>${formatarData(r.data)}</td><td>${escapeHtml(r.descricao_alteracao)}</td></tr>
-      `).join('') : '<tr><td colspan="3">Nenhuma revisão publicada ainda.</td></tr>'}
-    </table>
-  `;
-}
-
-// "Imprimir": vai direto ao diálogo de impressão do navegador. Diferente dos outros módulos, o
-// timbre genérico do STRATEGYA fica oculto (classe "imprimindo-documento") para não duplicar
-// cabeçalho — o documento usa o cabeçalho/rodapé próprios, no estilo dos modelos P/IT.
-function imprimirDocumento(state, doc, revisoes, ctx) {
-  const emp = state.empresaAtual;
-  document.body.classList.add('imprimindo-documento');
-  const limparClasse = () => document.body.classList.remove('imprimindo-documento');
-  window.addEventListener('afterprint', limparClasse, { once: true });
-  setTimeout(limparClasse, 60000);
-  imprimirSecao(`
-    ${gerarCabecalhoDocumento(doc, emp)}
-    ${gerarRodapeDocumento(doc, emp)}
-    <div class="doc-corpo">${gerarCorpoDocumento(doc, revisoes, ctx)}</div>
-  `);
-}
-
-// "Visualizar PDF": abre uma aba própria, formatada e independente da tela do app, no mesmo
-// layout do "Imprimir" — mas sem disparar o diálogo de impressão automaticamente, para o usuário
-// conferir antes e, se quiser, usar "Salvar como PDF" do navegador.
-function visualizarPdfDocumento(state, doc, revisoes, ctx) {
-  const emp = state.empresaAtual;
-  const corpo = gerarCorpoDocumento(doc, revisoes, ctx);
-  const janela = window.open('', '_blank');
-  if (!janela) { toast('Seu navegador bloqueou a nova aba. Permita pop-ups para visualizar o PDF.', 'erro'); return; }
-  janela.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
-    <title>${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}</title>
-    <style>
-      body { font-family: Arial, Helvetica, sans-serif; color: #222; margin: 0; padding: 90px 36px 60px; position: relative; }
-
-      .doc-header {
-        position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: stretch;
-        border: 1.5px solid #000; height: 68px; background: #fff; z-index: 10;
-      }
-      .doc-header-logo { flex: 0 0 150px; display: flex; align-items: center; justify-content: center; border-right: 1.5px solid #000; padding: 6px; overflow: hidden; }
-      .doc-header-logo img { max-height: 50px; max-width: 130px; object-fit: contain; }
-      .doc-header-logo span { font-weight: 700; font-size: 13px; text-align: center; }
-      .doc-header-titulo { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 15px; font-weight: 800; padding: 4px 12px; border-right: 1.5px solid #000; }
-      .doc-header-codigo { flex: 0 0 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
-      .doc-header-numero { font-size: 21px; font-weight: 800; }
-      .doc-header-copia { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #c00000; text-transform: uppercase; }
-
-      .doc-footer {
-        position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px;
-        padding: 6px 10px; border-top: 1px solid #999; background: #fff; z-index: 10;
-      }
-      .doc-footer b.codigo, .doc-footer b.empresa, .doc-footer b.classificacao { color: #c00000; }
-      .doc-footer .sep { color: #2f5496; font-weight: 700; }
-
-      .doc-aviso-rascunho { background: #fff3cd; border: 1px solid #e8b84b; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 700; margin-bottom: 14px; }
-      .doc-secao-titulo { font-size: 13.5px; font-weight: 800; text-transform: uppercase; margin: 16px 0 4px; }
-      .doc-secao-texto { font-size: 12.5px; line-height: 1.5; margin: 0 0 4px; white-space: pre-wrap; }
-
-      table.doc-elaboracao-tabela, table.doc-revisoes-tabela { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-      table.doc-elaboracao-tabela th, table.doc-elaboracao-tabela td,
-      table.doc-revisoes-tabela th, table.doc-revisoes-tabela td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
-      table.doc-elaboracao-tabela th, table.doc-revisoes-tabela th { background: #666; color: #fff; font-weight: 700; }
-
-      .toolbar { position: fixed; top: 76px; right: 20px; z-index: 20; }
-      .toolbar button { padding: 8px 16px; font-size: 13px; cursor: pointer; }
-      @media print { .toolbar { display: none; } body { padding-top: 78px; } }
-    </style></head><body>
-    <div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>
-    ${gerarCabecalhoDocumento(doc, emp)}
-    ${gerarRodapeDocumento(doc, emp)}
-    <div class="doc-corpo">${corpo}</div>
-  </body></html>`);
-  janela.document.close();
-}
-
-function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
-  const { podeEditar, usuarios } = ctx;
-  const { user } = state;
-  const botoes = [];
-
-  if (podeEditar && (doc.status === 'elaboracao' || doc.status === 'revisao')) {
-    botoes.push('<button class="btn btn-secondary btn-sm" id="dd-salvar-rascunho">Salvar rascunho</button>');
-    botoes.push('<button class="btn btn-primary btn-sm" id="dd-enviar-aprovacao">Enviar para aprovação</button>');
-  }
-  if (doc.status === 'aprovacao' && (podeEditar || doc.aprovador_solicitado_id === user.id)) {
-    botoes.push('<button class="btn btn-primary btn-sm" id="dd-aprovar">Aprovar e publicar</button>');
-    botoes.push('<button class="btn btn-secondary btn-sm" id="dd-devolver">Devolver para elaboração</button>');
-  }
-  if (podeEditar && doc.status === 'publicado') {
-    botoes.push('<button class="btn btn-secondary btn-sm" id="dd-nova-revisao">Editar (nova revisão)</button>');
-  }
-  if (podeEditar && doc.status === 'elaboracao' && doc.revisao_atual === 0) {
-    botoes.push('<button class="btn btn-danger btn-sm" id="dd-excluir">Excluir</button>');
-  }
-  acoesEl.innerHTML = botoes.join(' ');
-
-  const coletarConteudo = () => {
-    const secoes = doc.tipos_documento.secoes || [];
-    const resultado = {};
-    modal.querySelectorAll('[data-secao]').forEach((el) => { resultado[secoes[Number(el.dataset.secao)]] = el.value; });
-    return resultado;
-  };
-
-  const btnSalvar = acoesEl.querySelector('#dd-salvar-rascunho');
-  if (btnSalvar) btnSalvar.addEventListener('click', async () => {
-    const { error } = await state.supabase.from('documentos').update({ conteudo: coletarConteudo() }).eq('id', doc.id);
-    if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
-    toast('Rascunho salvo.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-
-  const btnEnviar = acoesEl.querySelector('#dd-enviar-aprovacao');
-  if (btnEnviar) btnEnviar.addEventListener('click', () => {
-    const conteudo = coletarConteudo();
-    abrirModalEnviarAprovacao(state, container, doc, conteudo, usuarios);
-  });
-
-  const btnAprovar = acoesEl.querySelector('#dd-aprovar');
-  if (btnAprovar) btnAprovar.addEventListener('click', () => abrirModalAprovar(state, container, doc));
-
-  const btnDevolver = acoesEl.querySelector('#dd-devolver');
-  if (btnDevolver) btnDevolver.addEventListener('click', async () => {
-    if (!(await confirmar('Devolver este documento para Elaboração?'))) return;
-    const { error } = await state.supabase.from('documentos').update({ status: 'elaboracao', aprovador_solicitado_id: null }).eq('id', doc.id);
-    if (error) return toast('Erro: ' + error.message, 'erro');
-    toast('Documento devolvido para elaboração.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-
-  const btnNovaRevisao = acoesEl.querySelector('#dd-nova-revisao');
-  if (btnNovaRevisao) btnNovaRevisao.addEventListener('click', () => abrirModalNovaRevisao(state, container, doc));
-
-  const btnExcluir = acoesEl.querySelector('#dd-excluir');
-  if (btnExcluir) btnExcluir.addEventListener('click', async () => {
-    const { supabase } = state;
-    const { data: vinculados } = await supabase.from('documentos').select('numero, nome').or(`procedimento_id.eq.${doc.id},it_id.eq.${doc.id}`).neq('status', 'obsoleto');
-    if (vinculados && vinculados.length) {
-      return toast(`Não é possível excluir: há documentos vinculados (${vinculados.map((v) => v.numero).join(', ')}).`, 'erro');
-    }
-    if (!(await confirmar('Excluir este documento? Esta ação não pode ser desfeita.'))) return;
-    const { error } = await supabase.from('documentos').delete().eq('id', doc.id);
-    if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
-    toast('Documento excluído.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-}
-
-function abrirModalEnviarAprovacao(state, container, doc, conteudo, usuarios) {
-  const modal = abrirModal('Enviar para aprovação', `
-    <form id="form-enviar-aprovacao">
-      <div class="form-group">
-        <label>Aprovador</label>
-        <select id="ea-aprovador" required>
-          <option value="">Selecione...</option>
-          ${usuarios.filter((u) => u.ativo).map((u) => `<option value="${u.usuario_id}">${escapeHtml(u.nome || u.email)}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Enviar</button>
-    </form>
-  `);
-
-  modal.querySelector('#form-enviar-aprovacao').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const aprovadorId = modal.querySelector('#ea-aprovador').value;
-    if (aprovadorId === doc.elaborado_por) {
-      if (!(await confirmar('Atenção: você está enviando para aprovação de um documento que você mesmo elaborou (ou selecionou a si mesmo como aprovador). Deseja continuar?'))) return;
-    }
-    const { error } = await state.supabase.from('documentos')
-      .update({ conteudo, status: 'aprovacao', aprovador_solicitado_id: aprovadorId })
-      .eq('id', doc.id);
-    if (error) return toast('Erro: ' + error.message, 'erro');
-    toast('Enviado para aprovação.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-}
-
-function abrirModalAprovar(state, container, doc) {
-  const modal = abrirModal('Aprovar e publicar', `
-    <p class="text-muted">Confirme sua senha para assinar eletronicamente a aprovação deste documento.</p>
-    <form id="form-aprovar">
-      <div class="form-group">
-        <label>Sua senha</label>
-        <input type="password" id="ap-senha" required autocomplete="current-password">
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Confirmar aprovação e publicar</button>
-    </form>
-  `);
-
-  modal.querySelector('#form-aprovar').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const { supabase, user } = state;
-    const senha = modal.querySelector('#ap-senha').value;
-    const { error: errAuth } = await supabase.auth.signInWithPassword({ email: user.email, password: senha });
-    if (errAuth) return toast('Senha incorreta.', 'erro');
-
-    const alertaSegregacao = doc.aprovador_solicitado_id === doc.elaborado_por;
-    const hash = await hashConteudo(doc.conteudo);
-    const nomeAprovador = user.user_metadata?.nome || user.email;
-    const assinaturaAprovador = { usuario_id: user.id, nome: nomeAprovador, data_hora: new Date().toISOString(), hash_documento: hash };
-
-    const { error: errUpd } = await supabase.from('documentos').update({
-      status: 'publicado',
-      aprovado_por: user.id,
-      assinatura_aprovador: assinaturaAprovador,
-      data_publicacao: new Date().toISOString(),
-    }).eq('id', doc.id);
-    if (errUpd) return toast('Erro ao publicar: ' + errUpd.message, 'erro');
-
-    // A revisão "vigente" anterior (se houver) vira obsoleta; grava a nova como vigente.
-    await supabase.from('documentos_revisoes')
-      .update({ status_final: 'obsoleto' })
-      .eq('documento_id', doc.id)
-      .eq('status_final', 'publicado');
-
-    const { error: errRev } = await supabase.from('documentos_revisoes').insert({
-      documento_id: doc.id,
-      numero_revisao: doc.revisao_atual,
-      descricao_alteracao: doc.descricao_alteracao_pendente || 'Primeira emissão',
-      conteudo_snapshot: doc.conteudo,
-      elaborado_por: doc.elaborado_por,
-      aprovado_por: user.id,
-      status_final: 'publicado',
-      exige_treinamento: doc.exige_treinamento,
-      aprovacao_com_alerta_segregacao: alertaSegregacao,
-    });
-    if (errRev) return toast('Documento publicado, mas houve erro ao gravar o histórico: ' + errRev.message, 'erro');
-
-    await supabase.from('documentos').update({ descricao_alteracao_pendente: null }).eq('id', doc.id);
-
-    toast('Documento aprovado e publicado.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-}
-
-function abrirModalNovaRevisao(state, container, doc) {
-  const modal = abrirModal('Iniciar nova revisão', `
-    <form id="form-nova-revisao">
-      <div class="form-group">
-        <label>Descrição da alteração (obrigatório)</label>
-        <textarea id="nr-descricao" required placeholder="O que está sendo alterado nesta revisão?"></textarea>
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Iniciar revisão ${String(doc.revisao_atual + 1).padStart(2, '0')}</button>
-    </form>
-  `);
-
-  modal.querySelector('#form-nova-revisao').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const descricao = modal.querySelector('#nr-descricao').value.trim();
-    const { error } = await state.supabase.from('documentos').update({
-      status: 'elaboracao',
-      revisao_atual: doc.revisao_atual + 1,
-      descricao_alteracao_pendente: descricao,
-    }).eq('id', doc.id);
-    if (error) return toast('Erro: ' + error.message, 'erro');
-    toast('Nova revisão iniciada. O documento publicado continua vigente até você publicar a revisão nova.', 'sucesso');
-    fecharModal();
-    render(container, state);
   });
 }
