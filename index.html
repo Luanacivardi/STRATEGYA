@@ -91,9 +91,12 @@
         <span class="topbar-user-chip">
           <span class="topbar-avatar" id="topbar-avatar"></span>
           <span class="topbar-user" id="topbar-user"></span>
-          <button class="icon-btn topbar-logout-btn" id="btn-logout" type="button" title="Sair"><i class="ti ti-logout"></i></button>
         </span>
       </div>
+      <!-- Fora da área rolável (.topbar-right) de propósito: com muitos botões/empresa de nome
+           longo, o "Sair" podia ficar empurrado para fora da rolagem (sem barra visível) e
+           parecer que tinha sumido — ficando fixo aqui, ele nunca é escondido. -->
+      <button class="icon-btn topbar-logout-btn" id="btn-logout" type="button" title="Sair"><i class="ti ti-logout"></i></button>
     </header>
 
     <div id="print-letterhead" class="print-letterhead"></div>
