@@ -63,12 +63,12 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 
 .empresa-select {
   background: var(--navy-mid); color: var(--navy-text); border: 1px solid rgba(255,255,255,0.15);
-  border-radius: var(--radius); padding: 0 8px; font-size: 13px; font-family: var(--font-sans);
-  height: 32px; box-sizing: border-box; flex-shrink: 0; max-width: 170px;
+  border-radius: var(--radius); padding: 0 26px 0 8px; font-size: 13px; font-family: var(--font-sans);
+  height: 32px; box-sizing: border-box; flex-shrink: 0; width: auto; max-width: 320px;
 }
 
 @media (max-width: 1100px) {
-  .empresa-select { max-width: 130px; }
+  .empresa-select { max-width: 200px; }
 }
 
 .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 1rem; }
