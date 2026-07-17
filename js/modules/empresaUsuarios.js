@@ -554,23 +554,30 @@ function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
     const papel = modal.querySelector('#edit-papel').value;
     const departamentoId = modal.querySelector('#edit-departamento').value || null;
 
-    const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
-      body: { empresaId: empresaAtual.id, usuarioId: membro.usuario_id, nome },
-    });
-    if (errNome) return toast('Erro ao salvar nome: ' + errNome.message, 'erro');
+    // Nome, papel e departamento são independentes entre si — uma falha em um não deve
+    // impedir os outros de serem salvos (ex: nome falhar não pode travar a troca de papel).
+    const erros = [];
+
+    if (nome !== (membro.nome || '')) {
+      const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
+        body: { empresaId: empresaAtual.id, usuarioId: membro.usuario_id, nome },
+      });
+      if (errNome) erros.push('nome: ' + errNome.message);
+    }
 
     if (!editandoSiMesmo && papel !== membro.papel) {
       const { error: errPapel } = await supabase.from('usuarios_empresas')
         .update({ papel }).eq('empresa_id', empresaAtual.id).eq('usuario_id', membro.usuario_id);
-      if (errPapel) return toast('Nome salvo, mas houve erro ao alterar o papel: ' + errPapel.message, 'erro');
+      if (errPapel) erros.push('papel: ' + errPapel.message);
     }
 
     if (departamentoId !== membro.departamento_id) {
       const { error: errDepto } = await supabase.from('usuarios_empresas')
         .update({ departamento_id: departamentoId }).eq('empresa_id', empresaAtual.id).eq('usuario_id', membro.usuario_id);
-      if (errDepto) return toast('Salvo, mas houve erro ao definir o departamento: ' + errDepto.message, 'erro');
+      if (errDepto) erros.push('departamento: ' + errDepto.message);
     }
 
+    if (erros.length) return toast('Erro ao salvar — ' + erros.join(' | '), 'erro');
     toast('Usuário atualizado.', 'sucesso');
     fecharModal();
     render(container, state);

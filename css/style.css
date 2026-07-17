@@ -181,6 +181,11 @@ input[type="date"], select, textarea {
   font-family: var(--font-sans); font-size: 13px; background: var(--surface-2); color: var(--text-primary);
 }
 textarea { resize: vertical; min-height: 70px; }
+
+/* Remove as setinhas de incremento do input number (Chrome/Safari/Edge e Firefox) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(232,184,75,0.15);
 }

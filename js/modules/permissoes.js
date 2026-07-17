@@ -176,17 +176,24 @@ function abrirModalEditarUsuario(state, container, empresaId, membro) {
     const nome = modal.querySelector('#edit-nome').value.trim();
     const papel = modal.querySelector('#edit-papel').value;
 
-    const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
-      body: { empresaId, usuarioId: membro.usuario_id, nome },
-    });
-    if (errNome) return toast('Erro ao salvar nome: ' + errNome.message, 'erro');
+    // Nome e papel são independentes — uma falha em um não pode travar o outro
+    // (ex: falha ao salvar o nome não deve impedir a troca de papel).
+    const erros = [];
+
+    if (nome !== (membro.nome || '')) {
+      const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
+        body: { empresaId, usuarioId: membro.usuario_id, nome },
+      });
+      if (errNome) erros.push('nome: ' + errNome.message);
+    }
 
     if (!editandoSiMesmo && papel !== membro.papel) {
       const { error: errPapel } = await supabase.from('usuarios_empresas')
         .update({ papel }).eq('empresa_id', empresaId).eq('usuario_id', membro.usuario_id);
-      if (errPapel) return toast('Nome salvo, mas houve erro ao alterar o papel: ' + errPapel.message, 'erro');
+      if (errPapel) erros.push('papel: ' + errPapel.message);
     }
 
+    if (erros.length) return toast('Erro ao salvar — ' + erros.join(' | '), 'erro');
     toast('Usuário atualizado.', 'sucesso');
     fecharModal();
     render(container, state);
