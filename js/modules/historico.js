@@ -33,22 +33,33 @@ function truncar(valor, tam = 80) {
   return str.length > tam ? str.slice(0, tam) + '…' : str;
 }
 
-// Renderiza o card de Histórico de Alterações dentro de Configurações (só ORBEEX/admin, reforçado
-// também via RLS na tabela log_alteracoes — só quem tem papel orbeex/admin ativo na empresa lê).
+// Renderiza a Auditoria de Dados (histórico de alterações) dentro de Configurações — como um
+// item de auditoria, recolhido por padrão (<details>), não exposto aberto na tela.
+// Visibilidade: só ORBEEX/admin chegam a ver esse bloco (usuário comum nunca — reforçado também
+// pela RLS de log_alteracoes, que só libera SELECT pra papel orbeex/admin ativo na empresa).
+// Escopo dos dados: ORBEEX enxerga as alterações de TODAS as empresas onde tem acesso (a RLS já
+// restringe automaticamente às empresas onde o usuário logado é orbeex/admin — não vaza dados de
+// empresas de terceiros); admin só enxerga as alterações da própria empresa selecionada.
 export async function render(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, papelAtual, empresas } = state;
+  const ehOrbeex = papelAtual === 'orbeex';
 
   const { data: membrosRaw } = await supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id });
   const membros = membrosRaw || [];
   const nomePorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+  const nomeEmpresaPorId = new Map((empresas || []).map((e) => [e.id, e.nome]));
 
   async function carregarLogs() {
     const tabelaFiltro = container.querySelector('#hist-filtro-tabela')?.value || '';
     const usuarioFiltro = container.querySelector('#hist-filtro-usuario')?.value || '';
+    const empresaFiltro = container.querySelector('#hist-filtro-empresa')?.value || '';
     const de = container.querySelector('#hist-filtro-de')?.value || '';
     const ate = container.querySelector('#hist-filtro-ate')?.value || '';
 
-    let query = supabase.from('log_alteracoes').select('*').eq('empresa_id', empresaAtual.id).order('criado_em', { ascending: false }).limit(300);
+    let query = supabase.from('log_alteracoes').select('*').order('criado_em', { ascending: false }).limit(300);
+    // ORBEEX vê todas as empresas onde tem acesso (a RLS já cuida de não vazar outras); admin
+    // fica travado na empresa atualmente selecionada, mesmo que a RLS já reforce isso também.
+    query = ehOrbeex ? (empresaFiltro ? query.eq('empresa_id', empresaFiltro) : query) : query.eq('empresa_id', empresaAtual.id);
     if (tabelaFiltro) query = query.eq('tabela', tabelaFiltro);
     if (usuarioFiltro) query = query.eq('usuario_id', usuarioFiltro);
     if (de) query = query.gte('criado_em', de + 'T00:00:00');
@@ -63,11 +74,12 @@ export async function render(container, state) {
 
     area.innerHTML = data.length ? `
       <table class="table">
-        <thead><tr><th>Quando</th><th>Usuário</th><th>Registro</th><th>Ação</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
+        <thead><tr><th>Quando</th>${ehOrbeex ? '<th>Empresa</th>' : ''}<th>Usuário</th><th>Registro</th><th>Ação</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
         <tbody>
           ${data.map((l) => `
             <tr>
               <td>${formatarDataHora(l.criado_em)}</td>
+              ${ehOrbeex ? `<td>${escapeHtml(nomeEmpresaPorId.get(l.empresa_id) || '—')}</td>` : ''}
               <td>${escapeHtml(nomePorId.get(l.usuario_id) || 'Sistema')}</td>
               <td>${escapeHtml(TABELA_LABEL[l.tabela] || l.tabela)}</td>
               <td><span class="badge badge-neutral"><i class="ti ${OPERACAO_ICONE[l.operacao]}"></i> ${OPERACAO_LABEL[l.operacao]}</span></td>
@@ -82,28 +94,46 @@ export async function render(container, state) {
   }
 
   container.innerHTML = `
-    <div class="card">
-      <div class="card-header"><span><i class="ti ti-history"></i> Histórico de Alterações</span></div>
-      <p class="text-muted" style="margin-bottom:1rem">Registro automático de quem alterou o quê, quando — para auditoria e conformidade.</p>
-      <div class="filters filters-compact">
-        <select id="hist-filtro-tabela" class="filter-select filter-select-sm">
-          <option value="">Registro</option>
-          ${Object.entries(TABELA_LABEL).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
-        </select>
-        <select id="hist-filtro-usuario" class="filter-select filter-select-sm">
-          <option value="">Usuário</option>
-          ${membros.map((m) => `<option value="${m.usuario_id}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
-        </select>
-        <input type="date" id="hist-filtro-de" class="filter-select filter-select-sm" title="De">
-        <input type="date" id="hist-filtro-ate" class="filter-select filter-select-sm" title="Até">
+    <details class="card audit-card">
+      <summary class="card-header audit-card-summary">
+        <span><i class="ti ti-shield-lock"></i> Auditoria de Dados</span>
+        <i class="ti ti-chevron-down audit-card-chevron"></i>
+      </summary>
+      <div class="audit-card-body">
+        <p class="text-muted" style="margin-bottom:1rem">Registro automático de quem alterou o quê, quando — para auditoria e conformidade.${ehOrbeex ? ' Visível apenas para ORBEEX (todas as empresas) e Administradores (própria empresa).' : ''}</p>
+        <div class="filters filters-compact">
+          ${ehOrbeex ? `
+            <select id="hist-filtro-empresa" class="filter-select filter-select-sm">
+              <option value="">Todas as empresas</option>
+              ${(empresas || []).map((e) => `<option value="${e.id}">${escapeHtml(e.nome)}</option>`).join('')}
+            </select>
+          ` : ''}
+          <select id="hist-filtro-tabela" class="filter-select filter-select-sm">
+            <option value="">Registro</option>
+            ${Object.entries(TABELA_LABEL).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+          </select>
+          <select id="hist-filtro-usuario" class="filter-select filter-select-sm">
+            <option value="">Usuário</option>
+            ${membros.map((m) => `<option value="${m.usuario_id}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
+          </select>
+          <input type="date" id="hist-filtro-de" class="filter-select filter-select-sm" title="De">
+          <input type="date" id="hist-filtro-ate" class="filter-select filter-select-sm" title="Até">
+        </div>
+        <div id="historico-tabela-area"></div>
       </div>
-      <div id="historico-tabela-area"></div>
-    </div>
+    </details>
   `;
 
-  container.querySelectorAll('#hist-filtro-tabela, #hist-filtro-usuario, #hist-filtro-de, #hist-filtro-ate').forEach((el) => {
-    el.addEventListener('change', carregarLogs);
+  const detalhes = container.querySelector('details.audit-card');
+  let carregouUmaVez = false;
+  detalhes.addEventListener('toggle', () => {
+    if (detalhes.open && !carregouUmaVez) {
+      carregouUmaVez = true;
+      carregarLogs();
+    }
   });
 
-  await carregarLogs();
+  container.querySelectorAll('#hist-filtro-tabela, #hist-filtro-usuario, #hist-filtro-empresa, #hist-filtro-de, #hist-filtro-ate').forEach((el) => {
+    el.addEventListener('change', carregarLogs);
+  });
 }

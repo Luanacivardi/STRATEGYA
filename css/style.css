@@ -108,6 +108,17 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 }
 .card-header i { color: var(--gold); font-size: 16px; }
 
+/* ===== AUDITORIA DE DADOS (histórico de alterações, recolhido por padrão) ===== */
+.audit-card { padding: 0; }
+.audit-card-summary {
+  list-style: none; cursor: pointer; padding: 1.5rem; margin-bottom: 0; user-select: none;
+}
+.audit-card-summary::-webkit-details-marker { display: none; }
+.audit-card-summary:hover { color: var(--gold-dark); }
+.audit-card-chevron { transition: transform 0.2s; margin-left: auto; }
+.audit-card[open] .audit-card-chevron { transform: rotate(180deg); }
+.audit-card-body { padding: 0 1.5rem 1.5rem; }
+
 /* ===== LAYOUT DE MÓDULOS (sidebar) ===== */
 .app-layout { display: flex; align-items: flex-start; gap: 1.5rem; }
 .modulo-area { flex: 1; min-width: 0; max-width: 100%; overflow-x: hidden; }
