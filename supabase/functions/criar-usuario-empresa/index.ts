@@ -67,12 +67,16 @@ Deno.serve(async (req: Request) => {
       if (!jaExiste) return resposta({ error: errCriar.message }, 400);
       contaNova = false;
 
-      // Conta já existe: se um nome foi informado, atualiza o nome de exibição dela também
+      // Conta já existe: se um nome foi informado, atualiza o nome de exibição dela também.
+      // Busca direta por e-mail (função de banco), em vez de listUsers paginado — que passa a
+      // "esquecer" contas mais antigas quando o total de usuários do projeto ultrapassa 1000.
       if (nome) {
-        const { data: existentes } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        const existente = existentes?.users?.find((u) => u.email?.toLowerCase() === String(email).toLowerCase());
-        if (existente) {
-          await admin.auth.admin.updateUserById(existente.id, { user_metadata: { ...existente.user_metadata, nome } });
+        const { data: existenteId } = await admin.rpc('buscar_usuario_id_por_email', { p_email: email });
+        if (existenteId) {
+          const { data: existente } = await admin.auth.admin.getUserById(existenteId);
+          if (existente?.user) {
+            await admin.auth.admin.updateUserById(existenteId, { user_metadata: { ...existente.user.user_metadata, nome } });
+          }
         }
       }
     }
