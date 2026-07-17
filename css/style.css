@@ -176,11 +176,12 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
 
 input[type="text"], input[type="email"], input[type="password"], input[type="number"],
-input[type="date"], select, textarea {
+input[type="date"], input[type="month"], select, textarea {
   width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);
   font-family: var(--font-sans); font-size: 13px; background: var(--surface-2); color: var(--text-primary);
+  height: 40px; box-sizing: border-box;
 }
-textarea { resize: vertical; min-height: 70px; }
+textarea { height: auto; resize: vertical; min-height: 90px; line-height: 1.5; }
 
 /* Remove as setinhas de incremento do input number (Chrome/Safari/Edge e Firefox) */
 input[type="number"]::-webkit-outer-spin-button,
