@@ -105,7 +105,7 @@ export async function render(container, state) {
         body: { empresaId, email, senha, papel, nome },
       });
       if (error) return toast('Erro ao cadastrar colaborador: ' + (data?.error || error.message), 'erro');
-      toast(data.contaNova ? 'Colaborador cadastrado com sucesso.' : 'Já existia conta com esse e-mail; vínculo atualizado.', 'sucesso');
+      toast(data.contaNova ? 'Colaborador cadastrado. Ele(a) só consegue entrar depois de confirmar o e-mail recebido.' : 'Já existia conta com esse e-mail; vínculo atualizado.', 'sucesso');
       render(container, state);
     });
   });

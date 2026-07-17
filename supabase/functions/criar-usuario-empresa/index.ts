@@ -49,12 +49,15 @@ Deno.serve(async (req: Request) => {
       return resposta({ error: 'Sem permissão para cadastrar usuários nesta empresa.' }, 403);
     }
 
-    // Cliente com privilégio de administrador, só para criar a conta de autenticação
+    // Cliente com privilégio de administrador, só para criar a conta de autenticação.
+    // email_confirm: false — mesmo sendo o admin/ORBEEX a definir a senha, a conta só é liberada
+    // para login depois que o dono do e-mail clicar no link de confirmação enviado por ele
+    // (evita cadastrar alguém com um e-mail errado ou que não é dela).
     const admin = createClient(supabaseUrl, serviceKey);
     const { error: errCriar } = await admin.auth.admin.createUser({
       email,
       password: senha,
-      email_confirm: true,
+      email_confirm: false,
       user_metadata: nome ? { nome } : undefined,
     });
 
@@ -85,4 +88,6 @@ Deno.serve(async (req: Request) => {
 
     return resposta({ success: true, contaNova }, 200);
   } catch (err) {
-    return resposta({ error: err inst
+    return resposta({ error: err instanceof Error ? err.message : 'Erro inesperado.' }, 500);
+  }
+});

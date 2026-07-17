@@ -150,7 +150,16 @@ formLogin.addEventListener('submit', async (e) => {
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-      if (error) throw error;
+      if (error) {
+        // Conta existe e a senha está certa, mas o e-mail ainda não foi confirmado (inclui
+        // colaboradores cadastrados por admin/ORBEEX, que agora também exigem confirmação) —
+        // leva direto pra tela de confirmação em vez de um erro genérico.
+        if (/email.*not.*confirmed/i.test(error.message)) {
+          mostrarTelaConfirmeEmail(email);
+          return;
+        }
+        throw error;
+      }
     }
   } catch (err) {
     loginErro.textContent = err.message || 'Erro ao autenticar.';
