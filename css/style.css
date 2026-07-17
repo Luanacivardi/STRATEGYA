@@ -41,7 +41,7 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 .topbar-sub { font-size: 11px; color: color-mix(in srgb, var(--navy-text) 45%, transparent); letter-spacing: 0.8px; text-transform: uppercase; margin-left: 6px; white-space: nowrap; }
 .topbar-right {
   display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; justify-content: flex-start;
-  min-width: 0; overflow-x: auto; scrollbar-width: none;
+  min-width: 0; overflow-x: auto; scrollbar-width: none; margin-left: auto;
 }
 .topbar-right::-webkit-scrollbar { display: none; }
 .topbar-right > * { flex-shrink: 0; }
