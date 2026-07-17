@@ -109,6 +109,21 @@ export function imprimirSecao(htmlConteudo) {
   });
 }
 
+// supabase.functions.invoke() não entrega o corpo da resposta em `data` quando a função retorna
+// um status de erro (ex: 400/403) — só um erro genérico tipo "Edge Function returned a non-2xx
+// status code". O corpo real (com a mensagem de erro específica) fica em error.context, que
+// precisa ser lido manualmente. Usar isso em vez de `data?.error || error.message` sempre que
+// chamar supabase.functions.invoke().
+export async function mensagemErroFuncao(error) {
+  if (error?.context && typeof error.context.json === 'function') {
+    try {
+      const body = await error.context.clone().json();
+      if (body?.error) return body.error;
+    } catch { /* corpo não veio em JSON — cai no fallback abaixo */ }
+  }
+  return error?.message || 'Erro desconhecido.';
+}
+
 export function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)

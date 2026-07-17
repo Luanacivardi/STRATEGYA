@@ -1,4 +1,4 @@
-import { toast, escapeHtml, confirmar, abrirModal, fecharModal } from '../ui.js';
+import { toast, escapeHtml, confirmar, abrirModal, fecharModal, mensagemErroFuncao } from '../ui.js';
 import { aplicarTema, extrairCoresDoLogo, corTextoIdeal } from '../tema.js';
 import { abrirModalNovaEmpresa } from '../app.js';
 import * as historico from './historico.js';
@@ -467,8 +467,7 @@ export async function render(container, state) {
       btnSubmit.disabled = false;
 
       if (errFn) {
-        const msg = data?.error || errFn.message;
-        return toast('Erro ao cadastrar colaborador: ' + msg, 'erro');
+        return toast('Erro ao cadastrar colaborador: ' + await mensagemErroFuncao(errFn), 'erro');
       }
       toast(data.contaNova ? 'Colaborador cadastrado. Ele(a) só consegue entrar depois de confirmar o e-mail recebido.' : 'Já existia conta com esse e-mail; vínculo atualizado.', 'sucesso');
       render(container, state);
@@ -562,7 +561,7 @@ function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
       const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
         body: { empresaId: empresaAtual.id, usuarioId: membro.usuario_id, nome },
       });
-      if (errNome) erros.push('nome: ' + errNome.message);
+      if (errNome) erros.push('nome: ' + await mensagemErroFuncao(errNome));
     }
 
     if (!editandoSiMesmo && papel !== membro.papel) {
@@ -638,7 +637,7 @@ function abrirModalAlterarSenha(state, usuarioId) {
     const { error } = await supabase.functions.invoke('alterar-senha-colaborador', {
       body: { empresaId: empresaAtual.id, usuarioId, novaSenha },
     });
-    if (error) return toast('Erro ao alterar senha: ' + error.message, 'erro');
+    if (error) return toast('Erro ao alterar senha: ' + await mensagemErroFuncao(error), 'erro');
     toast('Senha alterada com sucesso.', 'sucesso');
     fecharModal();
   });

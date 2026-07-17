@@ -1,4 +1,4 @@
-import { toast, escapeHtml, confirmar, abrirModal, fecharModal } from '../ui.js';
+import { toast, escapeHtml, confirmar, abrirModal, fecharModal, mensagemErroFuncao } from '../ui.js';
 import { MODULOS_SISTEMA } from '../app.js';
 
 const PAPEL_LABEL = { orbeex: 'ORBEEX', admin: 'Administrador', usuario: 'Usuário' };
@@ -104,7 +104,7 @@ export async function render(container, state) {
       const { data, error } = await supabase.functions.invoke('criar-usuario-empresa', {
         body: { empresaId, email, senha, papel, nome },
       });
-      if (error) return toast('Erro ao cadastrar colaborador: ' + (data?.error || error.message), 'erro');
+      if (error) return toast('Erro ao cadastrar colaborador: ' + await mensagemErroFuncao(error), 'erro');
       toast(data.contaNova ? 'Colaborador cadastrado. Ele(a) só consegue entrar depois de confirmar o e-mail recebido.' : 'Já existia conta com esse e-mail; vínculo atualizado.', 'sucesso');
       render(container, state);
     });
@@ -184,7 +184,7 @@ function abrirModalEditarUsuario(state, container, empresaId, membro) {
       const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
         body: { empresaId, usuarioId: membro.usuario_id, nome },
       });
-      if (errNome) erros.push('nome: ' + errNome.message);
+      if (errNome) erros.push('nome: ' + await mensagemErroFuncao(errNome));
     }
 
     if (!editandoSiMesmo && papel !== membro.papel) {
@@ -218,7 +218,7 @@ function abrirModalAlterarSenha(state, empresaId, usuarioId) {
     const { error } = await supabase.functions.invoke('alterar-senha-colaborador', {
       body: { empresaId, usuarioId, novaSenha },
     });
-    if (error) return toast('Erro ao alterar senha: ' + error.message, 'erro');
+    if (error) return toast('Erro ao alterar senha: ' + await mensagemErroFuncao(error), 'erro');
     toast('Senha alterada com sucesso.', 'sucesso');
     fecharModal();
   });
