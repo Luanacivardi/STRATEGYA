@@ -12,6 +12,7 @@ import * as controladoria from './modules/controladoria.js';
 import * as documentos from './modules/documentos.js';
 import * as empresaUsuarios from './modules/empresaUsuarios.js';
 import * as permissoes from './modules/permissoes.js';
+import * as apuracoes from './modules/apuracoes.js';
 
 export const state = {
   supabase,
@@ -28,7 +29,7 @@ const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, riscos, indicadores,
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos };
+const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes };
 
 // Módulos do sistema — "planejamento-estrategico" e "riscos-oportunidades" já implementados;
 // os demais aparecem no menu como "em breve" para deixar a estrutura do SGI visível.
@@ -41,6 +42,8 @@ export const MODULOS_SISTEMA = [
     descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.' },
   { id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: true,
     descricao: 'Controle de documentos e registros da qualidade: numeração automática, ciclo de aprovação com assinatura eletrônica, revisões e lista mestra.' },
+  { id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true,
+    descricao: 'Controle do fluxo de apurações e investigações corporativas (ISO 37301/37002/37001) — acesso restrito ao comitê de apuração. Não armazena evidências ou documentos.' },
   { id: 'nao-conformidades', nome: 'Não Conformidades', icone: 'ti-alert-octagon', disponivel: false,
     descricao: 'Registro e tratamento de não conformidades e ações corretivas.',
     teaser: 'Transforme problemas recorrentes em ações que resolvem de vez.' },
