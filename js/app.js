@@ -36,7 +36,7 @@ const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, d
 export const MODULOS_SISTEMA = [
   { id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true,
     descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, riscos e oportunidades, indicadores e atas de reunião.' },
-  { id: 'acoes', nome: 'Ações', icone: 'ti-list-check', disponivel: true,
+  { id: 'acoes', nome: 'Gestão de Ações', icone: 'ti-list-check', disponivel: true,
     descricao: 'Planos de ação e tarefas vinculados a objetivos, indicadores, riscos, não conformidades e atas de reunião.' },
   { id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true,
     descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.' },
@@ -44,9 +44,6 @@ export const MODULOS_SISTEMA = [
     descricao: 'Controle de documentos e registros da qualidade: numeração automática, ciclo de aprovação com assinatura eletrônica, revisões e lista mestra.' },
   { id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true,
     descricao: 'Controle do fluxo de apurações e investigações corporativas (ISO 37301/37002/37001) — acesso restrito ao comitê de apuração. Não armazena evidências ou documentos.' },
-  { id: 'nao-conformidades', nome: 'Não Conformidades', icone: 'ti-alert-octagon', disponivel: false,
-    descricao: 'Registro e tratamento de não conformidades e ações corretivas.',
-    teaser: 'Transforme problemas recorrentes em ações que resolvem de vez.' },
   { id: 'auditorias', nome: 'Auditorias', icone: 'ti-clipboard-check', disponivel: false,
     descricao: 'Planejamento e execução de auditorias internas.',
     teaser: 'Audite com método — e sem planilha perdida.' },
