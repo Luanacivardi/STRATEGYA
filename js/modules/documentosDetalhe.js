@@ -6,7 +6,7 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js'
 import { imprimirDocumentoLegado, visualizarPdfDocumentoLegado } from './documentosImpressaoLegado.js';
 import {
   render, STATUS, CLASSIFICACAO, ehRegistro, formatarData, formatarTamanho,
-  hashConteudo, uploadArquivoDocumento, abrirArquivoDocumento, BUCKET_ARQUIVOS, ACCEPT_ARQUIVO,
+  hashConteudo, uploadArquivoDocumento, abrirArquivoDocumento, visualizarArquivoRestrito, BUCKET_ARQUIVOS, ACCEPT_ARQUIVO,
 } from './documentos.js';
 
 const BADGE_STATUS = {
@@ -46,12 +46,14 @@ export function abrirDetalhe(state, container, doc, ctx) {
         ` : ''}
         ${doc.status !== 'publicado' && revisaoVigentePublicada ? `<div class="alert alert-warning" style="margin-top:10px">Existe uma nova revisão em andamento. O conteúdo abaixo é o rascunho — a versão PUBLICADA vigente é a da tabela de histórico.</div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-          ${temArquivo ? `
+          ${temArquivo ? (podeEditar ? `
             <button class="btn btn-secondary btn-sm" id="dd-abrir-arquivo-topo" type="button"><i class="ti ti-external-link"></i> Abrir Arquivo</button>
           ` : `
+            <button class="btn btn-secondary btn-sm" id="dd-visualizar-restrito-topo" type="button"><i class="ti ti-eye"></i> Visualizar</button>
+          `) : (podeEditar ? `
             <button class="btn btn-secondary btn-sm" id="dd-visualizar-pdf" type="button"><i class="ti ti-file-type-pdf"></i> Visualizar PDF</button>
             <button class="btn btn-secondary btn-sm" id="dd-imprimir" type="button"><i class="ti ti-printer"></i> Imprimir</button>
-          `}
+          ` : '')}
           ${podeAlterarCopiaControlada ? `<button class="btn btn-secondary btn-sm" id="dd-alternar-copia-controlada" type="button">Marcar como ${doc.copia_controlada ? 'Cópia Não Controlada' : 'Cópia Controlada'}</button>` : ''}
         </div>
       </div>
@@ -63,7 +65,9 @@ export function abrirDetalhe(state, container, doc, ctx) {
             <div class="form-group" style="margin-bottom:0">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span><i class="ti ti-file"></i> ${escapeHtml(doc.arquivo_nome || 'arquivo')} ${doc.arquivo_tamanho ? `(${formatarTamanho(doc.arquivo_tamanho)})` : ''}</span>
-                <button class="btn btn-secondary btn-sm" id="dd-baixar-arquivo" type="button"><i class="ti ti-download"></i> Abrir/Baixar</button>
+                ${podeEditar
+                  ? `<button class="btn btn-secondary btn-sm" id="dd-baixar-arquivo" type="button"><i class="ti ti-download"></i> Abrir/Baixar</button>`
+                  : `<button class="btn btn-secondary btn-sm" id="dd-visualizar-restrito" type="button"><i class="ti ti-eye"></i> Visualizar</button>`}
                 ${emEdicao && podeEditar ? `<button class="btn btn-secondary btn-sm" id="dd-substituir-arquivo" type="button"><i class="ti ti-replace"></i> Substituir arquivo</button>` : ''}
               </div>
             </div>
@@ -113,7 +117,7 @@ export function abrirDetalhe(state, container, doc, ctx) {
                 <td>${formatarData(r.data)}</td>
                 <td>${escapeHtml(r.descricao_alteracao)}</td>
                 <td><span class="badge ${r.status_final === 'publicado' ? 'badge-success' : 'badge-neutral'}">${r.status_final === 'publicado' ? 'Vigente' : 'Obsoleta'}</span></td>
-                <td>${r.arquivo_url ? `<button class="icon-btn" data-baixar-revisao="${r.id}" title="Abrir arquivo desta revisão"><i class="ti ti-file-download"></i></button>` : ''}</td>
+                <td>${r.arquivo_url && podeEditar ? `<button class="icon-btn" data-baixar-revisao="${r.id}" title="Abrir arquivo desta revisão"><i class="ti ti-file-download"></i></button>` : ''}</td>
               </tr>`).join('') : '<tr><td colspan="5" class="text-muted">Nenhuma revisão publicada ainda.</td></tr>'}
           </tbody>
         </table>
@@ -124,8 +128,14 @@ export function abrirDetalhe(state, container, doc, ctx) {
     const btnAbrirArquivoTopo = modal.querySelector('#dd-abrir-arquivo-topo');
     if (btnAbrirArquivoTopo) btnAbrirArquivoTopo.addEventListener('click', () => abrirArquivoDocumento(state.supabase, doc.arquivo_url));
 
+    const btnVisualizarRestritoTopo = modal.querySelector('#dd-visualizar-restrito-topo');
+    if (btnVisualizarRestritoTopo) btnVisualizarRestritoTopo.addEventListener('click', () => visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome));
+
     const btnBaixarArquivo = modal.querySelector('#dd-baixar-arquivo');
     if (btnBaixarArquivo) btnBaixarArquivo.addEventListener('click', () => abrirArquivoDocumento(state.supabase, doc.arquivo_url));
+
+    const btnVisualizarRestrito = modal.querySelector('#dd-visualizar-restrito');
+    if (btnVisualizarRestrito) btnVisualizarRestrito.addEventListener('click', () => visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome));
 
     const btnSubstituirArquivo = modal.querySelector('#dd-substituir-arquivo');
     if (btnSubstituirArquivo) btnSubstituirArquivo.addEventListener('click', () => substituirArquivoDocumento(state, container, doc));

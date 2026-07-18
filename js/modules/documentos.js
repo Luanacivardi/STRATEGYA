@@ -18,6 +18,7 @@ export const CLASSIFICACAO = {
 export const BUCKET_ARQUIVOS = 'documentos-arquivos';
 export const ACCEPT_ARQUIVO = '.doc,.docx,.odt,.pdf';
 
+let modoAtivo = 'caixas'; // 'caixas' (padrão, todos os usuários) | 'gestao' (lista mestra, só Qualidade/orbeex)
 let familiaAtiva = 'documentos';
 let grupoAtivo = 'mestra';
 let filtros = { tipo: '', status: '', processo: '', classificacao: '' };
@@ -127,9 +128,37 @@ export async function abrirArquivoDocumento(supabase, caminho) {
   window.open(data.signedUrl, '_blank');
 }
 
+// Visualização somente leitura para usuários sem permissão de edição: embute o PDF numa janela
+// interna (sem botão de download/impressão do app) com link de curta duração. Aviso importante:
+// isto é uma barreira de interface, não uma proteção real contra cópia — o navegador ainda expõe
+// atalhos próprios (Ctrl+P, "Salvar como") que o app não tem como bloquear num iframe de outra
+// origem (o link assinado aponta para o domínio do Supabase Storage). Arquivos .doc/.docx/.odt
+// não têm visualização embutida seguro (exigiria enviar o arquivo a um serviço externo de
+// conversão, o que exporia documentos confidenciais a terceiros) — nesse caso mostra só um aviso.
+export async function visualizarArquivoRestrito(supabase, caminho, nomeArquivo) {
+  const { data, error } = await supabase.storage.from(BUCKET_ARQUIVOS).createSignedUrl(caminho, 120);
+  if (error) return toast('Erro ao gerar visualização: ' + error.message, 'erro');
+
+  const ehPdf = (nomeArquivo || caminho || '').toLowerCase().endsWith('.pdf');
+  const modal = abrirModal(nomeArquivo || 'Documento', `
+    <div class="alert alert-info" style="margin-bottom:10px">
+      <i class="ti ti-eye"></i>
+      <span>Visualização somente leitura — download e impressão não estão disponíveis para o seu perfil de acesso.</span>
+    </div>
+    ${ehPdf
+      ? `<iframe src="${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:8px" title="${escapeHtml(nomeArquivo || 'Documento')}"></iframe>`
+      : `<div class="empty-state"><i class="ti ti-file-off"></i>Pré-visualização disponível apenas para arquivos PDF. Solicite ao setor de Qualidade se precisar consultar este formato.</div>`}
+  `);
+  modal.classList.add('modal-xl');
+}
+
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
   const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  // Referência ao container raiz do módulo, para telas internas (detalhe do documento, formulário
+  // de criação) conseguirem disparar um re-render completo depois de salvar, mesmo estando várias
+  // camadas abaixo (visão em caixinhas ou Gestão de Documentos).
+  state.__documentosTopContainer = container;
 
   let tipos, processos, documentos, usuarios, revisoesObsoletas, departamentos;
   try {
@@ -148,9 +177,92 @@ export async function render(container, state) {
 
   const nomeUsuario = (id) => usuarios.find((u) => u.usuario_id === id)?.nome || usuarios.find((u) => u.usuario_id === id)?.email || '—';
   const nomeProcesso = (id) => rotuloProcesso(processos.find((p) => p.id === id));
+  // "Gestão de Documentos" (lista mestra, edição, impressão) fica disponível só para quem também
+  // pode alternar cópia controlada — ORBEEX ou setor Qualidade. Os demais usuários só enxergam a
+  // visão de caixinhas por processo, sempre em modo leitura.
   const podeAlterarCopiaControlada = calcularPodeAlterarCopiaControlada(state, usuarios, departamentos);
+  const mostrarGestao = podeAlterarCopiaControlada;
+  if (!mostrarGestao) modoAtivo = 'caixas';
   // ADM e ORBEEX podem excluir documento em qualquer situação (além da regra normal: elaboração + revisão 0).
   const podeExcluirSempre = papelAtual === 'admin' || papelAtual === 'orbeex';
+
+  const ctx = { tipos, processos, documentos, usuarios, revisoesObsoletas, nomeUsuario, nomeProcesso, podeEditar, podeAlterarCopiaControlada, podeExcluirSempre };
+
+  container.innerHTML = `
+    ${mostrarGestao ? `
+      <div class="filters" style="margin-bottom:1rem">
+        <button class="filter-btn ${modoAtivo === 'caixas' ? 'active' : ''}" data-modo="caixas"><i class="ti ti-layout-grid"></i> Documentos</button>
+        <button class="filter-btn ${modoAtivo === 'gestao' ? 'active' : ''}" data-modo="gestao"><i class="ti ti-settings"></i> Gestão de Documentos</button>
+      </div>` : ''}
+    <div id="documentos-modo-area"></div>
+  `;
+  container.querySelectorAll('[data-modo]').forEach((btn) => {
+    btn.addEventListener('click', () => { modoAtivo = btn.dataset.modo; render(container, state); });
+  });
+
+  const area = container.querySelector('#documentos-modo-area');
+  if (modoAtivo === 'gestao' && mostrarGestao) renderGestaoDocumentos(area, state, ctx, container);
+  else renderCaixas(area, state, ctx);
+}
+
+// ==================== VISÃO EM CAIXINHAS (padrão para todos os usuários) ====================
+// Uma caixa por processo do Macrofluxo, com os documentos publicados daquele processo, mais uma
+// caixa "Documentos Institucionais" para os que não têm processo vinculado (código de ética,
+// manuais gerais etc — processo_id nulo). Cada caixa também mostra, quando houver, os documentos
+// daquele processo aguardando aprovação.
+function renderCaixas(area, state, ctx) {
+  const { processos, documentos, podeEditar } = ctx;
+
+  const publicados = documentos.filter((d) => d.status === 'publicado');
+  const pendentes = documentos.filter((d) => d.status === 'aprovacao');
+
+  const caixaInstitucional = { id: null, nome: 'Documentos Institucionais', institucional: true };
+  const caixas = [caixaInstitucional, ...processos];
+
+  area.innerHTML = `
+    <div class="doc-caixas-grid">
+      ${caixas.map((p) => {
+        const docsDaCaixa = publicados.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
+        const pendentesDaCaixa = pendentes.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
+        return `
+        <div class="doc-caixa">
+          <div class="doc-caixa-titulo"><i class="ti ${p.institucional ? 'ti-building-bank' : 'ti-sitemap'}"></i> ${escapeHtml(p.institucional ? p.nome : rotuloProcesso(p))}</div>
+          ${docsDaCaixa.length ? `
+            <ul class="doc-caixa-lista">
+              ${docsDaCaixa.map((d) => `
+                <li><a href="#" class="dc-abrir-arquivo" data-ver-doc="${d.id}"><i class="ti ti-file-text"></i> ${escapeHtml(d.nome)}</a></li>
+              `).join('')}
+            </ul>` : '<p class="text-muted" style="font-size:12px">Nenhum documento publicado ainda.</p>'}
+          ${pendentesDaCaixa.length ? `
+            <div class="doc-caixa-pendente">
+              <p class="doc-caixa-pendente-titulo"><i class="ti ti-clock-exclamation"></i> Pendente de aprovação (${pendentesDaCaixa.length})</p>
+              <ul class="doc-caixa-lista">
+                ${pendentesDaCaixa.map((d) => `<li><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.nome)}</a></li>`).join('')}
+              </ul>
+            </div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+
+  area.querySelectorAll('[data-ver-doc]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const doc = documentos.find((d) => d.id === link.dataset.verDoc);
+      if (!doc) return;
+      if (podeEditar) {
+        abrirDetalhe(state, state.__documentosTopContainer, doc, ctx);
+      } else if (doc.arquivo_url) {
+        visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome);
+      } else {
+        toast('Este documento ainda não tem conteúdo publicado para visualização.', 'erro');
+      }
+    });
+  });
+}
+
+function renderGestaoDocumentos(container, state, ctx, topContainer) {
+  const { tipos, processos, documentos, usuarios, revisoesObsoletas, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre } = ctx;
 
   const tiposFamilia = tipos.filter((t) => ehRegistro(t) === (familiaAtiva === 'registros'));
   const documentosFamilia = documentos.filter((d) => ehRegistro(d.tipos_documento) === (familiaAtiva === 'registros'));
@@ -161,7 +273,7 @@ export async function render(container, state) {
   container.innerHTML = `
     <div class="card">
       <div class="card-header">
-        <span><i class="ti ti-file-text"></i> Documentos</span>
+        <span><i class="ti ti-file-text"></i> Gestão de Documentos</span>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-novo-documento"><i class="ti ti-plus"></i> Novo</button>' : ''}
       </div>
       <nav class="tabs" style="margin-bottom:0">
@@ -179,21 +291,22 @@ export async function render(container, state) {
   `;
 
   const corpo = container.querySelector('#documentos-corpo');
+  const rerender = () => render(topContainer, state);
   if (grupoAtivo === 'mestra') renderListaMestra(corpo, state, { tipos, processos, documentos: docsAtivos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre, ehRegistros: familiaAtiva === 'registros' });
   else if (grupoAtivo === 'aprovacoes') renderAprovacoes(corpo, state, { documentos: docsAguardandoAprovacao, usuarios, nomeUsuario, podeAlterarCopiaControlada, podeExcluirSempre });
-  else if (grupoAtivo === 'monitoramento') renderMonitoramento(corpo, { documentos, tipos, revisoesObsoletas }, (grupo) => { grupoAtivo = grupo; render(container, state); });
+  else if (grupoAtivo === 'monitoramento') renderMonitoramento(corpo, { documentos, tipos, revisoesObsoletas }, (grupo) => { grupoAtivo = grupo; rerender(); });
   else renderObsoletos(corpo, { revisoes: revisoesObsoletasFamilia });
 
   container.querySelectorAll('[data-familia]').forEach((btn) => {
-    btn.addEventListener('click', () => { familiaAtiva = btn.dataset.familia; grupoAtivo = 'mestra'; render(container, state); });
+    btn.addEventListener('click', () => { familiaAtiva = btn.dataset.familia; grupoAtivo = 'mestra'; rerender(); });
   });
 
   container.querySelectorAll('[data-grupo]').forEach((btn) => {
-    btn.addEventListener('click', () => { grupoAtivo = btn.dataset.grupo; render(container, state); });
+    btn.addEventListener('click', () => { grupoAtivo = btn.dataset.grupo; rerender(); });
   });
 
   const btnNovo = container.querySelector('#btn-novo-documento');
-  if (btnNovo) btnNovo.addEventListener('click', () => abrirFormularioNovo(state, container, { tipos: tiposFamilia, processos, documentos }));
+  if (btnNovo) btnNovo.addEventListener('click', () => abrirFormularioNovo(state, topContainer, { tipos: tiposFamilia, processos, documentos }));
 }
 
 function renderListaMestra(corpo, state, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre, ehRegistros }) {
@@ -297,7 +410,7 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
   corpo.querySelectorAll('[data-abrir]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const doc = documentos.find((d) => d.id === btn.dataset.abrir);
-      abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre });
+      abrirDetalhe(state, state.__documentosTopContainer, doc, { tipos, processos, documentos, usuarios, podeEditar, nomeUsuario, nomeProcesso, podeAlterarCopiaControlada, podeExcluirSempre });
     });
   });
 }
