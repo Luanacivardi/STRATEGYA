@@ -10,7 +10,7 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, impr
 
 const TIPO_LABEL = {
   interna: 'Interna', externa: 'Externa', cliente: 'Cliente', fornecedor: 'Fornecedor',
-  certificacao: 'Certificação', manutencao: 'Manutenção', recertificacao: 'Recertificação', extraordinaria: 'Extraordinária',
+  certificacao: 'Certificação', manutencao: 'Manutenção', recertificacao: 'Recertificação', extraordinaria: 'Extraordinária', outro: 'Outro',
 };
 const MODALIDADE_LABEL = { individual: 'Individual', integrada: 'Integrada' };
 const NORMA_LABEL = { iso9001: 'ISO 9001', iso14001: 'ISO 14001', iso45001: 'ISO 45001', outra: 'Outra' };
@@ -635,7 +635,7 @@ async function renderAuditorias(container, state) {
           <tr>
             <td><span class="badge badge-neutral">${escapeHtml(a.numero)}</span></td>
             <td>${escapeHtml(a.titulo)}</td>
-            <td>${TIPO_LABEL[a.tipo]} <span class="text-muted">(${MODALIDADE_LABEL[a.modalidade]})</span></td>
+            <td>${a.tipo === 'outro' ? escapeHtml(a.tipo_outro_descricao || 'Outro') : TIPO_LABEL[a.tipo]} <span class="text-muted">(${MODALIDADE_LABEL[a.modalidade]})</span></td>
             <td>${(a.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td>
             <td>${a.prioridade_classificacao ? `<span class="badge ${PRIORIDADE_BADGE[a.prioridade_classificacao]}">${PRIORIDADE_LABEL[a.prioridade_classificacao]}</span>` : '—'}</td>
             <td><span class="badge ${STATUS_BADGE[a.status]}">${STATUS_LABEL[a.status]}</span></td>
@@ -689,6 +689,10 @@ async function abrirAuditoria(state, container, item = null) {
           <select id="ad-modalidade">${Object.entries(MODALIDADE_LABEL).map(([v, l]) => `<option value="${v}" ${(item?.modalidade || 'individual') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label>Data prevista</label><input type="date" id="ad-data-prevista" value="${item?.data_prevista || ''}"></div>
+      </div>
+      <div class="form-group" id="grupo-tipo-outro" style="${item?.tipo === 'outro' ? '' : 'display:none'}">
+        <label>Qual tipo de auditoria?</label>
+        <input type="text" id="ad-tipo-outro" value="${item ? escapeHtml(item.tipo_outro_descricao || '') : ''}" placeholder="Descreva o tipo de auditoria">
       </div>
       <div class="form-group">
         <label>Normas aplicáveis</label>
@@ -808,6 +812,10 @@ async function abrirAuditoria(state, container, item = null) {
   modal.querySelectorAll('#ad-entrada, #ad-saida, #ad-almoco-inicio, #ad-almoco-fim').forEach((el) => el?.addEventListener('input', atualizarTempoUtil));
   atualizarTempoUtil();
 
+  modal.querySelector('#ad-tipo').addEventListener('change', (e) => {
+    modal.querySelector('#grupo-tipo-outro').style.display = e.target.value === 'outro' ? '' : 'none';
+  });
+
   if (item) {
     montarDocumentosOrganismo(state, modal, item);
     montarPriorizacao(modal, processos, processosSelecionados);
@@ -875,11 +883,15 @@ async function abrirAuditoria(state, container, item = null) {
     e.preventDefault();
     const dataPrevista = modal.querySelector('#ad-data-prevista').value || null;
     if (dataPrevista && !dataValida(dataPrevista)) return toast('Data prevista inválida.', 'erro');
+    if (modal.querySelector('#ad-tipo').value === 'outro' && !modal.querySelector('#ad-tipo-outro').value.trim()) {
+      return toast('Descreva qual é o tipo de auditoria.', 'erro');
+    }
 
     const payload = {
       empresa_id: empresaAtual.id,
       titulo: modal.querySelector('#ad-titulo').value.trim(),
       tipo: modal.querySelector('#ad-tipo').value,
+      tipo_outro_descricao: modal.querySelector('#ad-tipo').value === 'outro' ? (modal.querySelector('#ad-tipo-outro').value.trim() || null) : null,
       modalidade: modal.querySelector('#ad-modalidade').value,
       unidade: modal.querySelector('#ad-unidade').value.trim() || null,
       objetivo: modal.querySelector('#ad-objetivo').value.trim() || null,
