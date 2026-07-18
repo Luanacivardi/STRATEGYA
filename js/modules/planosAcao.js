@@ -49,6 +49,20 @@ export function irParaGrupo(grupo) {
   grupoAtivo = grupo;
 }
 
+// Usado quando outro módulo (ex: Riscos e Oportunidades, ao "Tratar" um risco) navega direto para
+// a edição de um plano de ação específico.
+export async function abrirPlanoPorId(state, container, id) {
+  const { supabase, empresaAtual } = state;
+  grupoAtivo = 'planos';
+  const [{ data: item, error }, origens, membrosData] = await Promise.all([
+    supabase.from('planos_acao').select('*').eq('id', id).single(),
+    carregarOrigens(supabase, empresaAtual.id),
+    supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
+  ]);
+  if (error || !item) return toast('Não foi possível abrir o plano de ação.', 'erro');
+  abrirFormulario(state, container, origens, membrosData, item);
+}
+
 function renderFiltrosGrupo() {
   return `
     <div class="filters">

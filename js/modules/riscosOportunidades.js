@@ -52,7 +52,7 @@ export async function render(container, state) {
       </div>
       ${itensFiltrados.length ? `
         <table class="table">
-          <thead><tr><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Prob.</th><th>Impacto</th><th>Score</th><th>Objetivo vinculado</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+          <thead><tr><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Prob.</th><th>Impacto</th><th>Score</th><th>Objetivo vinculado</th><th>Decisão</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
           <tbody>
             ${itensFiltrados.map((i) => `
               <tr>
@@ -63,6 +63,7 @@ export async function render(container, state) {
                 <td>${i.impacto}</td>
                 <td><span style="display:inline-block;width:28px;height:20px;border-radius:4px;background:${corPorScore(i.probabilidade * i.impacto)};color:#fff;text-align:center;font-size:11px;line-height:20px;font-weight:700">${i.probabilidade * i.impacto}</span></td>
                 <td>${escapeHtml(nomeObjetivoPorId.get(i.objetivo_id) || '—')}</td>
+                <td>${i.decisao === 'aceitar' ? '<span class="badge badge-neutral" title="' + escapeHtml(i.justificativa_aceite || '') + '">Aceito</span>' : (i.decisao === 'tratar' ? '<span class="badge badge-warning">Em tratamento</span>' : '<span class="text-muted">—</span>')}</td>
                 ${podeEditar ? `<td class="table-actions">
                   <button class="icon-btn" data-editar="${i.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                   <button class="icon-btn" data-excluir="${i.id}" title="Excluir"><i class="ti ti-trash"></i></button>
@@ -178,9 +179,48 @@ function abrirFormulario(state, container, objetivos, item = null) {
           </select>
         </div>
       </div>
+      <hr class="sep">
+      <div class="form-group">
+        <label>Decisão</label>
+        <select id="ro-decisao">
+          <option value="">— Ainda não decidido —</option>
+          <option value="aceitar" ${item?.decisao === 'aceitar' ? 'selected' : ''}>Aceitar</option>
+          <option value="tratar" ${item?.decisao === 'tratar' ? 'selected' : ''}>Tratar</option>
+        </select>
+      </div>
+      <div class="form-group" id="grupo-justificativa-aceite" style="${item?.decisao === 'aceitar' ? '' : 'display:none'}">
+        <label>Justificativa do aceite</label>
+        <textarea id="ro-justificativa">${item ? escapeHtml(item.justificativa_aceite || '') : ''}</textarea>
+      </div>
+      <div class="form-group" id="grupo-tratar" style="${item?.decisao === 'tratar' ? '' : 'display:none'}">
+        ${item ? `<button type="button" class="btn btn-secondary btn-block" id="btn-abrir-plano-acao"><i class="ti ti-list-check"></i> Abrir/ver plano de ação vinculado</button>`
+          : '<p class="text-muted" style="font-size:12px">Salve o item primeiro para abrir o plano de ação vinculado.</p>'}
+      </div>
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
   `);
+
+  modal.querySelector('#ro-decisao').addEventListener('change', (e) => {
+    modal.querySelector('#grupo-justificativa-aceite').style.display = e.target.value === 'aceitar' ? '' : 'none';
+    modal.querySelector('#grupo-tratar').style.display = e.target.value === 'tratar' ? '' : 'none';
+  });
+
+  const btnAbrirPlano = modal.querySelector('#btn-abrir-plano-acao');
+  if (btnAbrirPlano) btnAbrirPlano.addEventListener('click', async () => {
+    const { data: planoExistente } = await supabase.from('planos_acao').select('id').eq('origem', 'risco').eq('origem_id', item.id).maybeSingle();
+    let planoId = planoExistente?.id;
+    if (!planoId) {
+      const { data: novoPlano, error: errPlano } = await supabase.from('planos_acao').insert({
+        empresa_id: empresaAtual.id,
+        titulo: `Tratamento do risco: ${item.descricao}`.slice(0, 200),
+        origem: 'risco', origem_id: item.id, tipo: 'mitigacao_risco',
+      }).select('id').single();
+      if (errPlano) return toast('Erro ao criar plano de ação: ' + errPlano.message, 'erro');
+      planoId = novoPlano.id;
+    }
+    fecharModal();
+    document.dispatchEvent(new CustomEvent('strategya:abrir-plano-acao', { detail: { id: planoId } }));
+  });
 
   modal.querySelector('#form-risco').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -192,6 +232,8 @@ function abrirFormulario(state, container, objetivos, item = null) {
       objetivo_id: modal.querySelector('#ro-objetivo').value || null,
       probabilidade: Number(modal.querySelector('#ro-probabilidade').value),
       impacto: Number(modal.querySelector('#ro-impacto').value),
+      decisao: modal.querySelector('#ro-decisao').value || null,
+      justificativa_aceite: modal.querySelector('#ro-decisao').value === 'aceitar' ? modal.querySelector('#ro-justificativa').value.trim() || null : null,
     };
     const query = item
       ? supabase.from('riscos_oportunidades').update(payload).eq('id', item.id)

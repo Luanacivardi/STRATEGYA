@@ -564,10 +564,22 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .print-letterhead { display: none; }
 #print-secao { display: none; }
 
-/* Tabela de campo/valor para impressão de um item único (ex: uma tarefa) */
-.print-detalhe-tabela { width: 100%; border-collapse: collapse; margin-top: 10px; }
-.print-detalhe-tabela th, .print-detalhe-tabela td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; font-size: 13px; vertical-align: top; }
-.print-detalhe-tabela th { width: 200px; background: #f4f4f4; color: var(--text-primary); font-weight: 700; }
+/* Tabela de campo/valor para impressão de um item único (ex: uma tarefa) — visual moderno:
+   sem grade pesada, cartão com sombra suave e linhas zebradas em vez de bordas em toda célula. */
+.print-detalhe-tabela {
+  width: 100%; border-collapse: collapse; margin-top: 10px; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+}
+.print-detalhe-tabela th, .print-detalhe-tabela td { border: none; border-bottom: 1px solid #eee; padding: 10px 14px; text-align: left; font-size: 13px; vertical-align: top; }
+.print-detalhe-tabela tr:last-child th, .print-detalhe-tabela tr:last-child td { border-bottom: none; }
+.print-detalhe-tabela tr:nth-child(even) { background: #fafafa; }
+.print-detalhe-tabela th { width: 200px; background: #f4f4f4; color: #333; font-weight: 700; }
+
+/* Rodapé de marca em todo relatório impresso do sistema (ver imprimirSecao em ui.js). */
+.print-footer-strategya {
+  margin-top: 28px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center;
+  font-size: 10px; color: #999;
+}
 
 /* Grade 2x2 da Análise SWOT na impressão (Contexto Organizacional) */
 .print-swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
@@ -587,6 +599,26 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
   .container { max-width: 100%; padding: 0; }
   .card { box-shadow: none; border: 1px solid #ccc; }
   body { background: #fff; }
+
+  /* Todo relatório impresso do sistema usa Arial, independente da fonte da tela (Inter). */
+  body.imprimindo-secao, body.imprimindo-secao * { font-family: Arial, Helvetica, sans-serif !important; }
+
+  /* Tabelas de lista dentro de uma impressão (ex: itens de um plano) — mesmo tratamento moderno
+     da .print-detalhe-tabela: sem grade pesada, sombra suave, linhas zebradas. */
+  body.imprimindo-secao #print-secao table.table {
+    border-collapse: collapse; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+  }
+  body.imprimindo-secao #print-secao table.table th,
+  body.imprimindo-secao #print-secao table.table td { border: none; border-bottom: 1px solid #eee; padding: 8px 12px; }
+  body.imprimindo-secao #print-secao table.table thead th { background: #f4f4f4; color: #333; }
+  body.imprimindo-secao #print-secao table.table tr:nth-child(even) { background: #fafafa; }
+
+  /* Grade de cartões com sombra para campo/valor (usado nos relatórios novos: Auditorias, etc.),
+     alternativa mais moderna à tabela tradicional quando fizer sentido. */
+  .print-field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 10px 0; }
+  .print-field-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.1); padding: 10px 14px; }
+  .print-field-card .campo-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: #777; font-weight: 700; margin-bottom: 3px; }
+  .print-field-card .campo-valor { font-size: 13px; color: #111; }
 
   /* O documento tem cabeçalho/rodapé próprios — não duplica com o timbre genérico do sistema */
   body.imprimindo-documento .print-letterhead { display: none !important; }

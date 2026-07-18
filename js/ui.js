@@ -92,7 +92,11 @@ export function enviarPorEmail(assunto, corpoTexto) {
 export function imprimirSecao(htmlConteudo) {
   const area = document.getElementById('print-secao');
   if (!area) return;
-  area.innerHTML = htmlConteudo;
+  // Documentos (procedimento/IT/registro) tem cabeçalho/rodapé próprios de controle de qualidade
+  // (código, revisão, classificação) — não duplica com o rodapé genérico de marca abaixo.
+  const rodapeGenerico = document.body.classList.contains('imprimindo-documento') ? '' : `
+    <div class="print-footer-strategya">Sistema STRATEGYA · by ORBEEX — Todos os direitos reservados.</div>`;
+  area.innerHTML = htmlConteudo + rodapeGenerico;
   document.body.classList.add('imprimindo-secao');
 
   const limpar = () => { document.body.classList.remove('imprimindo-secao'); area.innerHTML = ''; };

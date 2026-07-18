@@ -631,6 +631,17 @@ document.addEventListener('strategya:abrir-risco', async (e) => {
   riscos.abrirEdicaoPorId(state, document.getElementById('tab-riscos'), e.detail.id);
 });
 
+// Disparado por Riscos e Oportunidades ao "Tratar" um risco — abre o plano de ação vinculado
+// direto na aba Ações (Gestão de Ações).
+document.addEventListener('strategya:abrir-plano-acao', async (e) => {
+  moduloAtivo = 'acoes';
+  viewAtual = 'modulo';
+  planosAcao.irParaGrupo('planos');
+  renderModuleRail();
+  await renderConteudoAtivo();
+  planosAcao.abrirPlanoPorId(state, areaModuloSimples, e.detail.id);
+});
+
 // Troca de aba dentro do Planejamento Estratégico (ex: "ver indicadores" a partir de um Objetivo)
 document.addEventListener('strategya:mudar-aba', (e) => {
   // "Ações" virou módulo próprio (não é mais aba do Planejamento Estratégico)

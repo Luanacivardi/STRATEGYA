@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao, enviarPorEmail } from '../ui.js';
 
 // Módulo "Gestão de Auditorias Corporativas" (ISO 9001/14001/45001): solicitação → priorização
 // (IPA) → planejamento inteligente → distribuição automática de horas → agenda automática →
@@ -195,7 +195,9 @@ function gerarAgenda(auditoria, distribuicaoTurnos, nomeProcesso, nomeTurno) {
 // Sugere um auditor por bloco de processo, em rodízio (round-robin) entre os membros da equipe
 // designada, pulando quem tem impedimento de área para aquele processo específico. É só uma
 // sugestão para agilizar a execução — o comitê pode trocar manualmente quando quiser.
-function sugerirAuditoresPorBloco(blocos, equipeComAuditor, processosPorId) {
+// Auditoria interna sempre sugere 2 auditores por processo (dupla verificação) — dobrarParaDois
+// vem de auditoria.tipo === 'interna'.
+function sugerirAuditoresPorBloco(blocos, equipeComAuditor, processosPorId, dobrarParaDois) {
   let indiceRodizio = 0;
   return blocos.map((b) => {
     if (b.tipo !== 'processo') return b;
@@ -204,10 +206,15 @@ function sugerirAuditoresPorBloco(blocos, equipeComAuditor, processosPorId) {
       if (!e.area_atuacao || !processo?.area) return true;
       return e.area_atuacao.trim().toLowerCase() !== processo.area.trim().toLowerCase();
     });
-    if (!elegiveis.length) return { ...b, auditor_sugerido_id: null };
-    const escolhido = elegiveis[indiceRodizio % elegiveis.length];
+    if (!elegiveis.length) return { ...b, auditor_sugerido_id: null, auditor_sugerido_2_id: null };
+    const escolhido1 = elegiveis[indiceRodizio % elegiveis.length];
     indiceRodizio++;
-    return { ...b, auditor_sugerido_id: escolhido.auditor_id };
+    let escolhido2 = null;
+    if (dobrarParaDois && elegiveis.length > 1) {
+      escolhido2 = elegiveis[indiceRodizio % elegiveis.length];
+      indiceRodizio++;
+    }
+    return { ...b, auditor_sugerido_id: escolhido1.auditor_id, auditor_sugerido_2_id: escolhido2?.auditor_id || null };
   });
 }
 
@@ -239,7 +246,10 @@ async function renderTurnos(container, state) {
         ${(turnos || []).map((t) => `
           <tr>
             <td>${escapeHtml(t.nome)}</td><td>${t.hora_inicio.slice(0, 5)}</td><td>${t.hora_fim.slice(0, 5)}</td>
-            <td class="table-actions"><button class="icon-btn" data-excluir="${t.id}"><i class="ti ti-trash"></i></button></td>
+            <td class="table-actions">
+              <button class="icon-btn" data-editar="${t.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+              <button class="icon-btn" data-excluir="${t.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+            </td>
           </tr>`).join('') || '<tr><td colspan="4" class="text-muted">Nenhum turno cadastrado.</td></tr>'}
       </tbody>
     </table>
@@ -247,9 +257,35 @@ async function renderTurnos(container, state) {
       <div class="form-group"><label>Nome do turno</label><input type="text" id="tn-nome" placeholder="Ex: Turno 1" required></div>
       <div class="form-group"><label>Início</label><input type="time" id="tn-inicio" required></div>
       <div class="form-group"><label>Fim</label><input type="time" id="tn-fim" required></div>
-      <div class="form-group"><button class="btn btn-primary btn-block" type="submit">Adicionar</button></div>
+      <div class="form-group"><button class="btn btn-primary btn-block" type="submit" id="btn-salvar-turno">Adicionar</button></div>
+      <div class="form-group" id="grupo-cancelar-turno" style="display:none"><button type="button" class="btn btn-secondary btn-block" id="btn-cancelar-turno">Cancelar edição</button></div>
     </form>
   `;
+
+  const form = area.querySelector('#form-turno');
+  const btnSalvar = area.querySelector('#btn-salvar-turno');
+  const grupoCancelar = area.querySelector('#grupo-cancelar-turno');
+  let editandoId = null;
+
+  function limparFormulario() {
+    form.reset();
+    editandoId = null;
+    btnSalvar.textContent = 'Adicionar';
+    grupoCancelar.style.display = 'none';
+  }
+
+  area.querySelectorAll('[data-editar]').forEach((btn) => btn.addEventListener('click', () => {
+    const t = (turnos || []).find((x) => x.id === btn.dataset.editar);
+    if (!t) return;
+    editandoId = t.id;
+    area.querySelector('#tn-nome').value = t.nome;
+    area.querySelector('#tn-inicio').value = t.hora_inicio.slice(0, 5);
+    area.querySelector('#tn-fim').value = t.hora_fim.slice(0, 5);
+    btnSalvar.textContent = 'Salvar edição';
+    grupoCancelar.style.display = '';
+    area.querySelector('#tn-nome').focus();
+  }));
+  area.querySelector('#btn-cancelar-turno').addEventListener('click', limparFormulario);
 
   area.querySelectorAll('[data-excluir]').forEach((btn) => btn.addEventListener('click', async () => {
     if (!(await confirmar('Excluir este turno?'))) return;
@@ -258,16 +294,20 @@ async function renderTurnos(container, state) {
     renderTurnos(container, state);
   }));
 
-  area.querySelector('#form-turno').addEventListener('submit', async (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const { error: errIns } = await supabase.from('auditorias_turnos').insert({
+    const payload = {
       empresa_id: empresaAtual.id,
       nome: area.querySelector('#tn-nome').value.trim(),
       hora_inicio: area.querySelector('#tn-inicio').value,
       hora_fim: area.querySelector('#tn-fim').value,
-    });
-    if (errIns) return toast('Erro ao adicionar: ' + errIns.message, 'erro');
-    toast('Turno adicionado.', 'sucesso');
+    };
+    const query = editandoId
+      ? supabase.from('auditorias_turnos').update(payload).eq('id', editandoId)
+      : supabase.from('auditorias_turnos').insert(payload);
+    const { error: errSalvar } = await query;
+    if (errSalvar) return toast('Erro ao salvar: ' + errSalvar.message, 'erro');
+    toast(editandoId ? 'Turno atualizado.' : 'Turno adicionado.', 'sucesso');
     renderTurnos(container, state);
   });
 }
@@ -564,7 +604,10 @@ function abrirFormularioAuditor(state, container, item = null) {
           ${certificacoes.map((c, idx) => `
             <tr>
               <td>${escapeHtml(c.nome)}</td><td>${escapeHtml(c.instituicao || '—')}</td><td>${c.data_obtencao || '—'}</td><td>${c.validade || '—'}</td>
-              <td class="table-actions"><button type="button" class="icon-btn" data-remover-cert="${idx}"><i class="ti ti-trash"></i></button></td>
+              <td class="table-actions">
+                <button type="button" class="icon-btn" data-editar-cert="${idx}" title="Editar"><i class="ti ti-pencil"></i></button>
+                <button type="button" class="icon-btn" data-remover-cert="${idx}" title="Excluir"><i class="ti ti-trash"></i></button>
+              </td>
             </tr>`).join('') || '<tr><td colspan="5" class="text-muted">Nenhuma certificação registrada.</td></tr>'}
         </tbody>
       </table>
@@ -574,12 +617,37 @@ function abrirFormularioAuditor(state, container, item = null) {
         <div class="form-group"><label style="font-weight:400;font-size:12px">Obtenção</label><input type="date" id="ct-obtencao"></div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Validade</label><input type="date" id="ct-validade"></div>
         <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-cert">Adicionar</button></div>
+        <div class="form-group" id="grupo-cancelar-cert" style="display:none"><button type="button" class="btn btn-secondary btn-block" id="btn-cancelar-cert">Cancelar edição</button></div>
       </div>`;
+
+    let editandoCertIdx = null;
+    function limparFormularioCert() {
+      modal.querySelector('#ct-nome').value = '';
+      modal.querySelector('#ct-instituicao').value = '';
+      modal.querySelector('#ct-obtencao').value = '';
+      modal.querySelector('#ct-validade').value = '';
+      editandoCertIdx = null;
+      modal.querySelector('#btn-add-cert').textContent = 'Adicionar';
+      modal.querySelector('#grupo-cancelar-cert').style.display = 'none';
+    }
 
     modal.querySelectorAll('[data-remover-cert]').forEach((btn) => btn.addEventListener('click', () => {
       certificacoes.splice(Number(btn.dataset.removerCert), 1);
       renderCertificacoes();
     }));
+    modal.querySelectorAll('[data-editar-cert]').forEach((btn) => btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.editarCert);
+      const c = certificacoes[idx];
+      editandoCertIdx = idx;
+      modal.querySelector('#ct-nome').value = c.nome;
+      modal.querySelector('#ct-instituicao').value = c.instituicao || '';
+      modal.querySelector('#ct-obtencao').value = c.data_obtencao || '';
+      modal.querySelector('#ct-validade').value = c.validade || '';
+      modal.querySelector('#btn-add-cert').textContent = 'Salvar edição';
+      modal.querySelector('#grupo-cancelar-cert').style.display = '';
+      modal.querySelector('#ct-nome').focus();
+    }));
+    modal.querySelector('#btn-cancelar-cert').addEventListener('click', limparFormularioCert);
     modal.querySelector('#btn-add-cert').addEventListener('click', () => {
       const nome = modal.querySelector('#ct-nome').value.trim();
       if (!nome) return toast('Informe o nome da certificação/treinamento.', 'erro');
@@ -587,7 +655,10 @@ function abrirFormularioAuditor(state, container, item = null) {
       const validade = modal.querySelector('#ct-validade').value;
       if (obtencao && !dataValida(obtencao)) return toast('Data de obtenção inválida.', 'erro');
       if (validade && !dataValida(validade)) return toast('Validade inválida.', 'erro');
-      certificacoes.push({ nome, instituicao: modal.querySelector('#ct-instituicao').value.trim() || null, data_obtencao: obtencao || null, validade: validade || null });
+      const registro = { nome, instituicao: modal.querySelector('#ct-instituicao').value.trim() || null, data_obtencao: obtencao || null, validade: validade || null };
+      if (editandoCertIdx !== null) certificacoes[editandoCertIdx] = registro;
+      else certificacoes.push(registro);
+      limparFormularioCert();
       renderCertificacoes();
     });
   }
@@ -851,7 +922,7 @@ async function abrirAuditoria(state, container, item = null) {
     montarExecucao(state, modal, item, processos, () => renderAuditorias(container, state));
     montarAprovacao(state, modal, item);
     renderDistribuicaoESalva(
-      modal, item, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor,
+      modal, state, item, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, auditores,
       processosSelecionados.map((s) => ({ processo_id: s.processo_id, pontuacao: s.pontuacao, horas: s.horas_distribuidas })),
       agendaExistente,
     );
@@ -892,13 +963,15 @@ async function abrirAuditoria(state, container, item = null) {
       };
       const { data: equipeAtual } = await supabase.from('auditorias_equipe').select('*').eq('auditoria_id', item.id);
       const agendaSemSugestao = gerarAgenda(auditoriaAtualizada, distribuicaoTurnos, nomeProcesso, nomeTurno);
-      const agenda = sugerirAuditoresPorBloco(agendaSemSugestao, equipeComAuditor(equipeAtual || []), processosPorId);
+      const agendaComSugestao = sugerirAuditoresPorBloco(agendaSemSugestao, equipeComAuditor(equipeAtual || []), processosPorId, item.tipo === 'interna');
       await supabase.from('auditorias_agenda').delete().eq('auditoria_id', item.id);
-      await supabase.from('auditorias_agenda').insert(agenda.map((b) => ({
+      await supabase.from('auditorias_agenda').insert(agendaComSugestao.map((b) => ({
         auditoria_id: item.id, dia: b.dia, hora_inicio: b.hora_inicio, hora_fim: b.hora_fim, tipo: b.tipo,
         processo_id: b.processo_id || null, turno_id: b.turno_id || null, rotulo: b.rotulo,
-        auditor_sugerido_id: b.auditor_sugerido_id || null,
+        auditor_sugerido_id: b.auditor_sugerido_id || null, auditor_sugerido_2_id: b.auditor_sugerido_2_id || null,
       })));
+      // Recarrega do banco para ter o "id" de cada bloco (necessário para editar/salvar ajustes na agenda).
+      const { data: agenda } = await supabase.from('auditorias_agenda').select('*').eq('auditoria_id', item.id).order('dia').order('hora_inicio');
 
       const ipaMedio = distribuicaoProcessos.reduce((s, d) => s + d.pontuacao, 0) / distribuicaoProcessos.length;
       const classificacao = classificarIPA(ipaMedio);
@@ -908,7 +981,7 @@ async function abrirAuditoria(state, container, item = null) {
       }).eq('id', item.id);
 
       toast('Horas distribuídas e agenda gerada com sucesso.', 'sucesso');
-      renderDistribuicaoESalva(modal, { ...item, ...auditoriaAtualizada }, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, distribuicaoProcessos, agenda);
+      renderDistribuicaoESalva(modal, state, { ...item, ...auditoriaAtualizada }, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, auditores, distribuicaoProcessos, agenda || []);
     });
 
     modal.querySelector('#btn-imprimir-relatorio').addEventListener('click', () => imprimirRelatorio(state, item));
@@ -1058,7 +1131,12 @@ function montarPriorizacao(modal, processos, processosSelecionados) {
     </table>` : '<p class="text-muted">Cadastre processos auditáveis na aba "Processos Auditáveis" primeiro.</p>';
 }
 
-function renderDistribuicaoESalva(modal, auditoria, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, distribuicaoProcessosNova, agendaNova) {
+// Renderiza a distribuição de horas (somente leitura) e a agenda gerada — esta última totalmente
+// editável (horário, atividade e auditor sugerido por bloco), com botão para salvar os ajustes,
+// imprimir e enviar por e-mail. auditoria.tipo === 'interna' mostra uma segunda coluna de auditor
+// sugerido (regra de dois auditores por área em auditoria interna).
+function renderDistribuicaoESalva(modal, state, auditoria, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, auditores, distribuicaoProcessosNova, agendaNova) {
+  const { supabase } = state;
   const areaDist = modal.querySelector('#ad-distribuicao-area');
   const areaAgenda = modal.querySelector('#ad-agenda-area');
   if (!areaDist || !areaAgenda) return;
@@ -1069,18 +1147,93 @@ function renderDistribuicaoESalva(modal, auditoria, processos, turnos, turnosPor
       <table class="table"><thead><tr><th>Processo</th><th>Pontuação (IPA)</th><th>Horas</th></tr></thead>
       <tbody>${distribuicaoProcessosNova.map((d) => `<tr><td>${escapeHtml(nomeProcesso(d.processo_id))}</td><td>${(+d.pontuacao).toFixed(1)}</td><td>${(+d.horas).toFixed(2)}h</td></tr>`).join('')}</tbody></table>`;
   }
-  if (agendaNova?.length) {
-    const porDia = {};
-    agendaNova.forEach((b) => { (porDia[b.dia] = porDia[b.dia] || []).push(b); });
-    areaAgenda.innerHTML = `
-      <p style="font-weight:700;margin-bottom:6px">Agenda gerada</p>
-      <p class="text-muted" style="font-size:12px;margin-top:-4px;margin-bottom:8px">O auditor sugerido é calculado por rodízio entre a equipe designada, evitando quem tem impedimento de área — pode trocar manualmente na Execução.</p>
-      ${Object.entries(porDia).map(([dia, blocos]) => `
-        <p style="font-weight:600;margin:8px 0 4px">Dia ${dia}</p>
-        <table class="table"><thead><tr><th style="width:140px">Horário</th><th>Atividade</th><th>Auditor sugerido</th></tr></thead>
-        <tbody>${blocos.map((b) => `<tr><td>${b.hora_inicio.slice(0, 5)} às ${b.hora_fim.slice(0, 5)}</td><td>${escapeHtml(b.rotulo)}</td><td>${b.auditor_sugerido_id ? escapeHtml(nomeAuditor(b.auditor_sugerido_id)) : (b.tipo === 'processo' ? '<span class="text-muted">— designe a equipe</span>' : '—')}</td></tr>`).join('')}</tbody></table>
-      `).join('')}`;
-  }
+  if (!agendaNova?.length) { areaAgenda.innerHTML = ''; return; }
+
+  const mostrarSegundoAuditor = auditoria.tipo === 'interna';
+  const optionsAuditor = (selecionadoId) => `<option value="">—</option>${auditores.map((a) => `<option value="${a.id}" ${a.id === selecionadoId ? 'selected' : ''}>${escapeHtml(a.nome)}</option>`).join('')}`;
+
+  const porDia = {};
+  agendaNova.forEach((b) => { (porDia[b.dia] = porDia[b.dia] || []).push(b); });
+
+  areaAgenda.innerHTML = `
+    <p style="font-weight:700;margin-bottom:6px">Agenda gerada <span class="text-muted" style="font-weight:400;font-size:12px">(sugestão do sistema — todos os campos abaixo são editáveis)</span></p>
+    <p class="text-muted" style="font-size:12px;margin-top:-4px;margin-bottom:8px">
+      O auditor sugerido é calculado por rodízio entre a equipe designada, evitando quem tem impedimento de área.
+      ${mostrarSegundoAuditor ? 'Auditoria interna sempre sugere 2 auditores por processo.' : ''}
+      Ajuste horário, atividade ou auditor diretamente na tabela e clique em "Salvar ajustes".
+    </p>
+    ${Object.entries(porDia).map(([dia, blocos]) => `
+      <p style="font-weight:600;margin:8px 0 4px">Dia ${dia}</p>
+      <table class="table">
+        <thead><tr><th style="width:100px">Início</th><th style="width:100px">Fim</th><th>Atividade</th>${blocos.some((b) => b.tipo === 'processo') ? `<th>Auditor sugerido</th>${mostrarSegundoAuditor ? '<th>2º auditor</th>' : ''}` : ''}</tr></thead>
+        <tbody>${blocos.map((b) => `
+          <tr data-agenda-id="${b.id}">
+            <td><input type="time" class="ag-hora-inicio" value="${b.hora_inicio.slice(0, 5)}"></td>
+            <td><input type="time" class="ag-hora-fim" value="${b.hora_fim.slice(0, 5)}"></td>
+            <td><input type="text" class="ag-rotulo" value="${escapeHtml(b.rotulo || '')}"></td>
+            ${b.tipo === 'processo' ? `
+              <td><select class="ag-auditor-1">${optionsAuditor(b.auditor_sugerido_id)}</select></td>
+              ${mostrarSegundoAuditor ? `<td><select class="ag-auditor-2">${optionsAuditor(b.auditor_sugerido_2_id)}</select></td>` : ''}
+            ` : `<td colspan="${mostrarSegundoAuditor ? 2 : 1}"></td>`}
+          </tr>`).join('')}</tbody>
+      </table>
+    `).join('')}
+    <div class="filters" style="margin-top:1rem">
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-salvar-ajustes-agenda"><i class="ti ti-device-floppy"></i> Salvar ajustes</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-imprimir-agenda"><i class="ti ti-printer"></i> Imprimir agenda</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-email-agenda"><i class="ti ti-mail"></i> Enviar por e-mail</button>
+    </div>
+  `;
+
+  areaAgenda.querySelector('#btn-salvar-ajustes-agenda').addEventListener('click', async () => {
+    const linhas = [...areaAgenda.querySelectorAll('[data-agenda-id]')];
+    const atualizacoes = linhas.map((tr) => {
+      const payload = {
+        hora_inicio: tr.querySelector('.ag-hora-inicio').value,
+        hora_fim: tr.querySelector('.ag-hora-fim').value,
+        rotulo: tr.querySelector('.ag-rotulo').value.trim(),
+      };
+      const sel1 = tr.querySelector('.ag-auditor-1');
+      const sel2 = tr.querySelector('.ag-auditor-2');
+      if (sel1) payload.auditor_sugerido_id = sel1.value || null;
+      if (sel2) payload.auditor_sugerido_2_id = sel2.value || null;
+      return supabase.from('auditorias_agenda').update(payload).eq('id', tr.dataset.agendaId);
+    });
+    const resultados = await Promise.all(atualizacoes);
+    const comErro = resultados.find((r) => r.error);
+    if (comErro) return toast('Erro ao salvar ajustes: ' + comErro.error.message, 'erro');
+    toast('Ajustes da agenda salvos com sucesso.', 'sucesso');
+  });
+
+  areaAgenda.querySelector('#btn-imprimir-agenda').addEventListener('click', () => imprimirAgenda(auditoria, porDia, nomeProcesso, nomeAuditor));
+  areaAgenda.querySelector('#btn-email-agenda').addEventListener('click', () => {
+    const corpo = Object.entries(porDia).map(([dia, blocos]) => {
+      const linhasTxt = blocos.map((b) => `  ${b.hora_inicio.slice(0, 5)} às ${b.hora_fim.slice(0, 5)} — ${b.rotulo}${b.auditor_sugerido_id ? ` (auditor: ${nomeAuditor(b.auditor_sugerido_id)}${b.auditor_sugerido_2_id ? ' e ' + nomeAuditor(b.auditor_sugerido_2_id) : ''})` : ''}`).join('\n');
+      return `Dia ${dia}\n${linhasTxt}`;
+    }).join('\n\n');
+    enviarPorEmail(`Agenda da Auditoria ${auditoria.numero}`, corpo);
+  });
+}
+
+// Documento de impressão da agenda (ver imprimirSecao em ui.js — já inclui timbre e rodapé de marca).
+function imprimirAgenda(auditoria, porDia, nomeProcesso, nomeAuditor) {
+  imprimirSecao(`
+    <h2 style="margin-bottom:4px">Agenda da Auditoria ${escapeHtml(auditoria.numero)}</h2>
+    <p class="text-muted">${escapeHtml(auditoria.titulo)}</p>
+    <hr class="sep">
+    ${Object.entries(porDia).map(([dia, blocos]) => `
+      <h4 style="margin-top:16px">Dia ${dia}</h4>
+      <table class="table">
+        <thead><tr><th>Horário</th><th>Atividade</th><th>Auditor(es) sugerido(s)</th></tr></thead>
+        <tbody>${blocos.map((b) => `
+          <tr>
+            <td>${b.hora_inicio.slice(0, 5)} às ${b.hora_fim.slice(0, 5)}</td>
+            <td>${escapeHtml(b.rotulo || '')}</td>
+            <td>${b.auditor_sugerido_id ? escapeHtml(nomeAuditor(b.auditor_sugerido_id)) : '—'}${b.auditor_sugerido_2_id ? ' e ' + escapeHtml(nomeAuditor(b.auditor_sugerido_2_id)) : ''}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    `).join('')}
+  `);
 }
 
 function montarEquipe(state, modal, auditoria, auditores, equipeAtual, processos) {
