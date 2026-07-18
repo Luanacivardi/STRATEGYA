@@ -108,6 +108,19 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 }
 .card-header i { color: var(--gold); font-size: 16px; }
 
+/* Blocos de planejamento (ex: Gestão de Auditorias): agrupa campos relacionados dentro de um
+   card com título, em vez de linhas soltas sem contexto visual. */
+.planejamento-box {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1rem 1.1rem; margin-bottom: 1rem;
+}
+.planejamento-box-titulo {
+  font-size: 12px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.4px;
+  display: flex; align-items: center; gap: 6px; margin-bottom: 0.75rem;
+}
+.planejamento-box-titulo i { color: var(--gold); font-size: 14px; }
+.planejamento-box .form-row:last-child { margin-bottom: 0; }
+
 /* ===== AUDITORIA DE DADOS (histórico de alterações, recolhido por padrão) ===== */
 .audit-card { padding: 0; }
 .audit-card-summary {
