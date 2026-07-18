@@ -708,12 +708,19 @@ async function abrirAuditoria(state, container, item = null) {
       </div>
 
       ${item ? `
+      ${['externa', 'certificacao', 'recertificacao'].includes(item.tipo) ? `
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">2. Priorização (IPA) — selecione os processos auditados</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">2. Documentos do organismo certificador</p>
+      <div class="alert alert-info"><i class="ti ti-info-circle"></i><span>Plano de auditoria, relatório do auditor externo, certificado etc. — documentos recebidos do organismo certificador, não gerados internamente.</span></div>
+      <div id="ad-documentos-area"></div>
+      ` : ''}
+
+      <hr class="sep">
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">3. Priorização (IPA) — selecione os processos auditados</p>
       <div id="ad-priorizacao-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">3. Planejamento inteligente</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">4. Planejamento inteligente</p>
 
       <div class="planejamento-box">
         <p class="planejamento-box-titulo"><i class="ti ti-calendar-time"></i> Duração da auditoria</p>
@@ -759,19 +766,19 @@ async function abrirAuditoria(state, container, item = null) {
       <div id="ad-agenda-area" style="margin-top:1rem"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">4. Equipe auditora</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">5. Equipe auditora</p>
       <div id="ad-equipe-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">5. Execução e resultados</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">6. Execução e resultados</p>
       <div id="ad-execucao-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">6. Fluxo de aprovação</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">7. Fluxo de aprovação</p>
       <div id="ad-aprovacao-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">7. Conclusão do relatório</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">8. Conclusão do relatório</p>
       <div class="form-group">
         <label>Conclusão</label>
         <select id="ad-conclusao">
@@ -802,6 +809,7 @@ async function abrirAuditoria(state, container, item = null) {
   atualizarTempoUtil();
 
   if (item) {
+    montarDocumentosOrganismo(state, modal, item);
     montarPriorizacao(modal, processos, processosSelecionados);
     montarEquipe(state, modal, item, auditores, equipe, processos);
     montarExecucao(state, modal, item, processos, () => renderAuditorias(container, state));
@@ -903,6 +911,76 @@ async function abrirAuditoria(state, container, item = null) {
     fecharModal();
     renderAuditorias(container, state);
   });
+}
+
+// ==================== DOCUMENTOS DO ORGANISMO CERTIFICADOR ====================
+// Só aparece para tipo externa/certificação/recertificação (ver seção "2." acima). Documentos
+// recebidos de terceiros, vinculados à auditoria como um todo — reaproveita o bucket
+// 'evidencias-auditorias' já usado pelos anexos de achados, em uma subpasta própria.
+function montarDocumentosOrganismo(state, modal, auditoria) {
+  const { supabase, empresaAtual, user } = state;
+  const area = modal.querySelector('#ad-documentos-area');
+  if (!area) return;
+
+  async function carregarERenderizar() {
+    const { data: documentos, error } = await supabase.from('auditorias_documentos').select('*').eq('auditoria_id', auditoria.id).order('created_at', { ascending: false });
+    if (error) { area.innerHTML = `<div class="alert alert-warning">Erro: ${escapeHtml(error.message)}</div>`; return; }
+    const lista = documentos || [];
+
+    area.innerHTML = `
+      <table class="table">
+        <thead><tr><th>Arquivo</th><th>Descrição</th><th>Enviado em</th><th></th></tr></thead>
+        <tbody>${lista.map((d) => `
+          <tr>
+            <td><i class="ti ti-paperclip"></i> ${escapeHtml(d.nome_arquivo)}</td>
+            <td>${escapeHtml(d.descricao || '—')}</td>
+            <td>${new Date(d.created_at).toLocaleDateString('pt-BR')}</td>
+            <td class="table-actions">
+              <button type="button" class="icon-btn" data-baixar-doc="${d.id}" title="Abrir"><i class="ti ti-download"></i></button>
+              <button type="button" class="icon-btn" data-excluir-doc="${d.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+            </td>
+          </tr>`).join('') || '<tr><td colspan="4" class="text-muted">Nenhum documento anexado ainda.</td></tr>'}</tbody>
+      </table>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Arquivo</label><input type="file" id="doc-arquivo"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Descrição (opcional)</label><input type="text" id="doc-descricao" placeholder="Ex: Relatório final do organismo"></div>
+        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-doc">Anexar</button></div>
+      </div>`;
+
+    area.querySelectorAll('[data-baixar-doc]').forEach((btn) => btn.addEventListener('click', async () => {
+      const doc = lista.find((d) => d.id === btn.dataset.baixarDoc);
+      const { data, error: errUrl } = await supabase.storage.from('evidencias-auditorias').createSignedUrl(doc.url, 300);
+      if (errUrl) return toast('Erro ao abrir documento: ' + errUrl.message, 'erro');
+      window.open(data.signedUrl, '_blank');
+    }));
+    area.querySelectorAll('[data-excluir-doc]').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!(await confirmar('Excluir este documento?'))) return;
+      const doc = lista.find((d) => d.id === btn.dataset.excluirDoc);
+      await supabase.storage.from('evidencias-auditorias').remove([doc.url]);
+      await supabase.from('auditorias_documentos').delete().eq('id', doc.id);
+      carregarERenderizar();
+    }));
+
+    area.querySelector('#btn-add-doc').addEventListener('click', async () => {
+      const arquivo = area.querySelector('#doc-arquivo').files[0];
+      if (!arquivo) return toast('Selecione um arquivo.', 'erro');
+      const nomeSanitizado = arquivo.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const caminho = `${empresaAtual.id}/${auditoria.id}/documentos-organismo/${Date.now()}_${nomeSanitizado}`;
+      const { error: errUpload } = await supabase.storage.from('evidencias-auditorias').upload(caminho, arquivo, { upsert: true });
+      if (errUpload) return toast('Erro ao enviar arquivo: ' + errUpload.message, 'erro');
+
+      const { error: errIns } = await supabase.from('auditorias_documentos').insert({
+        auditoria_id: auditoria.id, nome_arquivo: arquivo.name, url: caminho,
+        descricao: area.querySelector('#doc-descricao').value.trim() || null, enviado_por: user.id,
+      });
+      if (errIns) return toast('Erro ao registrar documento: ' + errIns.message, 'erro');
+
+      toast('Documento anexado com sucesso.', 'sucesso');
+      carregarERenderizar();
+    });
+  }
+
+  carregarERenderizar();
 }
 
 function montarPriorizacao(modal, processos, processosSelecionados) {
