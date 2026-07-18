@@ -5,6 +5,37 @@ import * as todo from './todo.js';
 const STATUS_LABEL = { nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', concluido: 'Concluído', atrasado: 'Atrasado' };
 const ORIGEM_LABEL = { objetivo: 'Objetivo', indicador: 'Indicador', risco: 'Risco/Oportunidade', nc: 'Não Conformidade', rac: 'Ata de Reunião', conta_gerencial: 'Controladoria' };
 
+// Categoria de origem do plano (de onde partiu a demanda) — distinta do vínculo "origem" acima,
+// que aponta para um registro específico (objetivo/indicador/risco/etc).
+const ORIGEM_CATEGORIA_LABEL = {
+  interna: 'Interna',
+  analise_critica: 'Análise Crítica',
+  auditoria_externa: 'Auditoria Externa',
+  auditoria_interna: 'Auditoria Interna',
+  cliente: 'Cliente',
+  fornecedor: 'Fornecedor',
+  indicadores: 'Indicadores',
+  planejamento_estrategico: 'Planejamento Estratégico',
+};
+
+const TIPO_LABEL = {
+  incidente: 'Incidente',
+  mitigacao_risco: 'Mitigação de Risco',
+  mudanca: 'Mudança',
+  nao_conformidade: 'Não Conformidade',
+  oportunidade_melhoria: 'Oportunidade de Melhoria',
+  prevencao: 'Prevenção',
+  reclamacao_cliente: 'Reclamação de Cliente',
+  reclamacao_nao_procedente: 'Reclamação Não Procedente',
+  devolucao: 'Devolução',
+  reclamacao_fornecedor: 'Reclamação de Fornecedor',
+  notificacao_cliente: 'Notificação de Cliente',
+};
+
+// Tipos em que faz sentido pedir o nome do cliente/fornecedor envolvido.
+const TIPOS_COM_CLIENTE = new Set(['reclamacao_cliente', 'reclamacao_nao_procedente', 'notificacao_cliente']);
+const TIPOS_COM_FORNECEDOR = new Set(['reclamacao_fornecedor', 'devolucao']);
+
 let filtroOrigemObjetivo = null; // quando vem da tela de Objetivos, já chega filtrado
 let grupoAtivo = 'planos'; // 'planos' | 'todo'
 
@@ -34,14 +65,20 @@ function wireFiltrosGrupo(container, state) {
 }
 
 async function carregarOrigens(supabase, empresaId) {
-  const [objetivos, { data: indicadoresData }, { data: riscosData }, { data: atasData }, { data: contasData }] = await Promise.all([
+  const [objetivos, { data: indicadoresData }, { data: riscosData }, { data: atasData }, { data: contasData }, { data: processosData }] = await Promise.all([
     listarObjetivos(supabase, empresaId),
     supabase.from('indicadores').select('id, nome').eq('empresa_id', empresaId),
     supabase.from('riscos_oportunidades').select('id, descricao').eq('empresa_id', empresaId),
     supabase.from('reunioes_analise_critica').select('id, data').eq('empresa_id', empresaId),
     supabase.from('contas_gerenciais').select('id, codigo, nome').eq('empresa_id', empresaId),
+    supabase.from('macrofluxo_processos').select('id, nome').eq('empresa_id', empresaId).order('ordem'),
   ]);
-  return { objetivos, indicadores: indicadoresData || [], riscos: riscosData || [], atas: atasData || [], contas: contasData || [] };
+  return { objetivos, indicadores: indicadoresData || [], riscos: riscosData || [], atas: atasData || [], contas: contasData || [], processos: processosData || [] };
+}
+
+function nomeProcesso(processoId, origens) {
+  if (!processoId) return '—';
+  return origens.processos.find((p) => p.id === processoId)?.nome || '—';
 }
 
 function nomeOrigem(plano, origens) {
@@ -236,13 +273,14 @@ async function renderPlanos(container, state) {
     const area = container.querySelector('#planos-tabela-area');
     area.innerHTML = filtrados.length ? `
         <table class="table">
-          <thead><tr><th><input type="checkbox" id="pa-selecionar-todas"></th><th>Nº</th><th>Título</th><th>Origem</th><th>Responsável</th><th>Quando</th><th>Status</th><th>%</th><th>Evidência</th><th></th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="pa-selecionar-todas"></th><th>Nº</th><th>Título</th><th>Categoria / Tipo</th><th>Origem</th><th>Responsável</th><th>Quando</th><th>Status</th><th>%</th><th>Evidência</th><th></th></tr></thead>
           <tbody>
             ${filtrados.map((p) => `
               <tr>
                 <td><input type="checkbox" class="pa-checkbox" data-id="${p.id}" ${selecionados.has(p.id) ? 'checked' : ''}></td>
                 <td><span class="badge badge-neutral">${escapeHtml(p.numero)}</span></td>
                 <td><strong>${escapeHtml(p.titulo)}</strong><br><span class="text-muted">${escapeHtml(p.o_que || '')}</span></td>
+                <td>${p.origem_categoria ? `<span class="badge badge-neutral">${ORIGEM_CATEGORIA_LABEL[p.origem_categoria]}</span><br>` : ''}${p.tipo ? escapeHtml(TIPO_LABEL[p.tipo]) : '—'}</td>
                 <td>${p.origem ? `<span class="badge badge-neutral">${ORIGEM_LABEL[p.origem]}</span><br>` : ''}${escapeHtml(nomeOrigem(p, origens))}</td>
                 <td>${escapeHtml(emailPorId.get(p.responsavel_id) || '—')}</td>
                 <td>${p.quando || '—'}</td>
@@ -387,10 +425,13 @@ async function renderPlanos(container, state) {
 }
 
 function exportarCsvPlanos(planos, origens, emailPorId) {
-  const cabecalho = ['Nº', 'Título', 'Origem', 'Responsável', 'Quando', 'Status', '%'];
+  const cabecalho = ['Nº', 'Título', 'Categoria de origem', 'Tipo', 'Origem', 'Responsável', 'Quando', 'Status', '%'];
   const escaparCsv = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
   const linhasCsv = planos.map((p) => [
-    p.numero, p.titulo, nomeOrigem(p, origens), emailPorId.get(p.responsavel_id) || '—', p.quando || '', STATUS_LABEL[p.status], p.percentual_conclusao,
+    p.numero, p.titulo,
+    p.origem_categoria ? ORIGEM_CATEGORIA_LABEL[p.origem_categoria] : '',
+    p.tipo ? TIPO_LABEL[p.tipo] : '',
+    nomeOrigem(p, origens), emailPorId.get(p.responsavel_id) || '—', p.quando || '', STATUS_LABEL[p.status], p.percentual_conclusao,
   ].map(escaparCsv).join(','));
   const csv = [cabecalho.map(escaparCsv).join(','), ...linhasCsv].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -416,7 +457,13 @@ async function imprimirPlano(state, plano, origens) {
     <hr class="sep">
     <table class="print-detalhe-tabela">
       <tbody>
+        <tr><th>Categoria de origem</th><td>${plano.origem_categoria ? ORIGEM_CATEGORIA_LABEL[plano.origem_categoria] : '—'}</td></tr>
+        <tr><th>Tipo</th><td>${plano.tipo ? TIPO_LABEL[plano.tipo] : '—'}</td></tr>
         <tr><th>Origem</th><td>${plano.origem ? `${ORIGEM_LABEL[plano.origem]} — ${escapeHtml(nomeOrigem(plano, origens))}` : '—'}</td></tr>
+        <tr><th>Processo emissor</th><td>${escapeHtml(nomeProcesso(plano.processo_emissor_id, origens))}</td></tr>
+        <tr><th>Processo responsável</th><td>${escapeHtml(nomeProcesso(plano.processo_responsavel_id, origens))}</td></tr>
+        ${plano.nome_cliente ? `<tr><th>Cliente</th><td>${escapeHtml(plano.nome_cliente)}</td></tr>` : ''}
+        ${plano.nome_fornecedor ? `<tr><th>Fornecedor</th><td>${escapeHtml(plano.nome_fornecedor)}</td></tr>` : ''}
         <tr><th>O quê</th><td>${escapeHtml(plano.o_que || '—')}</td></tr>
         <tr><th>Por quê</th><td>${escapeHtml(plano.por_que || '—')}</td></tr>
         <tr><th>Onde</th><td>${escapeHtml(plano.onde || '—')}</td></tr>
@@ -501,6 +548,48 @@ function abrirFormulario(state, container, origens, membros, item = null) {
         <div class="form-group" id="grupo-origem-id" style="${item?.origem ? '' : 'display:none'}">
           <label>Item vinculado</label>
           <select id="pa-origem-id">${item?.origem ? optionsOrigem(item.origem) : ''}</select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria de origem</label>
+          <select id="pa-origem-categoria">
+            <option value="">—</option>
+            ${Object.entries(ORIGEM_CATEGORIA_LABEL).map(([v, l]) => `<option value="${v}" ${item?.origem_categoria === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="pa-tipo">
+            <option value="">—</option>
+            ${Object.entries(TIPO_LABEL).map(([v, l]) => `<option value="${v}" ${item?.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Processo emissor</label>
+          <select id="pa-processo-emissor">
+            <option value="">—</option>
+            ${origens.processos.map((p) => `<option value="${p.id}" ${item?.processo_emissor_id === p.id ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Processo responsável</label>
+          <select id="pa-processo-responsavel">
+            <option value="">—</option>
+            ${origens.processos.map((p) => `<option value="${p.id}" ${item?.processo_responsavel_id === p.id ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" id="grupo-nome-cliente" style="${item?.tipo && TIPOS_COM_CLIENTE.has(item.tipo) ? '' : 'display:none'}">
+          <label>Nome do cliente</label>
+          <input type="text" id="pa-nome-cliente" value="${item ? escapeHtml(item.nome_cliente || '') : ''}">
+        </div>
+        <div class="form-group" id="grupo-nome-fornecedor" style="${item?.tipo && TIPOS_COM_FORNECEDOR.has(item.tipo) ? '' : 'display:none'}">
+          <label>Nome do fornecedor</label>
+          <input type="text" id="pa-nome-fornecedor" value="${item ? escapeHtml(item.nome_fornecedor || '') : ''}">
         </div>
       </div>
       <div class="form-group">
@@ -631,6 +720,11 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     select.innerHTML = optionsOrigem(e.target.value);
   });
 
+  modal.querySelector('#pa-tipo').addEventListener('change', (e) => {
+    modal.querySelector('#grupo-nome-cliente').style.display = TIPOS_COM_CLIENTE.has(e.target.value) ? '' : 'none';
+    modal.querySelector('#grupo-nome-fornecedor').style.display = TIPOS_COM_FORNECEDOR.has(e.target.value) ? '' : 'none';
+  });
+
   const toggleFerramenta = (btnId, grupoId) => {
     const btn = modal.querySelector(btnId);
     const grupo = modal.querySelector(grupoId);
@@ -663,6 +757,12 @@ function abrirFormulario(state, container, origens, membros, item = null) {
       titulo: modal.querySelector('#pa-titulo').value.trim(),
       origem,
       origem_id: origem ? (modal.querySelector('#pa-origem-id').value || null) : null,
+      origem_categoria: modal.querySelector('#pa-origem-categoria').value || null,
+      tipo: modal.querySelector('#pa-tipo').value || null,
+      processo_emissor_id: modal.querySelector('#pa-processo-emissor').value || null,
+      processo_responsavel_id: modal.querySelector('#pa-processo-responsavel').value || null,
+      nome_cliente: modal.querySelector('#pa-nome-cliente').value.trim() || null,
+      nome_fornecedor: modal.querySelector('#pa-nome-fornecedor').value.trim() || null,
       o_que: modal.querySelector('#pa-o-que').value.trim(),
       por_que: modal.querySelector('#pa-por-que').value.trim(),
       onde: modal.querySelector('#pa-onde').value.trim(),
