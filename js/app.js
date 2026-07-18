@@ -319,6 +319,25 @@ async function carregarNivelEdicao(empresaId, departamentoId) {
   state.nivelEdicao = 'leitura';
 }
 
+// Gestão de Apurações é o único módulo com uma segunda trava de acesso além de "habilitado para
+// a empresa": mesmo habilitado, só aparece no menu para quem é 'orbeex' ou membro ativo do comitê
+// de apuração desta empresa — evita expor o módulo (e o risco de conflito de interesse) a
+// qualquer admin/usuário da empresa que não faça parte do comitê.
+async function carregarAcessoApuracoes(empresaId) {
+  if (state.papelAtual === 'orbeex') {
+    state.acessoApuracoes = true;
+    return;
+  }
+  const { data } = await supabase
+    .from('apuracoes_comite_membros')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .eq('usuario_id', state.user.id)
+    .eq('ativo', true)
+    .maybeSingle();
+  state.acessoApuracoes = !!data;
+}
+
 async function selecionarEmpresa(empresaId) {
   const emp = state.empresas.find((e) => e.id === empresaId);
   if (!emp) return;
@@ -330,6 +349,7 @@ async function selecionarEmpresa(empresaId) {
   aplicarTema(emp);
   atualizarCabecalhoImpressao(emp);
   await carregarNivelEdicao(emp.id, emp.departamentoId);
+  await carregarAcessoApuracoes(emp.id);
   renderModuleRail();
   renderConteudoAtivo();
 }
@@ -451,7 +471,9 @@ const MODULOS_SEMPRE_VISIVEIS_ORBEEX = ['acoes', 'controladoria'];
 
 function moduloHabilitadoParaEmpresa(moduloId) {
   if (state.papelAtual === 'orbeex' && MODULOS_SEMPRE_VISIVEIS_ORBEEX.includes(moduloId)) return true;
-  return (state.empresaAtual?.modulos_habilitados || []).includes(moduloId);
+  const habilitado = (state.empresaAtual?.modulos_habilitados || []).includes(moduloId);
+  if (moduloId === 'apuracoes') return habilitado && !!state.acessoApuracoes;
+  return habilitado;
 }
 
 // ---------- MÓDULOS (sidebar) ----------
@@ -637,5 +659,13 @@ document.addEventListener('strategya:mudar-aba', (e) => {
   renderModuleRail();
   renderConteudoAtivo();
 });
+
+// Chamado pelo módulo de Apurações depois de qualquer mudança no comitê, para o menu lateral
+// refletir na hora um acesso concedido/revogado sem precisar trocar de empresa.
+export async function recarregarAcessoApuracoes() {
+  if (!state.empresaAtual) return;
+  await carregarAcessoApuracoes(state.empresaAtual.id);
+  renderModuleRail();
+}
 
 export { selecionarEmpresa, renderConteudoAtivo, abrirModalNovaEmpresa };

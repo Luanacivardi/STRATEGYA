@@ -1,4 +1,5 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida } from '../ui.js';
+import { recarregarAcessoApuracoes } from '../app.js';
 
 // Módulo "Gestão de Apurações": controla apenas o FLUXO de apurações/investigações corporativas
 // (ISO 37301/37002/37001) — canal de origem, natureza, criticidade, prazos, status e resultado.
@@ -174,6 +175,7 @@ async function renderComite(container, state, podeGerenciarComite) {
     btn.addEventListener('click', async () => {
       const { error } = await supabase.from('apuracoes_comite_membros').update({ ativo: btn.dataset.valor === 'true' }).eq('id', btn.dataset.toggleAtivo);
       if (error) return toast('Erro: ' + error.message, 'erro');
+      await recarregarAcessoApuracoes();
       renderComite(container, state, podeGerenciarComite);
     });
   });
@@ -183,6 +185,7 @@ async function renderComite(container, state, podeGerenciarComite) {
       if (!(await confirmar('Remover este membro do comitê de apuração?'))) return;
       const { error } = await supabase.from('apuracoes_comite_membros').delete().eq('id', btn.dataset.remover);
       if (error) return toast('Erro ao remover: ' + error.message, 'erro');
+      await recarregarAcessoApuracoes();
       renderComite(container, state, podeGerenciarComite);
     });
   });
@@ -195,6 +198,7 @@ async function renderComite(container, state, podeGerenciarComite) {
     const { error } = await supabase.from('apuracoes_comite_membros').insert({ empresa_id: empresaAtual.id, usuario_id, papel });
     if (error) return toast('Erro ao adicionar: ' + error.message, 'erro');
     toast('Membro adicionado ao comitê.', 'sucesso');
+    await recarregarAcessoApuracoes();
     renderComite(container, state, podeGerenciarComite);
   });
 }
