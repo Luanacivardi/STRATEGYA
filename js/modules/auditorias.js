@@ -427,13 +427,13 @@ async function renderAuditores(container, state) {
   wireFiltrosGrupo(container, state);
   const area = container.querySelector('#aud-corpo');
 
-  const { data: auditores, error } = await supabase.from('auditores').select('*, auditores_competencias(*)').eq('empresa_id', empresaAtual.id);
+  const { data: auditores, error } = await supabase.from('auditores').select('*, auditores_competencias(*), auditores_certificacoes(*)').eq('empresa_id', empresaAtual.id);
   if (error) { area.innerHTML = `<div class="alert alert-warning">Erro: ${escapeHtml(error.message)}</div>`; return; }
 
   const hoje = new Date().toISOString().slice(0, 10);
   area.innerHTML = auditores.length ? `
     <table class="table">
-      <thead><tr><th>Nome</th><th>Função</th><th>Área de atuação</th><th>Competências</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Função</th><th>Área de atuação</th><th>Competências</th><th>Certificações/Treinamentos</th><th>Status</th><th></th></tr></thead>
       <tbody>
         ${auditores.map((a) => `
           <tr>
@@ -443,6 +443,10 @@ async function renderAuditores(container, state) {
             <td>${(a.auditores_competencias || []).map((c) => {
               const vencida = c.validade && c.validade < hoje;
               return `<span class="badge ${vencida ? 'badge-danger' : 'badge-neutral'}" title="${vencida ? 'Qualificação vencida' : ''}">${NORMA_LABEL[c.norma]} · ${NIVEL_COMPETENCIA_LABEL[c.nivel]}</span>`;
+            }).join(' ') || '—'}</td>
+            <td>${(a.auditores_certificacoes || []).map((c) => {
+              const vencida = c.validade && c.validade < hoje;
+              return `<span class="badge ${vencida ? 'badge-danger' : 'badge-neutral'}" title="${vencida ? 'Certificação vencida' : ''}">${escapeHtml(c.nome)}</span>`;
             }).join(' ') || '—'}</td>
             <td>${a.ativo ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-neutral">Inativo</span>'}</td>
             <td class="table-actions">
@@ -468,6 +472,7 @@ async function renderAuditores(container, state) {
 function abrirFormularioAuditor(state, container, item = null) {
   const { supabase, empresaAtual } = state;
   let competencias = item ? [...(item.auditores_competencias || [])] : [];
+  let certificacoes = item ? [...(item.auditores_certificacoes || [])] : [];
 
   const modal = abrirModal(item ? 'Editar auditor' : 'Novo auditor', `
     <form id="form-auditor">
@@ -488,6 +493,7 @@ function abrirFormularioAuditor(state, container, item = null) {
         <div class="form-group"><label>E-mail</label><input type="email" id="au-email" value="${item ? escapeHtml(item.email || '') : ''}"></div>
       </div>
       <div class="form-group" id="au-competencias-area"></div>
+      <div class="form-group" id="au-certificacoes-area"></div>
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
   `);
@@ -529,6 +535,45 @@ function abrirFormularioAuditor(state, container, item = null) {
   }
   renderCompetencias();
 
+  function renderCertificacoes() {
+    modal.querySelector('#au-certificacoes-area').innerHTML = `
+      <label>Certificações e treinamentos técnicos (opcional)</label>
+      <p class="text-muted" style="font-size:12px;margin-top:-4px;margin-bottom:8px">Outras qualificações do auditor além das normas acima — ex: NR-12, Solda, CIPA, formação de auditor de terceira parte.</p>
+      <table class="table">
+        <thead><tr><th>Certificação/Treinamento</th><th>Instituição</th><th>Obtenção</th><th>Validade</th><th></th></tr></thead>
+        <tbody>
+          ${certificacoes.map((c, idx) => `
+            <tr>
+              <td>${escapeHtml(c.nome)}</td><td>${escapeHtml(c.instituicao || '—')}</td><td>${c.data_obtencao || '—'}</td><td>${c.validade || '—'}</td>
+              <td class="table-actions"><button type="button" class="icon-btn" data-remover-cert="${idx}"><i class="ti ti-trash"></i></button></td>
+            </tr>`).join('') || '<tr><td colspan="5" class="text-muted">Nenhuma certificação registrada.</td></tr>'}
+        </tbody>
+      </table>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Certificação/Treinamento</label><input type="text" id="ct-nome" placeholder="Ex: NR-12"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Instituição</label><input type="text" id="ct-instituicao"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Obtenção</label><input type="date" id="ct-obtencao"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Validade</label><input type="date" id="ct-validade"></div>
+        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-cert">Adicionar</button></div>
+      </div>`;
+
+    modal.querySelectorAll('[data-remover-cert]').forEach((btn) => btn.addEventListener('click', () => {
+      certificacoes.splice(Number(btn.dataset.removerCert), 1);
+      renderCertificacoes();
+    }));
+    modal.querySelector('#btn-add-cert').addEventListener('click', () => {
+      const nome = modal.querySelector('#ct-nome').value.trim();
+      if (!nome) return toast('Informe o nome da certificação/treinamento.', 'erro');
+      const obtencao = modal.querySelector('#ct-obtencao').value;
+      const validade = modal.querySelector('#ct-validade').value;
+      if (obtencao && !dataValida(obtencao)) return toast('Data de obtenção inválida.', 'erro');
+      if (validade && !dataValida(validade)) return toast('Validade inválida.', 'erro');
+      certificacoes.push({ nome, instituicao: modal.querySelector('#ct-instituicao').value.trim() || null, data_obtencao: obtencao || null, validade: validade || null });
+      renderCertificacoes();
+    });
+  }
+  renderCertificacoes();
+
   modal.querySelector('#form-auditor').addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
@@ -549,6 +594,13 @@ function abrirFormularioAuditor(state, container, item = null) {
     await supabase.from('auditores_competencias').delete().eq('auditor_id', salvo.id);
     if (competencias.length) {
       await supabase.from('auditores_competencias').insert(competencias.map((c) => ({ auditor_id: salvo.id, norma: c.norma, nivel: c.nivel, validade: c.validade })));
+    }
+
+    await supabase.from('auditores_certificacoes').delete().eq('auditor_id', salvo.id);
+    if (certificacoes.length) {
+      await supabase.from('auditores_certificacoes').insert(certificacoes.map((c) => ({
+        auditor_id: salvo.id, nome: c.nome, instituicao: c.instituicao, data_obtencao: c.data_obtencao, validade: c.validade,
+      })));
     }
 
     toast('Auditor salvo com sucesso.', 'sucesso');
