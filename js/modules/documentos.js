@@ -255,7 +255,7 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
           ${filtrados.map((d) => `
             <tr>
               <td>${escapeHtml(d.numero)}</td>
-              <td>${escapeHtml(d.nome)}</td>
+              <td>${d.arquivo_url ? `<a href="#" class="dc-abrir-arquivo" data-abrir-arquivo="${d.id}" title="Abrir arquivo enviado"><i class="ti ti-file-text"></i>${escapeHtml(d.nome)}</a>` : escapeHtml(d.nome)}</td>
               <td>${escapeHtml(d.tipos_documento.nome)}</td>
               <td>${escapeHtml(nomeProcesso(d.processo_id))}</td>
               <td>${String(d.revisao_atual).padStart(2, '0')}</td>
@@ -282,6 +282,14 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
   corpo.querySelectorAll('[data-baixar]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const doc = documentos.find((d) => d.id === btn.dataset.baixar);
+      abrirArquivoDocumento(state.supabase, doc.arquivo_url);
+    });
+  });
+
+  corpo.querySelectorAll('[data-abrir-arquivo]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const doc = documentos.find((d) => d.id === link.dataset.abrirArquivo);
       abrirArquivoDocumento(state.supabase, doc.arquivo_url);
     });
   });

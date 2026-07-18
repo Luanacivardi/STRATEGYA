@@ -108,6 +108,11 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 }
 .card-header i { color: var(--gold); font-size: 16px; }
 
+/* Nome do documento na lista mestra: clicável, abre direto o arquivo enviado no upload. */
+.dc-abrir-arquivo { color: var(--text-primary); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.dc-abrir-arquivo i { color: var(--gold); font-size: 14px; }
+.dc-abrir-arquivo:hover { color: var(--gold-dark); text-decoration: underline; }
+
 /* Blocos de planejamento (ex: Gestão de Auditorias): agrupa campos relacionados dentro de um
    card com título, em vez de linhas soltas sem contexto visual. */
 .planejamento-box {
