@@ -13,6 +13,7 @@ import * as documentos from './modules/documentos.js';
 import * as empresaUsuarios from './modules/empresaUsuarios.js';
 import * as permissoes from './modules/permissoes.js';
 import * as apuracoes from './modules/apuracoes.js';
+import * as auditorias from './modules/auditorias.js';
 
 export const state = {
   supabase,
@@ -29,7 +30,7 @@ const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, riscos, indicadores,
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes };
+const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes, 'auditorias': auditorias };
 
 // Módulos do sistema — "planejamento-estrategico" e "riscos-oportunidades" já implementados;
 // os demais aparecem no menu como "em breve" para deixar a estrutura do SGI visível.
@@ -44,9 +45,8 @@ export const MODULOS_SISTEMA = [
     descricao: 'Controle de documentos e registros da qualidade: numeração automática, ciclo de aprovação com assinatura eletrônica, revisões e lista mestra.' },
   { id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true,
     descricao: 'Controle do fluxo de apurações e investigações corporativas (ISO 37301/37002/37001) — acesso restrito ao comitê de apuração. Não armazena evidências ou documentos.' },
-  { id: 'auditorias', nome: 'Auditorias', icone: 'ti-clipboard-check', disponivel: false,
-    descricao: 'Planejamento e execução de auditorias internas.',
-    teaser: 'Audite com método — e sem planilha perdida.' },
+  { id: 'auditorias', nome: 'Gestão de Auditorias', icone: 'ti-clipboard-check', disponivel: true,
+    descricao: 'Auditorias internas e externas (ISO 9001/14001/45001): priorização por risco (IPA), planejamento inteligente, distribuição automática de horas e agenda, execução, resultados e aprovação, com geração automática de plano de ação a partir de não conformidades.' },
   { id: 'treinamentos', nome: 'Treinamentos', icone: 'ti-school', disponivel: false,
     descricao: 'Gestão de treinamentos e competências da equipe.',
     teaser: 'Saiba exatamente quem já foi treinado — e quem ainda precisa.' },
