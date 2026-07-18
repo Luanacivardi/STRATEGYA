@@ -714,29 +714,46 @@ async function abrirAuditoria(state, container, item = null) {
 
       <hr class="sep">
       <p style="font-weight:700;color:var(--navy);margin-bottom:8px">3. Planejamento inteligente</p>
-      <div class="form-row">
-        <div class="form-group"><label>Horas totais</label><input type="number" step="0.5" id="ad-horas-totais" value="${item.horas_totais ?? ''}"></div>
-        <div class="form-group"><label>Dias</label><input type="number" min="1" id="ad-dias" value="${item.dias ?? 1}"></div>
-        <div class="form-group"><label>Data inicial</label><input type="date" id="ad-data-inicial" value="${item.data_inicial || ''}"></div>
-        <div class="form-group"><label>Data final</label><input type="date" id="ad-data-final" value="${item.data_final || ''}"></div>
+
+      <div class="planejamento-box">
+        <p class="planejamento-box-titulo"><i class="ti ti-calendar-time"></i> Duração da auditoria</p>
+        <div class="form-row">
+          <div class="form-group"><label>Horas totais</label><input type="number" step="0.5" id="ad-horas-totais" value="${item.horas_totais ?? ''}"></div>
+          <div class="form-group"><label>Dias</label><input type="number" min="1" id="ad-dias" value="${item.dias ?? 1}"></div>
+          <div class="form-group"><label>Data inicial</label><input type="date" id="ad-data-inicial" value="${item.data_inicial || ''}"></div>
+          <div class="form-group"><label>Data final</label><input type="date" id="ad-data-final" value="${item.data_final || ''}"></div>
+        </div>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Entrada</label><input type="time" id="ad-entrada" value="${item.hora_entrada?.slice(0, 5) || '08:00'}"></div>
-        <div class="form-group"><label>Saída</label><input type="time" id="ad-saida" value="${item.hora_saida?.slice(0, 5) || '17:30'}"></div>
-        <div class="form-group"><label>Almoço — início</label><input type="time" id="ad-almoco-inicio" value="${item.almoco_inicio?.slice(0, 5) || '12:00'}"></div>
-        <div class="form-group"><label>Almoço — fim</label><input type="time" id="ad-almoco-fim" value="${item.almoco_fim?.slice(0, 5) || '13:00'}"></div>
+
+      <div class="planejamento-box">
+        <p class="planejamento-box-titulo"><i class="ti ti-clock"></i> Jornada de trabalho</p>
+        <div class="form-row">
+          <div class="form-group"><label>Entrada</label><input type="time" id="ad-entrada" value="${item.hora_entrada?.slice(0, 5) || '08:00'}"></div>
+          <div class="form-group"><label>Saída</label><input type="time" id="ad-saida" value="${item.hora_saida?.slice(0, 5) || '17:30'}"></div>
+          <div class="form-group"><label>Almoço — início</label><input type="time" id="ad-almoco-inicio" value="${item.almoco_inicio?.slice(0, 5) || '12:00'}"></div>
+          <div class="form-group"><label>Almoço — fim</label><input type="time" id="ad-almoco-fim" value="${item.almoco_fim?.slice(0, 5) || '13:00'}"></div>
+        </div>
+        <p class="text-muted" style="font-size:12px;margin-top:2px">Tempo útil diário estimado: <strong id="ad-tempo-util">—</strong></p>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Deslocamento entre áreas (min)</label><input type="number" min="0" id="ad-deslocamento" value="${item.tempo_deslocamento_min ?? 0}"></div>
-        <div class="form-group"><label>Abertura (min)</label><input type="number" min="0" id="ad-abertura" value="${item.tempo_abertura_min ?? 30}"></div>
-        <div class="form-group"><label>Encerramento (min)</label><input type="number" min="0" id="ad-encerramento" value="${item.tempo_encerramento_min ?? 30}"></div>
-        <div class="form-group"><label>Consolidação (min)</label><input type="number" min="0" id="ad-consolidacao" value="${item.tempo_consolidacao_min ?? 30}"></div>
+
+      <div class="planejamento-box">
+        <p class="planejamento-box-titulo"><i class="ti ti-hourglass"></i> Tempos padrão (minutos)</p>
+        <div class="form-row">
+          <div class="form-group"><label>Deslocamento entre áreas</label><input type="number" min="0" id="ad-deslocamento" value="${item.tempo_deslocamento_min ?? 0}"></div>
+          <div class="form-group"><label>Reunião de abertura</label><input type="number" min="0" id="ad-abertura" value="${item.tempo_abertura_min ?? 30}"></div>
+          <div class="form-group"><label>Reunião de encerramento</label><input type="number" min="0" id="ad-encerramento" value="${item.tempo_encerramento_min ?? 30}"></div>
+          <div class="form-group"><label>Consolidação das evidências</label><input type="number" min="0" id="ad-consolidacao" value="${item.tempo_consolidacao_min ?? 30}"></div>
+        </div>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Mín. horas por processo</label><input type="number" step="0.1" id="ad-horas-min" value="${item.horas_min_processo ?? 0.5}"></div>
-        <div class="form-group"><label>Máx. horas por processo (opcional)</label><input type="number" step="0.1" id="ad-horas-max" value="${item.horas_max_processo ?? ''}"></div>
-        <div class="form-group" style="display:flex;align-items:flex-end"><p class="text-muted" style="font-size:12px">Tempo útil diário estimado: <strong id="ad-tempo-util">—</strong></p></div>
+
+      <div class="planejamento-box">
+        <p class="planejamento-box-titulo"><i class="ti ti-arrows-split"></i> Limites por processo</p>
+        <div class="form-row">
+          <div class="form-group"><label>Mín. horas por processo</label><input type="number" step="0.1" id="ad-horas-min" value="${item.horas_min_processo ?? 0.5}"></div>
+          <div class="form-group"><label>Máx. horas por processo (opcional)</label><input type="number" step="0.1" id="ad-horas-max" value="${item.horas_max_processo ?? ''}"></div>
+        </div>
       </div>
+
       <button type="button" class="btn btn-secondary" id="btn-distribuir-horas"><i class="ti ti-calculator"></i> Distribuir horas e gerar agenda</button>
       <div id="ad-distribuicao-area" style="margin-top:1rem"></div>
       <div id="ad-agenda-area" style="margin-top:1rem"></div>
