@@ -1,0 +1,13 @@
+{
+  "name": "strategya",
+  "version": "1.0.0",
+  "private": true,
+  "description": "STRATEGYA - by ORBEEX. Software proprietario, uso e copia nao autorizados.",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  },
+  "license": "UNLICENSED"
+}
