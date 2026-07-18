@@ -192,6 +192,25 @@ function gerarAgenda(auditoria, distribuicaoTurnos, nomeProcesso, nomeTurno) {
   return blocos;
 }
 
+// Sugere um auditor por bloco de processo, em rodízio (round-robin) entre os membros da equipe
+// designada, pulando quem tem impedimento de área para aquele processo específico. É só uma
+// sugestão para agilizar a execução — o comitê pode trocar manualmente quando quiser.
+function sugerirAuditoresPorBloco(blocos, equipeComAuditor, processosPorId) {
+  let indiceRodizio = 0;
+  return blocos.map((b) => {
+    if (b.tipo !== 'processo') return b;
+    const processo = processosPorId.get(b.processo_id);
+    const elegiveis = equipeComAuditor.filter((e) => {
+      if (!e.area_atuacao || !processo?.area) return true;
+      return e.area_atuacao.trim().toLowerCase() !== processo.area.trim().toLowerCase();
+    });
+    if (!elegiveis.length) return { ...b, auditor_sugerido_id: null };
+    const escolhido = elegiveis[indiceRodizio % elegiveis.length];
+    indiceRodizio++;
+    return { ...b, auditor_sugerido_id: escolhido.auditor_id };
+  });
+}
+
 // ==================== CARREGAMENTO COMUM ====================
 async function carregarBaseCadastros(supabase, empresaId) {
   const [{ data: processos }, { data: turnos }, { data: processosTurnos }, { data: auditores }] = await Promise.all([
@@ -660,16 +679,25 @@ async function abrirAuditoria(state, container, item = null) {
   processosTurnos.forEach((pt) => { const l = turnosPorProcesso.get(pt.processo_id) || []; l.push(pt.turno_id); turnosPorProcesso.set(pt.processo_id, l); });
   const nomeProcesso = (id) => processos.find((p) => p.id === id)?.nome || '—';
   const nomeTurno = (id) => turnos.find((t) => t.id === id)?.nome || '—';
+  const nomeAuditor = (id) => auditores.find((a) => a.id === id)?.nome || '—';
+  const processosPorId = new Map(processos.map((p) => [p.id, p]));
 
   let processosSelecionados = [];
   let equipe = [];
+  let agendaExistente = [];
   if (item) {
-    const [{ data: sel }, { data: eq }] = await Promise.all([
+    const [{ data: sel }, { data: eq }, { data: ag }] = await Promise.all([
       supabase.from('auditorias_processos_selecionados').select('*').eq('auditoria_id', item.id),
       supabase.from('auditorias_equipe').select('*').eq('auditoria_id', item.id),
+      supabase.from('auditorias_agenda').select('*').eq('auditoria_id', item.id).order('dia').order('hora_inicio'),
     ]);
     processosSelecionados = sel || [];
     equipe = eq || [];
+    agendaExistente = ag || [];
+  }
+  // Equipe já com dados do auditor (área de atuação), usada para sugerir quem executa cada bloco.
+  function equipeComAuditor(listaEquipe) {
+    return listaEquipe.map((e) => ({ auditor_id: e.auditor_id, ...(auditores.find((a) => a.id === e.auditor_id) || {}) }));
   }
 
   const modal = abrirModal(item ? `Auditoria ${escapeHtml(item.numero)}` : 'Solicitar auditoria', `
@@ -822,7 +850,11 @@ async function abrirAuditoria(state, container, item = null) {
     montarEquipe(state, modal, item, auditores, equipe, processos);
     montarExecucao(state, modal, item, processos, () => renderAuditorias(container, state));
     montarAprovacao(state, modal, item);
-    renderDistribuicaoESalva(modal, item, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno);
+    renderDistribuicaoESalva(
+      modal, item, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor,
+      processosSelecionados.map((s) => ({ processo_id: s.processo_id, pontuacao: s.pontuacao, horas: s.horas_distribuidas })),
+      agendaExistente,
+    );
 
     modal.querySelector('#btn-distribuir-horas').addEventListener('click', async () => {
       const selecionados = [...modal.querySelectorAll('.pz-processo:checked')].map((el) => el.value);
@@ -858,11 +890,14 @@ async function abrirAuditoria(state, container, item = null) {
         tempo_encerramento_min: Number(modal.querySelector('#ad-encerramento').value) || 0,
         tempo_consolidacao_min: Number(modal.querySelector('#ad-consolidacao').value) || 0,
       };
-      const agenda = gerarAgenda(auditoriaAtualizada, distribuicaoTurnos, nomeProcesso, nomeTurno);
+      const { data: equipeAtual } = await supabase.from('auditorias_equipe').select('*').eq('auditoria_id', item.id);
+      const agendaSemSugestao = gerarAgenda(auditoriaAtualizada, distribuicaoTurnos, nomeProcesso, nomeTurno);
+      const agenda = sugerirAuditoresPorBloco(agendaSemSugestao, equipeComAuditor(equipeAtual || []), processosPorId);
       await supabase.from('auditorias_agenda').delete().eq('auditoria_id', item.id);
       await supabase.from('auditorias_agenda').insert(agenda.map((b) => ({
         auditoria_id: item.id, dia: b.dia, hora_inicio: b.hora_inicio, hora_fim: b.hora_fim, tipo: b.tipo,
         processo_id: b.processo_id || null, turno_id: b.turno_id || null, rotulo: b.rotulo,
+        auditor_sugerido_id: b.auditor_sugerido_id || null,
       })));
 
       const ipaMedio = distribuicaoProcessos.reduce((s, d) => s + d.pontuacao, 0) / distribuicaoProcessos.length;
@@ -873,7 +908,7 @@ async function abrirAuditoria(state, container, item = null) {
       }).eq('id', item.id);
 
       toast('Horas distribuídas e agenda gerada com sucesso.', 'sucesso');
-      renderDistribuicaoESalva(modal, { ...item, ...auditoriaAtualizada }, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, distribuicaoProcessos, agenda);
+      renderDistribuicaoESalva(modal, { ...item, ...auditoriaAtualizada }, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, distribuicaoProcessos, agenda);
     });
 
     modal.querySelector('#btn-imprimir-relatorio').addEventListener('click', () => imprimirRelatorio(state, item));
@@ -1023,25 +1058,27 @@ function montarPriorizacao(modal, processos, processosSelecionados) {
     </table>` : '<p class="text-muted">Cadastre processos auditáveis na aba "Processos Auditáveis" primeiro.</p>';
 }
 
-function renderDistribuicaoESalva(modal, auditoria, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, distribuicaoProcessosNova, agendaNova) {
+function renderDistribuicaoESalva(modal, auditoria, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, distribuicaoProcessosNova, agendaNova) {
   const areaDist = modal.querySelector('#ad-distribuicao-area');
   const areaAgenda = modal.querySelector('#ad-agenda-area');
   if (!areaDist || !areaAgenda) return;
 
-  if (distribuicaoProcessosNova) {
+  if (distribuicaoProcessosNova?.length) {
     areaDist.innerHTML = `
       <p style="font-weight:700;margin-bottom:6px">Horas distribuídas por processo</p>
       <table class="table"><thead><tr><th>Processo</th><th>Pontuação (IPA)</th><th>Horas</th></tr></thead>
-      <tbody>${distribuicaoProcessosNova.map((d) => `<tr><td>${escapeHtml(nomeProcesso(d.processo_id))}</td><td>${d.pontuacao.toFixed(1)}</td><td>${d.horas.toFixed(2)}h</td></tr>`).join('')}</tbody></table>`;
+      <tbody>${distribuicaoProcessosNova.map((d) => `<tr><td>${escapeHtml(nomeProcesso(d.processo_id))}</td><td>${(+d.pontuacao).toFixed(1)}</td><td>${(+d.horas).toFixed(2)}h</td></tr>`).join('')}</tbody></table>`;
   }
-  if (agendaNova) {
+  if (agendaNova?.length) {
     const porDia = {};
     agendaNova.forEach((b) => { (porDia[b.dia] = porDia[b.dia] || []).push(b); });
     areaAgenda.innerHTML = `
       <p style="font-weight:700;margin-bottom:6px">Agenda gerada</p>
+      <p class="text-muted" style="font-size:12px;margin-top:-4px;margin-bottom:8px">O auditor sugerido é calculado por rodízio entre a equipe designada, evitando quem tem impedimento de área — pode trocar manualmente na Execução.</p>
       ${Object.entries(porDia).map(([dia, blocos]) => `
         <p style="font-weight:600;margin:8px 0 4px">Dia ${dia}</p>
-        <table class="table"><tbody>${blocos.map((b) => `<tr><td style="width:140px">${b.hora_inicio} às ${b.hora_fim}</td><td>${escapeHtml(b.rotulo)}</td></tr>`).join('')}</tbody></table>
+        <table class="table"><thead><tr><th style="width:140px">Horário</th><th>Atividade</th><th>Auditor sugerido</th></tr></thead>
+        <tbody>${blocos.map((b) => `<tr><td>${b.hora_inicio.slice(0, 5)} às ${b.hora_fim.slice(0, 5)}</td><td>${escapeHtml(b.rotulo)}</td><td>${b.auditor_sugerido_id ? escapeHtml(nomeAuditor(b.auditor_sugerido_id)) : (b.tipo === 'processo' ? '<span class="text-muted">— designe a equipe</span>' : '—')}</td></tr>`).join('')}</tbody></table>
       `).join('')}`;
   }
 }
@@ -1067,14 +1104,17 @@ function montarEquipe(state, modal, auditoria, auditores, equipeAtual, processos
     const jaNaEquipe = new Set(equipe.map((e) => e.auditor_id));
     const disponiveis = auditores.filter((a) => a.ativo && !jaNaEquipe.has(a.id));
     area.innerHTML = `
-      <table class="table">
-        <thead><tr><th>Auditor</th><th>Papel</th><th></th></tr></thead>
-        <tbody>${equipe.map((e) => `
-          <tr><td>${escapeHtml(nomeAuditor(e.auditor_id))}</td><td>${e.papel === 'lider' ? 'Líder' : 'Auditor'}</td>
-          <td class="table-actions"><button type="button" class="icon-btn" data-remover-equipe="${e.auditor_id}"><i class="ti ti-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="3" class="text-muted">Nenhum auditor designado.</td></tr>'}</tbody>
-      </table>
-      <div class="form-row" style="align-items:flex-end">
-        <div class="form-group"><label style="font-weight:400;font-size:12px">Auditor</label>
+      <div class="planejamento-box">
+        <p class="planejamento-box-titulo"><i class="ti ti-users"></i> Auditores designados (${equipe.length})</p>
+        <table class="table">
+          <thead><tr><th>Auditor</th><th>Papel</th><th></th></tr></thead>
+          <tbody>${equipe.map((e) => `
+            <tr><td>${escapeHtml(nomeAuditor(e.auditor_id))}</td><td>${e.papel === 'lider' ? 'Líder' : 'Auditor'}</td>
+            <td class="table-actions"><button type="button" class="icon-btn" data-remover-equipe="${e.auditor_id}"><i class="ti ti-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="3" class="text-muted">Nenhum auditor designado ainda.</td></tr>'}</tbody>
+        </table>
+        ${auditores.length ? `
+        <div class="form-row" style="align-items:flex-end;margin-top:0.75rem">
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Auditor cadastrado</label>
           <select id="eq-auditor">${disponiveis.map((a) => {
             const impedido = auditorTemImpedimento(a);
             const semCompetencia = !auditorTemCompetencia(a);
@@ -1082,10 +1122,11 @@ function montarEquipe(state, modal, auditoria, auditores, equipeAtual, processos
             return `<option value="${a.id}" ${impedido || semCompetencia ? 'disabled' : ''}>${escapeHtml(a.nome)}${aviso}</option>`;
           }).join('')}</select>
         </div>
-        <div class="form-group"><label style="font-weight:400;font-size:12px">Papel</label>
-          <select id="eq-papel"><option value="auditor">Auditor</option><option value="lider">Líder</option></select>
-        </div>
-        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-equipe">Adicionar</button></div>
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Papel</label>
+            <select id="eq-papel"><option value="auditor">Auditor</option><option value="lider">Líder</option></select>
+          </div>
+          <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-equipe">Adicionar</button></div>
+        </div>` : '<p class="text-muted" style="font-size:12px;margin-top:0.75rem">Nenhum auditor cadastrado ainda — cadastre na aba "Auditores" primeiro.</p>'}
       </div>`;
 
     area.querySelectorAll('[data-remover-equipe]').forEach((btn) => btn.addEventListener('click', async () => {

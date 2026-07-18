@@ -111,15 +111,21 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 /* Blocos de planejamento (ex: Gestão de Auditorias): agrupa campos relacionados dentro de um
    card com título, em vez de linhas soltas sem contexto visual. */
 .planejamento-box {
-  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 1rem 1.1rem; margin-bottom: 1rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+  border-radius: var(--radius); padding: 1.1rem 1.3rem; margin-bottom: 1.1rem;
+  box-shadow: 0 1px 3px rgba(37,37,56,0.05);
 }
 .planejamento-box-titulo {
-  font-size: 12px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.4px;
-  display: flex; align-items: center; gap: 6px; margin-bottom: 0.75rem;
+  font-size: 12px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.6px;
+  display: flex; align-items: center; gap: 8px; margin: -0.1rem 0 1rem; padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
 }
-.planejamento-box-titulo i { color: var(--gold); font-size: 14px; }
+.planejamento-box-titulo i {
+  color: var(--navy); background: var(--gold); width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;
+}
 .planejamento-box .form-row:last-child { margin-bottom: 0; }
+.planejamento-box .form-group label { font-size: 12px; font-weight: 600; }
 
 /* ===== AUDITORIA DE DADOS (histórico de alterações, recolhido por padrão) ===== */
 .audit-card { padding: 0; }
