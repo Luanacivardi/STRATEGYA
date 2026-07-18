@@ -528,7 +528,7 @@ function abrirFormulario(state, container, origens, membros, item = null) {
     return '';
   };
 
-  const modal = abrirModal(item ? 'Editar plano de ação' : 'Novo plano de ação (5W2H)', `
+  const modal = abrirModal(item ? 'Editar plano de ação' : 'Novo plano de ação', `
     <form id="form-plano">
       <div class="form-group">
         <label>Título</label>
@@ -796,6 +796,15 @@ function abrirFormulario(state, container, origens, membros, item = null) {
       } else {
         await supabase.from('planos_acao').update({ evidencia_url: caminho, evidencia_nome: arquivo.name }).eq('id', planoId);
       }
+    }
+
+    if (!item) {
+      // Plano novo: mantém a mesma tela aberta, já em modo edição, para descrever as tarefas
+      // na sequência, sem precisar reabrir o plano recém-criado pela lista.
+      toast('Plano de ação salvo com sucesso. Agora descreva as tarefas abaixo.', 'sucesso');
+      render(container, state);
+      abrirFormulario(state, container, origens, membros, salvo);
+      return;
     }
 
     toast('Plano de ação salvo com sucesso.', 'sucesso');
