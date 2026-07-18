@@ -40,6 +40,7 @@ function renderFiltrosGrupo() {
       <button class="filter-btn ${grupoAtivo === 'processos' ? 'active' : ''}" data-grupo="processos"><i class="ti ti-sitemap"></i> Processos Auditáveis</button>
       <button class="filter-btn ${grupoAtivo === 'turnos' ? 'active' : ''}" data-grupo="turnos"><i class="ti ti-clock"></i> Turnos</button>
       <button class="filter-btn ${grupoAtivo === 'auditores' ? 'active' : ''}" data-grupo="auditores"><i class="ti ti-users"></i> Auditores</button>
+      <button class="filter-btn ${grupoAtivo === 'relatorios' ? 'active' : ''}" data-grupo="relatorios"><i class="ti ti-report"></i> Relatórios</button>
       <button class="filter-btn ${grupoAtivo === 'dashboard' ? 'active' : ''}" data-grupo="dashboard"><i class="ti ti-chart-bar"></i> Dashboard</button>
     </div>`;
 }
@@ -53,6 +54,7 @@ export async function render(container, state) {
   if (grupoAtivo === 'processos') return renderProcessos(container, state);
   if (grupoAtivo === 'turnos') return renderTurnos(container, state);
   if (grupoAtivo === 'auditores') return renderAuditores(container, state);
+  if (grupoAtivo === 'relatorios') return renderRelatorios(container, state);
   if (grupoAtivo === 'dashboard') return renderDashboard(container, state);
   return renderAuditorias(container, state);
 }
@@ -1473,6 +1475,323 @@ function imprimirRelatorio(state, auditoria) {
       </table>
     `);
   })();
+}
+
+// ==================== RELATÓRIOS (requisito a requisito) ====================
+// Texto de apoio genérico por situação — NÃO é o texto oficial da norma ISO (material licenciado,
+// que o sistema não reproduz). Serve só de ponto de partida; o auditor sempre edita/complementa
+// com a evidência real antes de salvar.
+const TEMPLATE_SITUACAO = {
+  conforme: 'A empresa atende ao requisito avaliado.',
+  nao_atende: 'A empresa não atende ao requisito avaliado.',
+  atende_parcial: 'A empresa atende parcialmente ao requisito avaliado.',
+};
+const SITUACAO_LABEL = { conforme: 'Conforme', nao_atende: 'Não atende', atende_parcial: 'Atende parcialmente' };
+const SITUACAO_BADGE = { conforme: 'badge-success', nao_atende: 'badge-danger', atende_parcial: 'badge-warning' };
+
+let relatorioAuditoriaId = null; // auditoria selecionada na aba Relatórios, persiste entre re-renders
+
+async function renderRelatorios(container, state) {
+  const { supabase, empresaAtual } = state;
+  const { data: auditorias } = await supabase.from('auditorias').select('id, numero, titulo').eq('empresa_id', empresaAtual.id).order('numero', { ascending: false });
+
+  container.innerHTML = `
+    <div class="card">
+      ${renderFiltrosGrupo()}
+      <div class="form-group" style="margin-top:1rem;max-width:460px">
+        <label>Selecione a auditoria</label>
+        <select id="rel-auditoria-select">
+          <option value="">— Selecione —</option>
+          ${(auditorias || []).map((a) => `<option value="${a.id}" ${a.id === relatorioAuditoriaId ? 'selected' : ''}>${escapeHtml(a.numero)} — ${escapeHtml(a.titulo)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="rel-corpo" style="margin-top:1rem"></div>
+    </div>`;
+  wireFiltrosGrupo(container, state);
+
+  container.querySelector('#rel-auditoria-select').addEventListener('change', (e) => {
+    relatorioAuditoriaId = e.target.value || null;
+    renderRelatorios(container, state);
+  });
+
+  const areaCorpo = container.querySelector('#rel-corpo');
+  if (!relatorioAuditoriaId) {
+    areaCorpo.innerHTML = '<div class="empty-state"><i class="ti ti-report"></i>Selecione uma auditoria acima para editar o relatório.</div>';
+    return;
+  }
+  await renderCorpoRelatorio(areaCorpo, state, relatorioAuditoriaId);
+}
+
+async function renderCorpoRelatorio(area, state, auditoriaId) {
+  const { supabase, empresaAtual } = state;
+  area.innerHTML = 'Carregando...';
+
+  const [{ data: auditoria }, { data: processos }, { data: itensData }, { data: pessoasData }, { data: instrumentosData }, { data: procedimentosData }] = await Promise.all([
+    supabase.from('auditorias').select('*').eq('id', auditoriaId).single(),
+    supabase.from('auditorias_processos').select('id, nome').eq('empresa_id', empresaAtual.id),
+    supabase.from('auditorias_relatorio_itens').select('*').eq('auditoria_id', auditoriaId).order('numero_requisito'),
+    supabase.from('auditorias_relatorio_pessoas').select('*').eq('auditoria_id', auditoriaId),
+    supabase.from('auditorias_relatorio_instrumentos').select('*').eq('auditoria_id', auditoriaId),
+    supabase.from('auditorias_relatorio_procedimentos').select('*').eq('auditoria_id', auditoriaId),
+  ]);
+  if (!auditoria) { area.innerHTML = '<div class="alert alert-warning">Auditoria não encontrada.</div>'; return; }
+
+  let itens = itensData || [];
+  let pessoas = pessoasData || [];
+  let instrumentos = instrumentosData || [];
+  let procedimentos = procedimentosData || [];
+  const nomeProcesso = (id) => processos.find((p) => p.id === id)?.nome || '—';
+
+  function textoConclusaoPadrao() {
+    const naoConformes = itens.filter((i) => i.situacao !== 'conforme');
+    if (!naoConformes.length) return 'Auditoria concluída sem não conformidades identificadas. Os processos avaliados demonstraram conformidade com os requisitos aplicáveis.';
+    return `Auditoria concluída com ${naoConformes.length} ocorrência(s) de não conformidade/atendimento parcial identificada(s), detalhadas neste relatório. Recomenda-se a abertura de plano(s) de ação corretiva para tratamento e posterior verificação de eficácia.`;
+  }
+
+  area.innerHTML = `
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-list-check"></i> Requisitos avaliados</p>
+      <table class="table">
+        <thead><tr><th>Nº requisito</th><th>Norma</th><th>Processo</th><th>Situação</th><th>Descrição</th><th></th></tr></thead>
+        <tbody id="rel-itens-tbody"></tbody>
+      </table>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Nº do requisito</label><input type="text" id="ri-numero" placeholder="Ex: 8.5.1"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Norma</label>
+          <select id="ri-norma">${Object.entries(NORMA_LABEL).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Processo (opcional)</label>
+          <select id="ri-processo"><option value="">—</option>${processos.map((p) => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Situação</label>
+          <select id="ri-situacao">${Object.entries(SITUACAO_LABEL).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="form-group"><label style="font-weight:400;font-size:12px">Descrição da constatação</label><textarea id="ri-descricao" rows="2">${TEMPLATE_SITUACAO.conforme}</textarea></div>
+      <button type="button" class="btn btn-secondary" id="btn-add-item-relatorio">Adicionar requisito</button>
+    </div>
+
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-users"></i> Pessoas auditadas</p>
+      <table class="table"><thead><tr><th>Nome</th><th>Documentação de RH</th><th>Observação</th><th></th></tr></thead><tbody id="rel-pessoas-tbody"></tbody></table>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Nome</label><input type="text" id="pe-nome"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Documentação de RH</label>
+          <select id="pe-conforme"><option value="true">Conforme</option><option value="false">Não conforme</option></select>
+        </div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="pe-obs"></div>
+        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-pessoa">Adicionar</button></div>
+      </div>
+    </div>
+
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-ruler-2"></i> Instrumentos auditados</p>
+      <table class="table"><thead><tr><th>Instrumento</th><th>Calibração</th><th>Observação</th><th></th></tr></thead><tbody id="rel-instrumentos-tbody"></tbody></table>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Instrumento</label><input type="text" id="in-nome"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Calibração</label>
+          <select id="in-conforme"><option value="true">Conforme</option><option value="false">Não conforme</option></select>
+        </div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="in-obs"></div>
+        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-instrumento">Adicionar</button></div>
+      </div>
+    </div>
+
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-list-details"></i> Procedimentos auditados</p>
+      <table class="table"><thead><tr><th>Procedimento</th><th>Controle de ações</th><th>Observação</th><th></th></tr></thead><tbody id="rel-procedimentos-tbody"></tbody></table>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Procedimento</label><input type="text" id="pc-nome"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Controle de ações</label>
+          <select id="pc-conforme"><option value="true">Conforme</option><option value="false">Não conforme</option></select>
+        </div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="pc-obs"></div>
+        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-procedimento">Adicionar</button></div>
+      </div>
+    </div>
+
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-file-check"></i> Conclusão da auditoria</p>
+      <textarea id="rel-conclusao" rows="4">${escapeHtml(auditoria.conclusao_texto || textoConclusaoPadrao())}</textarea>
+      <div class="filters" style="margin-top:0.75rem">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-restaurar-conclusao">Restaurar texto padrão</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-salvar-conclusao">Salvar conclusão</button>
+      </div>
+    </div>
+
+    <button type="button" class="btn btn-primary btn-block" id="btn-imprimir-relatorio-detalhado"><i class="ti ti-printer"></i> Imprimir relatório completo</button>
+  `;
+
+  // ---- Requisitos ----
+  function renderItensTbody() {
+    area.querySelector('#rel-itens-tbody').innerHTML = itens.length ? itens.map((i) => `
+      <tr>
+        <td>${escapeHtml(i.numero_requisito)}</td>
+        <td>${i.norma ? NORMA_LABEL[i.norma] : '—'}</td>
+        <td>${escapeHtml(nomeProcesso(i.processo_id))}</td>
+        <td><span class="badge ${SITUACAO_BADGE[i.situacao]}">${SITUACAO_LABEL[i.situacao]}</span></td>
+        <td>${escapeHtml(i.descricao || '')}</td>
+        <td class="table-actions"><button type="button" class="icon-btn" data-remover-item="${i.id}"><i class="ti ti-trash"></i></button></td>
+      </tr>`).join('') : '<tr><td colspan="6" class="text-muted">Nenhum requisito registrado ainda.</td></tr>';
+    area.querySelectorAll('[data-remover-item]').forEach((btn) => btn.addEventListener('click', async () => {
+      await supabase.from('auditorias_relatorio_itens').delete().eq('id', btn.dataset.removerItem);
+      itens = itens.filter((i) => i.id !== btn.dataset.removerItem);
+      renderItensTbody();
+    }));
+  }
+  renderItensTbody();
+
+  area.querySelector('#ri-situacao').addEventListener('change', (e) => {
+    const ta = area.querySelector('#ri-descricao');
+    const valoresTemplate = Object.values(TEMPLATE_SITUACAO);
+    if (!ta.value.trim() || valoresTemplate.includes(ta.value.trim())) ta.value = TEMPLATE_SITUACAO[e.target.value];
+  });
+
+  area.querySelector('#btn-add-item-relatorio').addEventListener('click', async () => {
+    const numero = area.querySelector('#ri-numero').value.trim();
+    if (!numero) return toast('Informe o número do requisito.', 'erro');
+    const payload = {
+      auditoria_id: auditoriaId,
+      numero_requisito: numero,
+      norma: area.querySelector('#ri-norma').value,
+      processo_id: area.querySelector('#ri-processo').value || null,
+      situacao: area.querySelector('#ri-situacao').value,
+      descricao: area.querySelector('#ri-descricao').value.trim() || null,
+    };
+    const { data: salvo, error } = await supabase.from('auditorias_relatorio_itens').insert(payload).select().single();
+    if (error) return toast('Erro ao adicionar: ' + error.message, 'erro');
+    itens.push(salvo);
+    renderItensTbody();
+    area.querySelector('#ri-numero').value = '';
+    area.querySelector('#ri-descricao').value = TEMPLATE_SITUACAO.conforme;
+    area.querySelector('#ri-situacao').value = 'conforme';
+  });
+
+  // ---- Listas auxiliares (pessoas, instrumentos, procedimentos) — mesmo padrão para as 3 ----
+  function montarListaAuxiliar({ tbodyId, lista, tabela, campoNome, campoConforme, inputNomeId, inputConformeId, inputObsId, btnId, labelConforme }) {
+    function renderTbody() {
+      area.querySelector(tbodyId).innerHTML = lista.length ? lista.map((r) => `
+        <tr>
+          <td>${escapeHtml(r[campoNome])}</td>
+          <td><span class="badge ${r[campoConforme] ? 'badge-success' : 'badge-danger'}">${r[campoConforme] ? labelConforme : 'Não conforme'}</span></td>
+          <td>${escapeHtml(r.observacao || '—')}</td>
+          <td class="table-actions"><button type="button" class="icon-btn" data-remover-aux="${r.id}"><i class="ti ti-trash"></i></button></td>
+        </tr>`).join('') : '<tr><td colspan="4" class="text-muted">Nenhum registro ainda.</td></tr>';
+      area.querySelectorAll(`${tbodyId} [data-remover-aux]`).forEach((btn) => btn.addEventListener('click', async () => {
+        await supabase.from(tabela).delete().eq('id', btn.dataset.removerAux);
+        const idx = lista.findIndex((r) => r.id === btn.dataset.removerAux);
+        if (idx >= 0) lista.splice(idx, 1);
+        renderTbody();
+      }));
+    }
+    renderTbody();
+    area.querySelector(btnId).addEventListener('click', async () => {
+      const nome = area.querySelector(inputNomeId).value.trim();
+      if (!nome) return toast('Preencha o campo antes de adicionar.', 'erro');
+      const payload = {
+        auditoria_id: auditoriaId,
+        [campoNome]: nome,
+        [campoConforme]: area.querySelector(inputConformeId).value === 'true',
+        observacao: area.querySelector(inputObsId).value.trim() || null,
+      };
+      const { data: salvo, error } = await supabase.from(tabela).insert(payload).select().single();
+      if (error) return toast('Erro ao adicionar: ' + error.message, 'erro');
+      lista.push(salvo);
+      renderTbody();
+      area.querySelector(inputNomeId).value = '';
+      area.querySelector(inputObsId).value = '';
+    });
+  }
+
+  montarListaAuxiliar({
+    tbodyId: '#rel-pessoas-tbody', lista: pessoas, tabela: 'auditorias_relatorio_pessoas',
+    campoNome: 'nome', campoConforme: 'documentacao_rh_conforme',
+    inputNomeId: '#pe-nome', inputConformeId: '#pe-conforme', inputObsId: '#pe-obs', btnId: '#btn-add-pessoa', labelConforme: 'Conforme',
+  });
+  montarListaAuxiliar({
+    tbodyId: '#rel-instrumentos-tbody', lista: instrumentos, tabela: 'auditorias_relatorio_instrumentos',
+    campoNome: 'instrumento', campoConforme: 'calibracao_conforme',
+    inputNomeId: '#in-nome', inputConformeId: '#in-conforme', inputObsId: '#in-obs', btnId: '#btn-add-instrumento', labelConforme: 'Conforme',
+  });
+  montarListaAuxiliar({
+    tbodyId: '#rel-procedimentos-tbody', lista: procedimentos, tabela: 'auditorias_relatorio_procedimentos',
+    campoNome: 'procedimento', campoConforme: 'controle_acoes_conforme',
+    inputNomeId: '#pc-nome', inputConformeId: '#pc-conforme', inputObsId: '#pc-obs', btnId: '#btn-add-procedimento', labelConforme: 'Conforme',
+  });
+
+  // ---- Conclusão ----
+  area.querySelector('#btn-restaurar-conclusao').addEventListener('click', () => {
+    area.querySelector('#rel-conclusao').value = textoConclusaoPadrao();
+  });
+  area.querySelector('#btn-salvar-conclusao').addEventListener('click', async () => {
+    const { error } = await supabase.from('auditorias').update({ conclusao_texto: area.querySelector('#rel-conclusao').value.trim() }).eq('id', auditoriaId);
+    if (error) return toast('Erro ao salvar conclusão: ' + error.message, 'erro');
+    toast('Conclusão salva com sucesso.', 'sucesso');
+  });
+
+  // ---- Impressão ----
+  area.querySelector('#btn-imprimir-relatorio-detalhado').addEventListener('click', () => {
+    imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, area.querySelector('#rel-conclusao').value.trim(), nomeProcesso);
+  });
+}
+
+function agruparPorRequisito(lista) {
+  const grupos = new Map();
+  lista.forEach((i) => {
+    const chave = i.numero_requisito;
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(i);
+  });
+  return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+}
+
+function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, conclusaoTexto, nomeProcesso) {
+  const conformes = agruparPorRequisito(itens.filter((i) => i.situacao === 'conforme'));
+  const naoConformes = agruparPorRequisito(itens.filter((i) => i.situacao !== 'conforme'));
+
+  const blocoRequisito = ([numero, entradas]) => `
+    <div class="print-field-card" style="margin-bottom:8px">
+      <div class="campo-label">Requisito ${escapeHtml(numero)}</div>
+      ${entradas.map((e) => `
+        <div style="margin-bottom:4px">
+          <span class="badge ${SITUACAO_BADGE[e.situacao]}">${SITUACAO_LABEL[e.situacao]}</span>
+          ${e.norma ? ` <span class="text-muted">(${NORMA_LABEL[e.norma]}${e.processo_id ? ' — ' + escapeHtml(nomeProcesso(e.processo_id)) : ''})</span>` : ''}
+          <div class="campo-valor">${escapeHtml(e.descricao || '')}</div>
+        </div>`).join('')}
+    </div>`;
+
+  imprimirSecao(`
+    <h2 style="margin-bottom:4px">Relatório de Auditoria ${escapeHtml(auditoria.numero)}</h2>
+    <p class="text-muted">${escapeHtml(auditoria.titulo)}</p>
+    <hr class="sep">
+
+    <h4 style="margin-top:16px">Conformidades</h4>
+    <div class="print-field-grid">${conformes.length ? conformes.map(blocoRequisito).join('') : '<p class="text-muted">Nenhum requisito conforme registrado.</p>'}</div>
+
+    <h4 style="margin-top:16px">Não Conformidades</h4>
+    <div class="print-field-grid">${naoConformes.length ? naoConformes.map(blocoRequisito).join('') : '<p class="text-muted">Nenhuma não conformidade registrada.</p>'}</div>
+
+    <h4 style="margin-top:16px">Pessoas Auditadas</h4>
+    <table class="table">
+      <thead><tr><th>Nome</th><th>Documentação de RH</th><th>Observação</th></tr></thead>
+      <tbody>${pessoas.map((p) => `<tr><td>${escapeHtml(p.nome)}</td><td>${p.documentacao_rh_conforme ? 'Conforme' : 'Não conforme'}</td><td>${escapeHtml(p.observacao || '—')}</td></tr>`).join('') || '<tr><td colspan="3">Nenhum registro.</td></tr>'}</tbody>
+    </table>
+
+    <h4 style="margin-top:16px">Instrumentos Auditados</h4>
+    <table class="table">
+      <thead><tr><th>Instrumento</th><th>Calibração</th><th>Observação</th></tr></thead>
+      <tbody>${instrumentos.map((i) => `<tr><td>${escapeHtml(i.instrumento)}</td><td>${i.calibracao_conforme ? 'Conforme' : 'Não conforme'}</td><td>${escapeHtml(i.observacao || '—')}</td></tr>`).join('') || '<tr><td colspan="3">Nenhum registro.</td></tr>'}</tbody>
+    </table>
+
+    <h4 style="margin-top:16px">Procedimentos Auditados</h4>
+    <table class="table">
+      <thead><tr><th>Procedimento</th><th>Controle de Ações</th><th>Observação</th></tr></thead>
+      <tbody>${procedimentos.map((p) => `<tr><td>${escapeHtml(p.procedimento)}</td><td>${p.controle_acoes_conforme ? 'Conforme' : 'Não conforme'}</td><td>${escapeHtml(p.observacao || '—')}</td></tr>`).join('') || '<tr><td colspan="3">Nenhum registro.</td></tr>'}</tbody>
+    </table>
+
+    <h4 style="margin-top:16px">Conclusão</h4>
+    <p style="white-space:pre-wrap">${escapeHtml(conclusaoTexto || '—')}</p>
+  `);
 }
 
 // ==================== DASHBOARD ====================
