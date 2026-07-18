@@ -268,10 +268,14 @@ async function renderProcessos(container, state) {
   wireFiltrosGrupo(container, state);
   const area = container.querySelector('#ap-corpo');
 
-  const { processos, turnos, processosTurnos } = await carregarBaseCadastros(supabase, empresaAtual.id);
+  const [{ processos, turnos, processosTurnos }, { data: macrofluxo }] = await Promise.all([
+    carregarBaseCadastros(supabase, empresaAtual.id),
+    supabase.from('macrofluxo_processos').select('nome').eq('empresa_id', empresaAtual.id).order('ordem'),
+  ]);
   const turnosPorProcesso = new Map();
   processosTurnos.forEach((pt) => { const l = turnosPorProcesso.get(pt.processo_id) || []; l.push(pt.turno_id); turnosPorProcesso.set(pt.processo_id, l); });
   const nomeTurno = (id) => turnos.find((t) => t.id === id)?.nome || '—';
+  const nomesMacrofluxo = [...new Set((macrofluxo || []).map((m) => m.nome))];
 
   area.innerHTML = processos.length ? `
     <table class="table">
@@ -297,7 +301,7 @@ async function renderProcessos(container, state) {
     </table>` : '<div class="empty-state"><i class="ti ti-sitemap"></i>Nenhum processo auditável cadastrado.</div>';
 
   area.querySelectorAll('[data-editar]').forEach((btn) => btn.addEventListener('click', () => {
-    abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, processos.find((p) => p.id === btn.dataset.editar));
+    abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo, processos.find((p) => p.id === btn.dataset.editar));
   }));
   area.querySelectorAll('[data-excluir]').forEach((btn) => btn.addEventListener('click', async () => {
     if (!(await confirmar('Excluir este processo auditável?'))) return;
@@ -305,17 +309,22 @@ async function renderProcessos(container, state) {
     if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
     renderProcessos(container, state);
   }));
-  container.querySelector('#btn-add-processo').addEventListener('click', () => abrirFormularioProcesso(state, container, turnos, turnosPorProcesso));
+  container.querySelector('#btn-add-processo').addEventListener('click', () => abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo));
 }
 
-function abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, item = null) {
+function abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo, item = null) {
   const { supabase, empresaAtual } = state;
   const turnosVinculados = new Set(item ? (turnosPorProcesso.get(item.id) || []) : []);
 
   const modal = abrirModal(item ? 'Editar processo auditável' : 'Novo processo auditável', `
     <form id="form-processo">
       <div class="form-row">
-        <div class="form-group"><label>Processo</label><input type="text" id="pr-nome" required value="${item ? escapeHtml(item.nome) : ''}"></div>
+        <div class="form-group">
+          <label>Processo</label>
+          <input type="text" id="pr-nome" list="dl-processos-macrofluxo" required value="${item ? escapeHtml(item.nome) : ''}" placeholder="Selecione um processo do Macrofluxo ou digite um novo">
+          <datalist id="dl-processos-macrofluxo">${nomesMacrofluxo.map((n) => `<option value="${escapeHtml(n)}">`).join('')}</datalist>
+          <p class="text-muted" style="font-size:12px;margin-top:4px">Sugestões vêm do Macrofluxo — pode digitar um nome novo se não estiver na lista.</p>
+        </div>
         <div class="form-group"><label>Área</label><input type="text" id="pr-area" value="${item ? escapeHtml(item.area || '') : ''}"></div>
       </div>
       <div class="form-group">
