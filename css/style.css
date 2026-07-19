@@ -30,6 +30,11 @@
 
 body { font-family: var(--font-sans); background: var(--bg-light); color: var(--text-primary); line-height: 1.5; }
 
+/* Remove as setinhas de seta do scrollbar nativo do Windows/Chrome (aparecem no topo/base de
+   qualquer área com rolagem) em todo o app — mantém a barra e o "polegar" arrastável, só tira
+   os botões de seta que ficam sobrando visualmente. */
+*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
 /* ===== TOPBAR ===== */
 .topbar {
   background: var(--navy); padding: 10px 1.25rem; display: flex; align-items: center;
