@@ -1556,15 +1556,19 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
 
   area.innerHTML = `
     <div class="planejamento-box">
-      <p class="planejamento-box-titulo"><i class="ti ti-id-badge-2"></i> Identificação</p>
+      <p class="planejamento-box-titulo"><i class="ti ti-id-badge-2"></i> Solicitação</p>
       <table class="table">
         <tbody>
-          <tr><th style="width:180px">Tipo</th><td>${TIPO_LABEL[auditoria.tipo] || '—'}${auditoria.tipo === 'outro' ? ' — ' + escapeHtml(auditoria.tipo_outro_descricao || '') : ''} (${MODALIDADE_LABEL[auditoria.modalidade] || '—'})</td></tr>
+          <tr><th style="width:180px">Nº</th><td>${escapeHtml(auditoria.numero)}</td></tr>
+          <tr><th>Título</th><td>${escapeHtml(auditoria.titulo)}</td></tr>
+          <tr><th>Tipo</th><td>${TIPO_LABEL[auditoria.tipo] || '—'}${auditoria.tipo === 'outro' ? ' — ' + escapeHtml(auditoria.tipo_outro_descricao || '') : ''} (${MODALIDADE_LABEL[auditoria.modalidade] || '—'})</td></tr>
           <tr><th>Unidade</th><td>${escapeHtml(auditoria.unidade || '—')}</td></tr>
-          <tr><th>Normas auditadas</th><td>${(auditoria.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td></tr>
+          <tr><th>Data prevista</th><td>${auditoria.data_prevista || '—'}</td></tr>
+          <tr><th>Normas aplicáveis</th><td>${(auditoria.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td></tr>
           <tr><th>Objetivo</th><td>${escapeHtml(auditoria.objetivo || '—')}</td></tr>
           <tr><th>Escopo</th><td>${escapeHtml(auditoria.escopo || '—')}</td></tr>
           <tr><th>Observações</th><td>${escapeHtml(auditoria.observacoes || '—')}</td></tr>
+          <tr><th>Status</th><td><span class="badge ${STATUS_BADGE[auditoria.status]}">${STATUS_LABEL[auditoria.status]}</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -1810,15 +1814,18 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
     <p class="text-muted">${escapeHtml(auditoria.titulo)}</p>
     <hr class="sep">
 
-    <h4 style="margin-top:16px">Identificação</h4>
+    <h4 style="margin-top:16px">Solicitação</h4>
     <table class="print-detalhe-tabela">
       <tbody>
+        <tr><th>Título</th><td>${escapeHtml(auditoria.titulo)}</td></tr>
         <tr><th>Tipo</th><td>${TIPO_LABEL[auditoria.tipo] || '—'}${auditoria.tipo === 'outro' ? ' — ' + escapeHtml(auditoria.tipo_outro_descricao || '') : ''} (${MODALIDADE_LABEL[auditoria.modalidade] || '—'})</td></tr>
         <tr><th>Unidade</th><td>${escapeHtml(auditoria.unidade || '—')}</td></tr>
-        <tr><th>Normas auditadas</th><td>${(auditoria.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td></tr>
+        <tr><th>Data prevista</th><td>${auditoria.data_prevista || '—'}</td></tr>
+        <tr><th>Normas aplicáveis</th><td>${(auditoria.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td></tr>
         <tr><th>Objetivo</th><td>${escapeHtml(auditoria.objetivo || '—')}</td></tr>
         <tr><th>Escopo</th><td>${escapeHtml(auditoria.escopo || '—')}</td></tr>
         <tr><th>Observações</th><td>${escapeHtml(auditoria.observacoes || '—')}</td></tr>
+        <tr><th>Status</th><td>${STATUS_LABEL[auditoria.status] || '—'}</td></tr>
         <tr><th>Equipe auditora</th><td>${(equipe || []).map((e) => escapeHtml(e.auditores?.nome || '—') + (e.papel === 'lider' ? ' (Líder)' : '')).join(', ') || '—'}</td></tr>
       </tbody>
     </table>
