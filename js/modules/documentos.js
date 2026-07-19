@@ -210,6 +210,25 @@ export async function render(container, state) {
 // caixa "Documentos Institucionais" para os que não têm processo vinculado (código de ética,
 // manuais gerais etc — processo_id nulo). Cada caixa também mostra, quando houver, os documentos
 // daquele processo aguardando aprovação.
+// Monta a árvore Procedimento → Instrução de Trabalho → Registro (na ordem de numeração), com os
+// demais tipos (manual, política...) soltos no topo — reflete o vínculo procedimento_id/it_id já
+// existente no banco, em vez de tentar adivinhar a hierarquia só pelo texto do número.
+function construirArvoreDocumentos(docs) {
+  const porId = new Map(docs.map((d) => [d.id, d]));
+  const porNumero = (a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true });
+  const procedimentos = docs.filter((d) => d.tipos_documento.chave === 'procedimento').sort(porNumero);
+  const soltos = docs.filter((d) => !porId.has(d.procedimento_id) && !porId.has(d.it_id) && d.tipos_documento.chave !== 'procedimento').sort(porNumero);
+
+  const nivel = (doc, profundidade) => {
+    const filhos = docs.filter((d) => d.procedimento_id === doc.id || d.it_id === doc.id).sort(porNumero);
+    return [{ doc, profundidade }, ...filhos.flatMap((f) => nivel(f, profundidade + 1))];
+  };
+
+  return [...soltos.map((d) => ({ doc: d, profundidade: 0 })), ...procedimentos.flatMap((p) => nivel(p, 0))];
+}
+
+const ICONE_TIPO = { procedimento: 'ti-file-text', it: 'ti-list-details', registro: 'ti-clipboard-list' };
+
 function renderCaixas(area, state, ctx) {
   const { processos, documentos, podeEditar } = ctx;
 
@@ -225,32 +244,53 @@ function renderCaixas(area, state, ctx) {
         const docsDaCaixa = publicados.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
         const pendentesDaCaixa = pendentes.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
         return `
-        <div class="doc-caixa">
-          <div class="doc-caixa-titulo"><i class="ti ${p.institucional ? 'ti-building-bank' : 'ti-sitemap'}"></i> ${escapeHtml(p.institucional ? p.nome : rotuloProcesso(p))}</div>
-          ${docsDaCaixa.length ? `
-            <ul class="doc-caixa-lista">
-              ${docsDaCaixa.map((d) => `
-                <li><a href="#" class="dc-abrir-arquivo" data-ver-doc="${d.id}"><i class="ti ti-file-text"></i> ${escapeHtml(d.nome)}</a></li>
-              `).join('')}
-            </ul>` : '<p class="text-muted" style="font-size:12px">Nenhum documento publicado ainda.</p>'}
-          ${pendentesDaCaixa.length ? `
-            <div class="doc-caixa-pendente">
-              <p class="doc-caixa-pendente-titulo"><i class="ti ti-clock-exclamation"></i> Pendente de aprovação (${pendentesDaCaixa.length})</p>
-              <ul class="doc-caixa-lista">
-                ${pendentesDaCaixa.map((d) => `<li><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.nome)}</a></li>`).join('')}
-              </ul>
-            </div>` : ''}
-        </div>`;
+        <button type="button" class="doc-caixa" data-abrir-caixa="${p.institucional ? 'institucional' : p.id}">
+          <div class="doc-caixa-icone"><i class="ti ${p.institucional ? 'ti-building-bank' : 'ti-sitemap'}"></i></div>
+          <div class="doc-caixa-nome">${escapeHtml(p.institucional ? p.nome : rotuloProcesso(p))}</div>
+          <div class="doc-caixa-contagem">${docsDaCaixa.length} documento${docsDaCaixa.length === 1 ? '' : 's'}</div>
+          ${pendentesDaCaixa.length ? `<span class="doc-caixa-badge-pendente"><i class="ti ti-clock-exclamation"></i> ${pendentesDaCaixa.length} pendente${pendentesDaCaixa.length === 1 ? '' : 's'}</span>` : ''}
+        </button>`;
       }).join('')}
     </div>
   `;
 
-  area.querySelectorAll('[data-ver-doc]').forEach((link) => {
+  area.querySelectorAll('[data-abrir-caixa]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const chave = btn.dataset.abrirCaixa;
+      const p = chave === 'institucional' ? caixaInstitucional : processos.find((x) => x.id === chave);
+      const docsDaCaixa = publicados.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
+      const pendentesDaCaixa = pendentes.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
+      abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCaixa);
+    });
+  });
+}
+
+function abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCaixa) {
+  const { documentos, podeEditar } = ctx;
+  const arvore = construirArvoreDocumentos(docsDaCaixa);
+
+  const linhaDoc = (doc, profundidade) => `
+    <li style="padding-left:${profundidade * 20}px">
+      <a href="#" data-ver-doc="${doc.id}"><i class="ti ${ICONE_TIPO[doc.tipos_documento.chave] || 'ti-file-text'}"></i> <span class="doc-modal-numero">${escapeHtml(doc.numero)}</span> ${escapeHtml(doc.nome)}</a>
+    </li>`;
+
+  const modal = abrirModal(p.institucional ? p.nome : rotuloProcesso(p), `
+    ${pendentesDaCaixa.length ? `
+      <div class="doc-caixa-pendente">
+        <p class="doc-caixa-pendente-titulo"><i class="ti ti-clock-exclamation"></i> Pendente de aprovação (${pendentesDaCaixa.length})</p>
+        <ul class="doc-caixa-lista">${pendentesDaCaixa.map((d) => `<li><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.numero)} — ${escapeHtml(d.nome)}</a></li>`).join('')}</ul>
+      </div>` : ''}
+    ${arvore.length ? `<ul class="doc-caixa-lista doc-arvore">${arvore.map(({ doc, profundidade }) => linhaDoc(doc, profundidade)).join('')}</ul>` : '<div class="empty-state"><i class="ti ti-file-off"></i>Nenhum documento publicado ainda para este processo.</div>'}
+  `);
+  modal.classList.add('modal-xl');
+
+  modal.querySelectorAll('[data-ver-doc]').forEach((link) => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       const doc = documentos.find((d) => d.id === link.dataset.verDoc);
       if (!doc) return;
       if (podeEditar) {
+        fecharModal();
         abrirDetalhe(state, state.__documentosTopContainer, doc, ctx);
       } else if (doc.arquivo_url) {
         visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome);
