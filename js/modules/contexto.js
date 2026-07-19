@@ -17,12 +17,12 @@ export function irParaGrupo(grupo) {
 
 function renderFiltrosGrupo() {
   return `
-    <div class="filters">
-      <button class="filter-btn ${grupoAtivo === 'cenario' ? 'active' : ''}" data-grupo="cenario">Análise SWOT</button>
-      <button class="filter-btn ${grupoAtivo === 'partes' ? 'active' : ''}" data-grupo="partes">Partes Interessadas</button>
-      <button class="filter-btn ${grupoAtivo === 'empresa' ? 'active' : ''}" data-grupo="empresa">Informações da Empresa</button>
-      <button class="filter-btn ${grupoAtivo === 'macrofluxo' ? 'active' : ''}" data-grupo="macrofluxo">Macrofluxo</button>
-    </div>`;
+    <nav class="tabs">
+      <button class="tab-btn ${grupoAtivo === 'cenario' ? 'active' : ''}" data-grupo="cenario">Análise SWOT</button>
+      <button class="tab-btn ${grupoAtivo === 'partes' ? 'active' : ''}" data-grupo="partes">Partes Interessadas</button>
+      <button class="tab-btn ${grupoAtivo === 'empresa' ? 'active' : ''}" data-grupo="empresa">Informações da Empresa</button>
+      <button class="tab-btn ${grupoAtivo === 'macrofluxo' ? 'active' : ''}" data-grupo="macrofluxo">Macrofluxo</button>
+    </nav>`;
 }
 
 function wireFiltrosGrupo(container, state) {

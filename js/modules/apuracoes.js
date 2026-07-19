@@ -67,10 +67,10 @@ async function usuarioTemAcesso(supabase, empresaId, userId, papelAtual) {
 
 function renderFiltrosGrupo(podeGerenciarComite) {
   return `
-    <div class="filters">
-      <button class="filter-btn ${grupoAtivo === 'apuracoes' ? 'active' : ''}" data-grupo="apuracoes"><i class="ti ti-list-details"></i> Apurações</button>
-      ${podeGerenciarComite ? `<button class="filter-btn ${grupoAtivo === 'comite' ? 'active' : ''}" data-grupo="comite"><i class="ti ti-users-group"></i> Comitê de Apuração</button>` : ''}
-    </div>`;
+    <nav class="tabs">
+      <button class="tab-btn ${grupoAtivo === 'apuracoes' ? 'active' : ''}" data-grupo="apuracoes"><i class="ti ti-list-details"></i> Apurações</button>
+      ${podeGerenciarComite ? `<button class="tab-btn ${grupoAtivo === 'comite' ? 'active' : ''}" data-grupo="comite"><i class="ti ti-users-group"></i> Comitê de Apuração</button>` : ''}
+    </nav>`;
 }
 
 export async function render(container, state) {

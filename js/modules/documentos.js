@@ -190,10 +190,10 @@ export async function render(container, state) {
 
   container.innerHTML = `
     ${mostrarGestao ? `
-      <div class="filters" style="margin-bottom:1rem">
-        <button class="filter-btn ${modoAtivo === 'caixas' ? 'active' : ''}" data-modo="caixas"><i class="ti ti-layout-grid"></i> Documentos</button>
-        <button class="filter-btn ${modoAtivo === 'gestao' ? 'active' : ''}" data-modo="gestao"><i class="ti ti-settings"></i> Gestão de Documentos</button>
-      </div>` : ''}
+      <nav class="tabs">
+        <button class="tab-btn ${modoAtivo === 'caixas' ? 'active' : ''}" data-modo="caixas"><i class="ti ti-layout-grid"></i> Documentos</button>
+        <button class="tab-btn ${modoAtivo === 'gestao' ? 'active' : ''}" data-modo="gestao"><i class="ti ti-settings"></i> Gestão de Documentos</button>
+      </nav>` : ''}
     <div id="documentos-modo-area"></div>
   `;
   container.querySelectorAll('[data-modo]').forEach((btn) => {

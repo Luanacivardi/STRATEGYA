@@ -65,11 +65,11 @@ export async function abrirPlanoPorId(state, container, id) {
 
 function renderFiltrosGrupo() {
   return `
-    <div class="filters">
-      <button class="filter-btn ${grupoAtivo === 'planos' ? 'active' : ''}" data-grupo="planos">Planos de Ação</button>
-      <button class="filter-btn ${grupoAtivo === 'todo' ? 'active' : ''}" data-grupo="todo">Tarefas</button>
-      <button class="filter-btn ${grupoAtivo === 'indicadores' ? 'active' : ''}" data-grupo="indicadores">Indicadores dos Planos</button>
-    </div>`;
+    <nav class="tabs">
+      <button class="tab-btn ${grupoAtivo === 'planos' ? 'active' : ''}" data-grupo="planos">Planos de Ação</button>
+      <button class="tab-btn ${grupoAtivo === 'todo' ? 'active' : ''}" data-grupo="todo">Tarefas</button>
+      <button class="tab-btn ${grupoAtivo === 'indicadores' ? 'active' : ''}" data-grupo="indicadores">Indicadores dos Planos</button>
+    </nav>`;
 }
 
 function wireFiltrosGrupo(container, state) {

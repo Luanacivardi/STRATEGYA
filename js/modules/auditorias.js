@@ -35,14 +35,14 @@ let grupoAtivo = 'auditorias'; // 'auditorias' | 'processos' | 'turnos' | 'audit
 
 function renderFiltrosGrupo() {
   return `
-    <div class="filters">
-      <button class="filter-btn ${grupoAtivo === 'auditorias' ? 'active' : ''}" data-grupo="auditorias"><i class="ti ti-clipboard-check"></i> Auditorias</button>
-      <button class="filter-btn ${grupoAtivo === 'processos' ? 'active' : ''}" data-grupo="processos"><i class="ti ti-sitemap"></i> Processos Auditáveis</button>
-      <button class="filter-btn ${grupoAtivo === 'turnos' ? 'active' : ''}" data-grupo="turnos"><i class="ti ti-clock"></i> Turnos</button>
-      <button class="filter-btn ${grupoAtivo === 'auditores' ? 'active' : ''}" data-grupo="auditores"><i class="ti ti-users"></i> Auditores</button>
-      <button class="filter-btn ${grupoAtivo === 'relatorios' ? 'active' : ''}" data-grupo="relatorios"><i class="ti ti-report"></i> Relatórios</button>
-      <button class="filter-btn ${grupoAtivo === 'dashboard' ? 'active' : ''}" data-grupo="dashboard"><i class="ti ti-chart-bar"></i> Dashboard</button>
-    </div>`;
+    <nav class="tabs">
+      <button class="tab-btn ${grupoAtivo === 'auditorias' ? 'active' : ''}" data-grupo="auditorias"><i class="ti ti-clipboard-check"></i> Auditorias</button>
+      <button class="tab-btn ${grupoAtivo === 'processos' ? 'active' : ''}" data-grupo="processos"><i class="ti ti-sitemap"></i> Processos Auditáveis</button>
+      <button class="tab-btn ${grupoAtivo === 'turnos' ? 'active' : ''}" data-grupo="turnos"><i class="ti ti-clock"></i> Turnos</button>
+      <button class="tab-btn ${grupoAtivo === 'auditores' ? 'active' : ''}" data-grupo="auditores"><i class="ti ti-users"></i> Auditores</button>
+      <button class="tab-btn ${grupoAtivo === 'relatorios' ? 'active' : ''}" data-grupo="relatorios"><i class="ti ti-report"></i> Relatórios</button>
+      <button class="tab-btn ${grupoAtivo === 'dashboard' ? 'active' : ''}" data-grupo="dashboard"><i class="ti ti-chart-bar"></i> Dashboard</button>
+    </nav>`;
 }
 function wireFiltrosGrupo(container, state) {
   container.querySelectorAll('[data-grupo]').forEach((btn) => {
