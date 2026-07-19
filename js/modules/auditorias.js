@@ -1526,13 +1526,15 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
   const { supabase, empresaAtual } = state;
   area.innerHTML = 'Carregando...';
 
-  const [{ data: auditoria }, { data: processos }, { data: itensData }, { data: pessoasData }, { data: instrumentosData }, { data: procedimentosData }] = await Promise.all([
+  const [{ data: auditoria }, { data: processos }, { data: itensData }, { data: pessoasData }, { data: instrumentosData }, { data: procedimentosData }, { data: agendaData }, { data: auditoresData }] = await Promise.all([
     supabase.from('auditorias').select('*').eq('id', auditoriaId).single(),
     supabase.from('auditorias_processos').select('id, nome').eq('empresa_id', empresaAtual.id),
     supabase.from('auditorias_relatorio_itens').select('*').eq('auditoria_id', auditoriaId).order('numero_requisito'),
     supabase.from('auditorias_relatorio_pessoas').select('*').eq('auditoria_id', auditoriaId),
     supabase.from('auditorias_relatorio_instrumentos').select('*').eq('auditoria_id', auditoriaId),
     supabase.from('auditorias_relatorio_procedimentos').select('*').eq('auditoria_id', auditoriaId),
+    supabase.from('auditorias_agenda').select('*').eq('auditoria_id', auditoriaId).order('dia').order('hora_inicio'),
+    supabase.from('auditores').select('id, nome').eq('empresa_id', empresaAtual.id),
   ]);
   if (!auditoria) { area.innerHTML = '<div class="alert alert-warning">Auditoria não encontrada.</div>'; return; }
 
@@ -1540,7 +1542,11 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
   let pessoas = pessoasData || [];
   let instrumentos = instrumentosData || [];
   let procedimentos = procedimentosData || [];
+  const agenda = agendaData || [];
   const nomeProcesso = (id) => processos.find((p) => p.id === id)?.nome || '—';
+  const nomeAuditorRel = (id) => (auditoresData || []).find((a) => a.id === id)?.nome || '—';
+  const agendaPorDia = {};
+  agenda.forEach((b) => { (agendaPorDia[b.dia] = agendaPorDia[b.dia] || []).push(b); });
 
   function textoConclusaoPadrao() {
     const naoConformes = itens.filter((i) => i.situacao !== 'conforme');
@@ -1549,6 +1555,22 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
   }
 
   area.innerHTML = `
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-calendar-event"></i> Agenda da auditoria</p>
+      ${Object.keys(agendaPorDia).length ? Object.entries(agendaPorDia).map(([dia, blocos]) => `
+        <p style="font-weight:600;margin:8px 0 4px">Dia ${dia}</p>
+        <table class="table">
+          <thead><tr><th style="width:140px">Horário</th><th>Atividade</th><th>Auditor(es)</th></tr></thead>
+          <tbody>${blocos.map((b) => `
+            <tr>
+              <td>${b.hora_inicio.slice(0, 5)} às ${b.hora_fim.slice(0, 5)}</td>
+              <td>${escapeHtml(b.rotulo || '')}</td>
+              <td>${b.auditor_sugerido_id ? escapeHtml(nomeAuditorRel(b.auditor_sugerido_id)) : '—'}${b.auditor_sugerido_2_id ? ' e ' + escapeHtml(nomeAuditorRel(b.auditor_sugerido_2_id)) : ''}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      `).join('') : '<p class="text-muted" style="font-size:12px">Nenhuma agenda gerada ainda para esta auditoria — gere em "Auditorias" → planejamento inteligente.</p>'}
+    </div>
+
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-list-check"></i> Requisitos avaliados</p>
       <table class="table">
@@ -1731,7 +1753,7 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
 
   // ---- Impressão ----
   area.querySelector('#btn-imprimir-relatorio-detalhado').addEventListener('click', () => {
-    imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, area.querySelector('#rel-conclusao').value.trim(), nomeProcesso);
+    imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, area.querySelector('#rel-conclusao').value.trim(), nomeProcesso, agendaPorDia, nomeAuditorRel);
   });
 }
 
@@ -1745,7 +1767,7 @@ function agruparPorRequisito(lista) {
   return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
 }
 
-function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, conclusaoTexto, nomeProcesso) {
+function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, conclusaoTexto, nomeProcesso, agendaPorDia, nomeAuditor) {
   const conformes = agruparPorRequisito(itens.filter((i) => i.situacao === 'conforme'));
   const naoConformes = agruparPorRequisito(itens.filter((i) => i.situacao !== 'conforme'));
 
@@ -1764,6 +1786,20 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
     <h2 style="margin-bottom:4px">Relatório de Auditoria ${escapeHtml(auditoria.numero)}</h2>
     <p class="text-muted">${escapeHtml(auditoria.titulo)}</p>
     <hr class="sep">
+
+    <h4 style="margin-top:16px">Agenda da Auditoria</h4>
+    ${agendaPorDia && Object.keys(agendaPorDia).length ? Object.entries(agendaPorDia).map(([dia, blocos]) => `
+      <p style="font-weight:600;margin:8px 0 4px">Dia ${dia}</p>
+      <table class="table">
+        <thead><tr><th>Horário</th><th>Atividade</th><th>Auditor(es)</th></tr></thead>
+        <tbody>${blocos.map((b) => `
+          <tr>
+            <td>${b.hora_inicio.slice(0, 5)} às ${b.hora_fim.slice(0, 5)}</td>
+            <td>${escapeHtml(b.rotulo || '')}</td>
+            <td>${b.auditor_sugerido_id ? escapeHtml(nomeAuditor(b.auditor_sugerido_id)) : '—'}${b.auditor_sugerido_2_id ? ' e ' + escapeHtml(nomeAuditor(b.auditor_sugerido_2_id)) : ''}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    `).join('') : '<p class="text-muted">Nenhuma agenda gerada para esta auditoria.</p>'}
 
     <h4 style="margin-top:16px">Conformidades</h4>
     <div class="print-field-grid">${conformes.length ? conformes.map(blocoRequisito).join('') : '<p class="text-muted">Nenhum requisito conforme registrado.</p>'}</div>
