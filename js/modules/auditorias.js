@@ -875,15 +875,12 @@ async function abrirAuditoria(state, container, item = null) {
       <div id="ad-equipe-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">6. Execução e resultados</p>
-      <div id="ad-execucao-area"></div>
-
-      <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">7. Fluxo de aprovação</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">6. Fluxo de aprovação</p>
       <div id="ad-aprovacao-area"></div>
+      <p class="text-muted" style="font-size:12px;margin-top:6px">Execução (achados) e o relatório detalhado por requisito ficam na aba "Relatórios".</p>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">8. Conclusão do relatório</p>
+      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">7. Conclusão do relatório</p>
       <div class="form-group">
         <label>Conclusão</label>
         <select id="ad-conclusao">
@@ -921,7 +918,6 @@ async function abrirAuditoria(state, container, item = null) {
     montarDocumentosOrganismo(state, modal, item);
     montarPriorizacao(modal, processos, processosSelecionados);
     montarEquipe(state, modal, item, auditores, equipe, processos);
-    montarExecucao(state, modal, item, processos, () => renderAuditorias(container, state));
     montarAprovacao(state, modal, item);
     renderDistribuicaoESalva(
       modal, state, item, processos, turnos, turnosPorProcesso, nomeProcesso, nomeTurno, nomeAuditor, auditores,
@@ -1572,6 +1568,11 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
     </div>
 
     <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-clipboard-check"></i> Execução (achados)</p>
+      <div id="ad-execucao-area"></div>
+    </div>
+
+    <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-list-check"></i> Requisitos avaliados</p>
       <table class="table">
         <thead><tr><th>Nº requisito</th><th>Norma</th><th>Processo</th><th>Situação</th><th>Descrição</th><th></th></tr></thead>
@@ -1643,6 +1644,10 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
 
     <button type="button" class="btn btn-primary btn-block" id="btn-imprimir-relatorio-detalhado"><i class="ti ti-printer"></i> Imprimir relatório completo</button>
   `;
+
+  // Execução (achados) fica restrita à aba Relatórios — NC Maior/Menor aqui já dispara o plano
+  // de ação automático em Gestão de Ações (mesmo comportamento de antes, só mudou de lugar).
+  montarExecucao(state, area, auditoria, processos, null);
 
   // ---- Requisitos ----
   function renderItensTbody() {
