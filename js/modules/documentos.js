@@ -15,8 +15,20 @@ export const CLASSIFICACAO = {
   restrito: 'Restrito',
 };
 
+// Arquivo DE TRABALHO (Word/ODT/PDF de rascunho) — só quem tem edição total acessa (Gestão de
+// Documentos). Nunca é exposto à aba Documentos (visualização), nem a usuários sem edição.
 export const BUCKET_ARQUIVOS = 'documentos-arquivos';
 export const ACCEPT_ARQUIVO = '.doc,.docx,.odt,.pdf';
+
+// PDF PUBLICADO — o que a aba Documentos mostra a todos os usuários da empresa, sempre em PDF.
+// Gerado a partir do arquivo de trabalho (a própria pessoa exporta o Word como PDF e anexa aqui;
+// se o arquivo de trabalho já for PDF, os dois apontam para o mesmo conteúdo, cada um em seu bucket).
+export const BUCKET_PDF = 'documentos-publicados';
+export const ACCEPT_PDF = '.pdf';
+
+export function arquivoEhPdf(nome) {
+  return (nome || '').toLowerCase().endsWith('.pdf');
+}
 
 let modoAtivo = 'caixas'; // 'caixas' (padrão, todos os usuários) | 'gestao' (lista mestra, só Qualidade/orbeex)
 let familiaAtiva = 'documentos';
@@ -125,54 +137,94 @@ export async function uploadArquivoDocumento(supabase, empresaId, documentoId, a
   return { arquivo_url: caminho, arquivo_nome: arquivo.name, arquivo_tamanho: arquivo.size };
 }
 
+export async function uploadPdfDocumento(supabase, empresaId, documentoId, arquivo) {
+  const nomeSanitizado = sanitizarNomeArquivo(arquivo.name);
+  const caminho = empresaId + '/' + documentoId + '/' + Date.now() + '_' + nomeSanitizado;
+  const { error } = await supabase.storage.from(BUCKET_PDF).upload(caminho, arquivo);
+  if (error) throw error;
+  return { arquivo_pdf_url: caminho, arquivo_pdf_nome: arquivo.name, arquivo_pdf_tamanho: arquivo.size };
+}
+
+export async function removerArquivosDocumento(supabase, { arquivo_url, arquivo_pdf_url } = {}) {
+  if (arquivo_url) await supabase.storage.from(BUCKET_ARQUIVOS).remove([arquivo_url]);
+  if (arquivo_pdf_url) await supabase.storage.from(BUCKET_PDF).remove([arquivo_pdf_url]);
+}
+
+// Abre/baixa o arquivo DE TRABALHO — só chamado a partir da Gestão de Documentos, para quem tem
+// edição total (o bucket em si já recusa a leitura para qualquer outro perfil, ver migração 0060).
 export async function abrirArquivoDocumento(supabase, caminho) {
   const { data, error } = await supabase.storage.from(BUCKET_ARQUIVOS).createSignedUrl(caminho, 300);
   if (error) return toast('Erro ao gerar link do arquivo: ' + error.message, 'erro');
   window.open(data.signedUrl, '_blank');
 }
 
-// Visualização somente leitura para usuários sem permissão de edição: embute o PDF numa janela
-// interna (sem botão de download/impressão do app) com link de curta duração. Aviso importante:
-// isto é uma barreira de interface, não uma proteção real contra cópia — o navegador ainda expõe
-// atalhos próprios (Ctrl+P, "Salvar como") que o app não tem como bloquear num iframe de outra
-// origem (o link assinado aponta para o domínio do Supabase Storage). Arquivos .doc/.docx/.odt
-// não têm visualização embutida seguro (exigiria enviar o arquivo a um serviço externo de
-// conversão, o que exporia documentos confidenciais a terceiros) — nesse caso mostra só um aviso.
-async function abrirVisualizacaoArquivo(supabase, caminho, nomeArquivo, mensagemInfo) {
-  const { data, error } = await supabase.storage.from(BUCKET_ARQUIVOS).createSignedUrl(caminho, 120);
-  if (error) return toast('Erro ao gerar visualização: ' + error.message, 'erro');
+// Visualizador do PDF publicado — usado por TODOS os perfis (inclusive quem edita) sempre que o
+// documento é aberto pela aba Documentos, e também pela Gestão de Documentos para quem não tem
+// edição total. Renderiza o PDF em <canvas> (imagem rasterizada) em vez de um <iframe> com o link
+// assinado: o link nunca fica exposto no DOM/rede como um endereço reaproveitável, e o conteúdo
+// vira pixels (sem texto selecionável/copiável). Aviso importante: isto eleva bastante a barreira
+// contra cópia casual, mas não é uma proteção real contra alguém tecnicamente decidido — captura
+// de tela, impressão do sistema operacional ou inspeção da resposta de rede sempre continuam
+// possíveis para quem já está autenticado e vendo o conteúdo na tela.
+export async function abrirVisualizadorDocumento(state, doc, ctx = {}) {
+  const { supabase } = state;
+  const { nomeUsuario, nomeProcesso } = ctx;
+  if (!doc.arquivo_pdf_url) {
+    toast('Este documento ainda não tem uma versão em PDF publicada para visualização.', 'erro');
+    return;
+  }
 
-  const ehPdf = (nomeArquivo || caminho || '').toLowerCase().endsWith('.pdf');
-  const modal = abrirModal(nomeArquivo || 'Documento', `
-    <div class="alert alert-info" style="margin-bottom:10px">
-      <i class="ti ti-eye"></i>
-      <span>${mensagemInfo}</span>
+  const linhaMeta = (label, valor) => `<div class="doc-visualizador-meta-item"><span>${escapeHtml(label)}</span><strong>${valor}</strong></div>`;
+  const modal = abrirModal(`${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}`, `
+    <div class="doc-visualizador-meta">
+      ${linhaMeta('Revisão', String(doc.revisao_atual).padStart(2, '0'))}
+      ${linhaMeta('Classificação', escapeHtml(CLASSIFICACAO[doc.classificacao] || '—'))}
+      ${nomeProcesso ? linhaMeta('Processo', escapeHtml(nomeProcesso(doc.processo_id))) : ''}
+      ${nomeUsuario ? linhaMeta('Elaborado por', escapeHtml(nomeUsuario(doc.elaborado_por))) : ''}
+      ${nomeUsuario ? linhaMeta('Aprovado por', doc.aprovado_por ? escapeHtml(nomeUsuario(doc.aprovado_por)) : '—') : ''}
+      ${linhaMeta('Publicado em', formatarData(doc.data_publicacao))}
     </div>
-    ${ehPdf
-      ? `<iframe src="${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:8px" title="${escapeHtml(nomeArquivo || 'Documento')}"></iframe>`
-      : `<div class="empty-state"><i class="ti ti-file-off"></i>Pré-visualização disponível apenas para arquivos PDF. Solicite ao setor de Qualidade se precisar consultar este formato.</div>`}
+    <div class="alert alert-info" style="margin:10px 0 12px">
+      <i class="ti ti-shield-lock"></i>
+      <span>Visualização controlada — o download deste documento não está disponível por aqui. Para obter o arquivo original, procure a Gestão de Documentos.</span>
+    </div>
+    <div id="doc-pdf-paginas" class="doc-pdf-paginas"><p class="text-muted">Carregando documento...</p></div>
   `);
   modal.classList.add('modal-xl');
-}
 
-// Visualização somente leitura para usuários sem permissão de edição: embute o PDF numa janela
-// interna (sem botão de download/impressão do app) com link de curta duração. Aviso importante:
-// isto é uma barreira de interface, não uma proteção real contra cópia — o navegador ainda expõe
-// atalhos próprios (Ctrl+P, "Salvar como") que o app não tem como bloquear num iframe de outra
-// origem (o link assinado aponta para o domínio do Supabase Storage). Arquivos .doc/.docx/.odt
-// não têm visualização embutida seguro (exigiria enviar o arquivo a um serviço externo de
-// conversão, o que exporia documentos confidenciais a terceiros) — nesse caso mostra só um aviso.
-export function visualizarArquivoRestrito(supabase, caminho, nomeArquivo) {
-  return abrirVisualizacaoArquivo(supabase, caminho, nomeArquivo,
-    'Visualização somente leitura — download e impressão não estão disponíveis para o seu perfil de acesso.');
-}
+  // Deterrente de UI (não é proteção real, ver aviso acima): bloqueia o menu de contexto e os
+  // atalhos de salvar/imprimir enquanto o modal do documento está aberto.
+  const bloquearAtalho = (e) => {
+    if ((e.ctrlKey || e.metaKey) && ['s', 'p'].includes(e.key.toLowerCase())) e.preventDefault();
+  };
+  modal.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('keydown', bloquearAtalho);
+  const pararDeBloquear = () => document.removeEventListener('keydown', bloquearAtalho);
+  new MutationObserver((_, obs) => {
+    if (!document.body.contains(modal)) { pararDeBloquear(); obs.disconnect(); }
+  }).observe(document.getElementById('modal-overlay'), { childList: true });
 
-// Visualização padrão ao abrir um documento pelas caixinhas (todos os perfis, inclusive quem
-// edita): sempre mostra o documento inteiro embutido, sem baixar/abrir arquivo automaticamente.
-// O download automático fica reservado à Gestão de Documentos (Lista Mestra / ficha do documento).
-export function visualizarArquivo(supabase, caminho, nomeArquivo) {
-  return abrirVisualizacaoArquivo(supabase, caminho, nomeArquivo,
-    'Visualização do documento. Para baixar o arquivo original ou editar, use a Gestão de Documentos.');
+  const area = modal.querySelector('#doc-pdf-paginas');
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET_PDF).download(doc.arquivo_pdf_url);
+    if (error) throw error;
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
+    area.innerHTML = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 1.4 });
+      const canvas = document.createElement('canvas');
+      canvas.className = 'doc-pdf-pagina';
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      area.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    }
+    if (!pdf.numPages) area.innerHTML = '<div class="empty-state"><i class="ti ti-file-off"></i>PDF vazio.</div>';
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-warning">Erro ao carregar o PDF: ${escapeHtml(err.message)}</div>`;
+  }
 }
 
 export async function render(container, state) {
@@ -288,27 +340,23 @@ function renderCaixas(area, state, ctx) {
   });
 }
 
+// A aba Documentos é só de visualização, para todo mundo (inclusive quem pode editar) — sem
+// nenhum atalho para a ficha de edição aqui. Editar, aprovar e ver o histórico de revisões só
+// acontece na Gestão de Documentos.
 function abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCaixa) {
-  const { documentos, podeEditar } = ctx;
+  const { documentos } = ctx;
   const arvore = construirArvoreDocumentos(docsDaCaixa);
 
-  // Clicar no documento abre direto o arquivo enviado (upload); a ficha completa do documento
-  // (revisões, aprovação...) fica no ícone ao lado, visível só para quem pode editar.
-  const botaoDetalhe = (doc) => (podeEditar
-    ? `<button type="button" class="icon-btn" data-abrir-detalhe="${doc.id}" title="Abrir ficha do documento (revisões, aprovação...)"><i class="ti ti-file-info"></i></button>`
-    : '');
-
   const linhaDoc = (doc, profundidade) => `
-    <li style="padding-left:${profundidade * 20}px;display:flex;align-items:center;gap:6px">
+    <li style="padding-left:${profundidade * 20}px">
       <a href="#" data-ver-doc="${doc.id}"><i class="ti ${ICONE_TIPO[doc.tipos_documento.chave] || 'ti-file-text'}"></i> <span class="doc-modal-numero">${escapeHtml(doc.numero)}</span> ${escapeHtml(doc.nome)}</a>
-      ${botaoDetalhe(doc)}
     </li>`;
 
   const modal = abrirModal(p.institucional ? p.nome : rotuloProcesso(p), `
     ${pendentesDaCaixa.length ? `
       <div class="doc-caixa-pendente">
         <p class="doc-caixa-pendente-titulo"><i class="ti ti-clock-exclamation"></i> Pendente de aprovação (${pendentesDaCaixa.length})</p>
-        <ul class="doc-caixa-lista">${pendentesDaCaixa.map((d) => `<li style="display:flex;align-items:center;gap:6px"><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.numero)} — ${escapeHtml(d.nome)}</a>${botaoDetalhe(d)}</li>`).join('')}</ul>
+        <ul class="doc-caixa-lista">${pendentesDaCaixa.map((d) => `<li><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.numero)} — ${escapeHtml(d.nome)}</a></li>`).join('')}</ul>
       </div>` : ''}
     ${arvore.length ? `<ul class="doc-caixa-lista doc-arvore">${arvore.map(({ doc, profundidade }) => linhaDoc(doc, profundidade)).join('')}</ul>` : '<div class="empty-state"><i class="ti ti-file-off"></i>Nenhum documento publicado ainda para este processo.</div>'}
   `);
@@ -319,26 +367,7 @@ function abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCai
       e.preventDefault();
       const doc = documentos.find((d) => d.id === link.dataset.verDoc);
       if (!doc) return;
-      if (doc.arquivo_url) {
-        // Visualiza o documento inteiro embutido — nunca baixa/abre automaticamente aqui.
-        // O download automático fica reservado à Gestão de Documentos (ícone de ficha ao lado).
-        if (podeEditar) visualizarArquivo(state.supabase, doc.arquivo_url, doc.arquivo_nome);
-        else visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome);
-      } else if (podeEditar) {
-        fecharModal();
-        abrirDetalhe(state, state.__documentosTopContainer, doc, ctx);
-      } else {
-        toast('Este documento ainda não tem conteúdo publicado para visualização.', 'erro');
-      }
-    });
-  });
-
-  modal.querySelectorAll('[data-abrir-detalhe]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const doc = documentos.find((d) => d.id === btn.dataset.abrirDetalhe);
-      if (!doc) return;
-      fecharModal();
-      abrirDetalhe(state, state.__documentosTopContainer, doc, ctx);
+      abrirVisualizadorDocumento(state, doc, ctx);
     });
   });
 }
@@ -450,7 +479,7 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
           ${filtrados.map((d) => `
             <tr>
               <td>${escapeHtml(d.numero)}</td>
-              <td>${d.arquivo_url ? `<a href="#" class="dc-abrir-arquivo" data-abrir-arquivo="${d.id}" title="Abrir arquivo enviado"><i class="ti ti-file-text"></i>${escapeHtml(d.nome)}</a>` : escapeHtml(d.nome)}</td>
+              <td>${podeEditar && d.arquivo_url ? `<a href="#" class="dc-abrir-arquivo" data-abrir-arquivo="${d.id}" title="Abrir arquivo de trabalho"><i class="ti ti-file-text"></i>${escapeHtml(d.nome)}</a>` : escapeHtml(d.nome)}</td>
               <td>${escapeHtml(d.tipos_documento.nome)}</td>
               <td>${escapeHtml(nomeProcesso(d.processo_id))}</td>
               <td>${String(d.revisao_atual).padStart(2, '0')}</td>
@@ -458,8 +487,12 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
               <td><span class="badge ${BADGE_STATUS[d.status] || 'badge-neutral'}">${STATUS[d.status]}</span></td>
               <td>${CLASSIFICACAO[d.classificacao]}</td>
               ${ehRegistros ? `<td>${d.tempo_retencao_meses ? d.tempo_retencao_meses + ' meses' : '—'}</td>` : ''}
-              <td>${d.arquivo_url ? `<button class="icon-btn" data-baixar="${d.id}" title="Abrir arquivo"><i class="ti ti-file-download"></i></button>` : '—'}</td>
-              <td class="table-actions"><button class="icon-btn" data-abrir="${d.id}" title="Abrir"><i class="ti ti-eye"></i></button></td>
+              <td>
+                ${d.arquivo_pdf_url ? `<button class="icon-btn" data-visualizar-pdf="${d.id}" title="Visualizar PDF"><i class="ti ti-eye"></i></button>` : ''}
+                ${podeEditar && d.arquivo_url ? `<button class="icon-btn" data-baixar="${d.id}" title="Abrir arquivo de trabalho"><i class="ti ti-file-download"></i></button>` : ''}
+                ${!d.arquivo_pdf_url && !d.arquivo_url ? '—' : ''}
+              </td>
+              <td class="table-actions"><button class="icon-btn" data-abrir="${d.id}" title="Abrir ficha"><i class="ti ti-file-info"></i></button></td>
             </tr>`).join('')}
         </tbody>
       </table>` : `<div class="empty-state"><i class="ti ti-file-text"></i>Nenhum ${ehRegistros ? 'registro' : 'documento'} cadastrado.</div>`}
@@ -486,6 +519,13 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
       e.preventDefault();
       const doc = documentos.find((d) => d.id === link.dataset.abrirArquivo);
       abrirArquivoDocumento(state.supabase, doc.arquivo_url);
+    });
+  });
+
+  corpo.querySelectorAll('[data-visualizar-pdf]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const doc = documentos.find((d) => d.id === btn.dataset.visualizarPdf);
+      abrirVisualizadorDocumento(state, doc, { nomeUsuario, nomeProcesso });
     });
   });
 
@@ -674,8 +714,14 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
         <p class="text-muted" style="font-size:12px;margin-top:4px">O número é mantido exatamente como digitado — o controle de revisão, aprovação e lista mestra funciona normalmente.</p>
       </div>
       <div class="form-group">
-        <label>Arquivo do documento (Word ou PDF) *</label>
+        <label>Arquivo de trabalho (Word ou PDF) *</label>
         <input type="file" id="nd-arquivo" accept="${ACCEPT_ARQUIVO}" required>
+        <p class="text-muted" style="font-size:12px;margin-top:4px">Fica disponível só na Gestão de Documentos, para quem edita.</p>
+      </div>
+      <div class="form-group" id="nd-grupo-pdf" style="display:none">
+        <label>PDF para visualização *</label>
+        <input type="file" id="nd-arquivo-pdf" accept="${ACCEPT_PDF}">
+        <p class="text-muted" style="font-size:12px;margin-top:4px">Exporte o arquivo de trabalho como PDF (Word: Arquivo &gt; Salvar como &gt; PDF) e anexe aqui — é o que todos os usuários verão na aba Documentos.</p>
       </div>
       <div id="nd-campos-condicionais"></div>
       <button class="btn btn-primary btn-block" type="submit">Criar rascunho</button>
@@ -686,6 +732,16 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
 
   modal.querySelector('#nd-modo-numeracao').addEventListener('change', (e) => {
     modal.querySelector('#nd-grupo-numero-proprio').style.display = e.target.value === 'propria' ? '' : 'none';
+  });
+
+  // Se o arquivo de trabalho já for PDF, o mesmo arquivo serve para visualização — não precisa
+  // pedir um segundo upload. Só pede o PDF em separado quando o arquivo de trabalho é Word/ODT.
+  modal.querySelector('#nd-arquivo').addEventListener('change', (e) => {
+    const arquivo = e.target.files[0];
+    const precisaPdf = arquivo && !arquivoEhPdf(arquivo.name);
+    const grupoPdf = modal.querySelector('#nd-grupo-pdf');
+    grupoPdf.style.display = precisaPdf ? '' : 'none';
+    modal.querySelector('#nd-arquivo-pdf').required = precisaPdf;
   });
 
   modal.querySelector('#nd-tipo').addEventListener('change', async (e) => {
@@ -702,7 +758,10 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
     if (!tipo) return toast('Selecione um tipo de documento.', 'erro');
 
     const arquivo = modal.querySelector('#nd-arquivo').files[0];
-    if (!arquivo) return toast('Anexe o arquivo do documento (Word ou PDF).', 'erro');
+    if (!arquivo) return toast('Anexe o arquivo de trabalho do documento (Word ou PDF).', 'erro');
+    const arquivoJaEhPdf = arquivoEhPdf(arquivo.name);
+    const arquivoPdf = modal.querySelector('#nd-arquivo-pdf').files[0];
+    if (!arquivoJaEhPdf && !arquivoPdf) return toast('Anexe também o PDF para visualização (obrigatório quando o arquivo de trabalho não é PDF).', 'erro');
 
     // Numeração própria: mantém o número vigente da empresa (o gatilho do banco só gera número
     // automático quando o campo vem vazio). Valida duplicidade dentro da empresa antes de criar.
@@ -738,10 +797,14 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
     btnSubmit.textContent = 'Enviando arquivo...';
 
     const novoId = crypto.randomUUID();
-    let arquivoInfo;
+    let arquivoInfo, pdfInfo;
     try {
       arquivoInfo = await uploadArquivoDocumento(supabase, empresaAtual.id, novoId, arquivo);
+      pdfInfo = arquivoJaEhPdf
+        ? await uploadPdfDocumento(supabase, empresaAtual.id, novoId, arquivo)
+        : await uploadPdfDocumento(supabase, empresaAtual.id, novoId, arquivoPdf);
     } catch (err) {
+      await removerArquivosDocumento(supabase, { arquivo_url: arquivoInfo?.arquivo_url, arquivo_pdf_url: pdfInfo?.arquivo_pdf_url });
       btnSubmit.disabled = false;
       btnSubmit.textContent = 'Criar rascunho';
       return toast('Erro ao enviar arquivo: ' + err.message, 'erro');
@@ -761,6 +824,9 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
       arquivo_url: arquivoInfo.arquivo_url,
       arquivo_nome: arquivoInfo.arquivo_nome,
       arquivo_tamanho: arquivoInfo.arquivo_tamanho,
+      arquivo_pdf_url: pdfInfo.arquivo_pdf_url,
+      arquivo_pdf_nome: pdfInfo.arquivo_pdf_nome,
+      arquivo_pdf_tamanho: pdfInfo.arquivo_pdf_tamanho,
     }, ehRegistro(tipo) ? {
       tempo_retencao_meses: Number(tempoRetencao),
       local_armazenamento: localArmazenamento,
@@ -769,7 +835,7 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
 
     const { error } = await supabase.from('documentos').insert(payload);
     if (error) {
-      await supabase.storage.from(BUCKET_ARQUIVOS).remove([arquivoInfo.arquivo_url]);
+      await removerArquivosDocumento(supabase, { arquivo_url: arquivoInfo.arquivo_url, arquivo_pdf_url: pdfInfo.arquivo_pdf_url });
       btnSubmit.disabled = false;
       btnSubmit.textContent = 'Criar rascunho';
       return toast('Erro ao criar documento: ' + error.message, 'erro');

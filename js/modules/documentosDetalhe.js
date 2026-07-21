@@ -6,7 +6,9 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js'
 import { imprimirDocumentoLegado, visualizarPdfDocumentoLegado } from './documentosImpressaoLegado.js';
 import {
   render, STATUS, CLASSIFICACAO, ehRegistro, formatarData, formatarTamanho,
-  hashConteudo, uploadArquivoDocumento, abrirArquivoDocumento, visualizarArquivoRestrito, BUCKET_ARQUIVOS, ACCEPT_ARQUIVO,
+  hashConteudo, uploadArquivoDocumento, uploadPdfDocumento, removerArquivosDocumento,
+  abrirArquivoDocumento, abrirVisualizadorDocumento, arquivoEhPdf,
+  BUCKET_ARQUIVOS, BUCKET_PDF, ACCEPT_ARQUIVO, ACCEPT_PDF,
 } from './documentos.js';
 
 const BADGE_STATUS = {
@@ -117,7 +119,10 @@ export function abrirDetalhe(state, container, doc, ctx) {
                 <td>${formatarData(r.data)}</td>
                 <td>${escapeHtml(r.descricao_alteracao)}</td>
                 <td><span class="badge ${r.status_final === 'publicado' ? 'badge-success' : 'badge-neutral'}">${r.status_final === 'publicado' ? 'Vigente' : 'Obsoleta'}</span></td>
-                <td>${r.arquivo_url && podeEditar ? `<button class="icon-btn" data-baixar-revisao="${r.id}" title="Abrir arquivo desta revisão"><i class="ti ti-file-download"></i></button>` : ''}</td>
+                <td class="table-actions">
+                  ${r.arquivo_pdf_url ? `<button class="icon-btn" data-visualizar-revisao="${r.id}" title="Visualizar PDF desta revisão"><i class="ti ti-eye"></i></button>` : ''}
+                  ${r.arquivo_url && podeEditar ? `<button class="icon-btn" data-baixar-revisao="${r.id}" title="Abrir arquivo de trabalho desta revisão"><i class="ti ti-file-download"></i></button>` : ''}
+                </td>
               </tr>`).join('') : '<tr><td colspan="5" class="text-muted">Nenhuma revisão publicada ainda.</td></tr>'}
           </tbody>
         </table>
@@ -129,13 +134,13 @@ export function abrirDetalhe(state, container, doc, ctx) {
     if (btnAbrirArquivoTopo) btnAbrirArquivoTopo.addEventListener('click', () => abrirArquivoDocumento(state.supabase, doc.arquivo_url));
 
     const btnVisualizarRestritoTopo = modal.querySelector('#dd-visualizar-restrito-topo');
-    if (btnVisualizarRestritoTopo) btnVisualizarRestritoTopo.addEventListener('click', () => visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome));
+    if (btnVisualizarRestritoTopo) btnVisualizarRestritoTopo.addEventListener('click', () => abrirVisualizadorDocumento(state, doc, { nomeUsuario, nomeProcesso }));
 
     const btnBaixarArquivo = modal.querySelector('#dd-baixar-arquivo');
     if (btnBaixarArquivo) btnBaixarArquivo.addEventListener('click', () => abrirArquivoDocumento(state.supabase, doc.arquivo_url));
 
     const btnVisualizarRestrito = modal.querySelector('#dd-visualizar-restrito');
-    if (btnVisualizarRestrito) btnVisualizarRestrito.addEventListener('click', () => visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome));
+    if (btnVisualizarRestrito) btnVisualizarRestrito.addEventListener('click', () => abrirVisualizadorDocumento(state, doc, { nomeUsuario, nomeProcesso }));
 
     const btnSubstituirArquivo = modal.querySelector('#dd-substituir-arquivo');
     if (btnSubstituirArquivo) btnSubstituirArquivo.addEventListener('click', () => substituirArquivoDocumento(state, container, doc));
@@ -150,6 +155,25 @@ export function abrirDetalhe(state, container, doc, ctx) {
       btn.addEventListener('click', () => {
         const rev = (revisoes || []).find((r) => r.id === btn.dataset.baixarRevisao);
         if (rev && rev.arquivo_url) abrirArquivoDocumento(state.supabase, rev.arquivo_url);
+      });
+    });
+
+    modal.querySelectorAll('[data-visualizar-revisao]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const rev = (revisoes || []).find((r) => r.id === btn.dataset.visualizarRevisao);
+        if (!rev) return;
+        // A ficha da revisão não tem todos os campos de "documentos" — monta um objeto compatível
+        // com o visualizador (número/nome do documento atual, dados da revisão específica).
+        abrirVisualizadorDocumento(state, {
+          numero: doc.numero, nome: doc.nome,
+          revisao_atual: rev.numero_revisao,
+          classificacao: doc.classificacao,
+          processo_id: doc.processo_id,
+          elaborado_por: rev.elaborado_por,
+          aprovado_por: rev.aprovado_por,
+          data_publicacao: rev.data,
+          arquivo_pdf_url: rev.arquivo_pdf_url,
+        }, { nomeUsuario, nomeProcesso });
       });
     });
 
@@ -184,32 +208,67 @@ export function abrirDetalhe(state, container, doc, ctx) {
   });
 }
 
-async function substituirArquivoDocumento(state, container, doc) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = ACCEPT_ARQUIVO;
-  input.onchange = async () => {
-    const arquivo = input.files[0];
-    if (!arquivo) return;
+function substituirArquivoDocumento(state, container, doc) {
+  const modal = abrirModal('Substituir arquivo', `
+    <form id="form-substituir-arquivo">
+      <div class="form-group">
+        <label>Novo arquivo de trabalho (Word ou PDF) *</label>
+        <input type="file" id="sa-arquivo" accept="${ACCEPT_ARQUIVO}" required>
+      </div>
+      <div class="form-group" id="sa-grupo-pdf" style="display:none">
+        <label>PDF para visualização *</label>
+        <input type="file" id="sa-arquivo-pdf" accept="${ACCEPT_PDF}">
+        <p class="text-muted" style="font-size:12px;margin-top:4px">Exporte o arquivo de trabalho como PDF e anexe aqui — é o que todos os usuários verão na aba Documentos.</p>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Substituir</button>
+    </form>
+  `);
+
+  modal.querySelector('#sa-arquivo').addEventListener('change', (e) => {
+    const arquivo = e.target.files[0];
+    const precisaPdf = arquivo && !arquivoEhPdf(arquivo.name);
+    modal.querySelector('#sa-grupo-pdf').style.display = precisaPdf ? '' : 'none';
+    modal.querySelector('#sa-arquivo-pdf').required = precisaPdf;
+  });
+
+  modal.querySelector('#form-substituir-arquivo').addEventListener('submit', async (e) => {
+    e.preventDefault();
     const { supabase } = state;
+    const arquivo = modal.querySelector('#sa-arquivo').files[0];
+    if (!arquivo) return toast('Selecione o novo arquivo de trabalho.', 'erro');
+    const arquivoJaEhPdf = arquivoEhPdf(arquivo.name);
+    const arquivoPdf = modal.querySelector('#sa-arquivo-pdf').files[0];
+    if (!arquivoJaEhPdf && !arquivoPdf) return toast('Anexe também o PDF para visualização.', 'erro');
+
+    const btnSubmit = modal.querySelector('button[type="submit"]');
+    btnSubmit.disabled = true;
+
     try {
       const arquivoInfo = await uploadArquivoDocumento(supabase, doc.empresa_id, doc.id, arquivo);
-      const arquivoAntigo = doc.arquivo_url;
+      const pdfInfo = arquivoJaEhPdf
+        ? await uploadPdfDocumento(supabase, doc.empresa_id, doc.id, arquivo)
+        : await uploadPdfDocumento(supabase, doc.empresa_id, doc.id, arquivoPdf);
+      const antigos = { arquivo_url: doc.arquivo_url, arquivo_pdf_url: doc.arquivo_pdf_url };
+
       const { error } = await supabase.from('documentos').update({
         arquivo_url: arquivoInfo.arquivo_url,
         arquivo_nome: arquivoInfo.arquivo_nome,
         arquivo_tamanho: arquivoInfo.arquivo_tamanho,
+        arquivo_pdf_url: pdfInfo.arquivo_pdf_url,
+        arquivo_pdf_nome: pdfInfo.arquivo_pdf_nome,
+        arquivo_pdf_tamanho: pdfInfo.arquivo_pdf_tamanho,
       }).eq('id', doc.id);
       if (error) throw error;
-      if (arquivoAntigo) await supabase.storage.from(BUCKET_ARQUIVOS).remove([arquivoAntigo]);
+
+      await removerArquivosDocumento(supabase, antigos);
       toast('Arquivo substituído.', 'sucesso');
       fecharModal();
       render(container, state);
     } catch (err) {
+      btnSubmit.disabled = false;
       toast('Erro ao substituir arquivo: ' + err.message, 'erro');
     }
-  };
-  input.click();
+  });
 }
 
 function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
@@ -283,11 +342,13 @@ function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
       return toast(`Não é possível excluir: há documentos vinculados (${vinculados.map((v) => escapeHtml(v.numero)).join(', ')}).`, 'erro');
     }
     if (!(await confirmar('Excluir este documento e todo o seu histórico de revisões? Esta ação não pode ser desfeita.'))) return;
-    const { data: revisoesDoc } = await supabase.from('documentos_revisoes').select('arquivo_url').eq('documento_id', doc.id);
+    const { data: revisoesDoc } = await supabase.from('documentos_revisoes').select('arquivo_url, arquivo_pdf_url').eq('documento_id', doc.id);
     const { error } = await supabase.from('documentos').delete().eq('id', doc.id);
     if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
     const arquivosParaRemover = [doc.arquivo_url, ...(revisoesDoc || []).map((r) => r.arquivo_url)].filter(Boolean);
+    const pdfsParaRemover = [doc.arquivo_pdf_url, ...(revisoesDoc || []).map((r) => r.arquivo_pdf_url)].filter(Boolean);
     if (arquivosParaRemover.length) await supabase.storage.from(BUCKET_ARQUIVOS).remove(arquivosParaRemover);
+    if (pdfsParaRemover.length) await supabase.storage.from(BUCKET_PDF).remove(pdfsParaRemover);
     toast('Documento excluído.', 'sucesso');
     fecharModal();
     render(container, state);
@@ -339,13 +400,17 @@ function abrirModalAprovar(state, container, doc) {
   modal.querySelector('#form-aprovar').addEventListener('submit', async (e) => {
     e.preventDefault();
     const { supabase, user } = state;
+    if (doc.arquivo_url && !doc.arquivo_pdf_url) {
+      fecharModal();
+      return toast('Este documento ainda não tem o PDF de visualização anexado. Use "Substituir arquivo" para anexá-lo antes de aprovar.', 'erro');
+    }
     const senha = modal.querySelector('#ap-senha').value;
     const { error: errAuth } = await supabase.auth.signInWithPassword({ email: user.email, password: senha });
     if (errAuth) return toast('Senha incorreta.', 'erro');
 
     const alertaSegregacao = doc.aprovador_solicitado_id === doc.elaborado_por;
     const dadosParaHash = doc.arquivo_url
-      ? { arquivo_url: doc.arquivo_url, arquivo_nome: doc.arquivo_nome, arquivo_tamanho: doc.arquivo_tamanho }
+      ? { arquivo_url: doc.arquivo_url, arquivo_nome: doc.arquivo_nome, arquivo_tamanho: doc.arquivo_tamanho, arquivo_pdf_url: doc.arquivo_pdf_url }
       : doc.conteudo;
     const hash = await hashConteudo(dadosParaHash);
     const nomeAprovador = user.user_metadata?.nome || user.email;
@@ -371,6 +436,8 @@ function abrirModalAprovar(state, container, doc) {
       conteudo_snapshot: dadosParaHash,
       arquivo_url: doc.arquivo_url || null,
       arquivo_nome: doc.arquivo_nome || null,
+      arquivo_pdf_url: doc.arquivo_pdf_url || null,
+      arquivo_pdf_nome: doc.arquivo_pdf_nome || null,
       elaborado_por: doc.elaborado_por,
       aprovado_por: user.id,
       status_final: 'publicado',
@@ -395,12 +462,24 @@ function abrirModalNovaRevisao(state, container, doc) {
         <textarea id="nr-descricao" required placeholder="O que está sendo alterado nesta revisão?"></textarea>
       </div>
       <div class="form-group">
-        <label>Novo arquivo do documento (Word ou PDF) *</label>
+        <label>Novo arquivo de trabalho (Word ou PDF) *</label>
         <input type="file" id="nr-arquivo" accept="${ACCEPT_ARQUIVO}" required>
+      </div>
+      <div class="form-group" id="nr-grupo-pdf" style="display:none">
+        <label>PDF para visualização *</label>
+        <input type="file" id="nr-arquivo-pdf" accept="${ACCEPT_PDF}">
+        <p class="text-muted" style="font-size:12px;margin-top:4px">Exporte o arquivo de trabalho como PDF e anexe aqui — é o que todos os usuários verão na aba Documentos.</p>
       </div>
       <button class="btn btn-primary btn-block" type="submit">Iniciar revisão ${String(doc.revisao_atual + 1).padStart(2, '0')}</button>
     </form>
   `);
+
+  modal.querySelector('#nr-arquivo').addEventListener('change', (e) => {
+    const arquivo = e.target.files[0];
+    const precisaPdf = arquivo && !arquivoEhPdf(arquivo.name);
+    modal.querySelector('#nr-grupo-pdf').style.display = precisaPdf ? '' : 'none';
+    modal.querySelector('#nr-arquivo-pdf').required = precisaPdf;
+  });
 
   modal.querySelector('#form-nova-revisao').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -408,14 +487,21 @@ function abrirModalNovaRevisao(state, container, doc) {
     const descricao = modal.querySelector('#nr-descricao').value.trim();
     const arquivo = modal.querySelector('#nr-arquivo').files[0];
     if (!arquivo) return toast('Anexe o novo arquivo desta revisão.', 'erro');
+    const arquivoJaEhPdf = arquivoEhPdf(arquivo.name);
+    const arquivoPdf = modal.querySelector('#nr-arquivo-pdf').files[0];
+    if (!arquivoJaEhPdf && !arquivoPdf) return toast('Anexe também o PDF para visualização.', 'erro');
 
     const btnSubmit = modal.querySelector('button[type="submit"]');
     btnSubmit.disabled = true;
 
-    let arquivoInfo;
+    let arquivoInfo, pdfInfo;
     try {
       arquivoInfo = await uploadArquivoDocumento(supabase, doc.empresa_id, doc.id, arquivo);
+      pdfInfo = arquivoJaEhPdf
+        ? await uploadPdfDocumento(supabase, doc.empresa_id, doc.id, arquivo)
+        : await uploadPdfDocumento(supabase, doc.empresa_id, doc.id, arquivoPdf);
     } catch (err) {
+      await removerArquivosDocumento(supabase, { arquivo_url: arquivoInfo?.arquivo_url, arquivo_pdf_url: pdfInfo?.arquivo_pdf_url });
       btnSubmit.disabled = false;
       return toast('Erro ao enviar arquivo: ' + err.message, 'erro');
     }
@@ -427,9 +513,12 @@ function abrirModalNovaRevisao(state, container, doc) {
       arquivo_url: arquivoInfo.arquivo_url,
       arquivo_nome: arquivoInfo.arquivo_nome,
       arquivo_tamanho: arquivoInfo.arquivo_tamanho,
+      arquivo_pdf_url: pdfInfo.arquivo_pdf_url,
+      arquivo_pdf_nome: pdfInfo.arquivo_pdf_nome,
+      arquivo_pdf_tamanho: pdfInfo.arquivo_pdf_tamanho,
     }).eq('id', doc.id);
     if (error) {
-      await supabase.storage.from(BUCKET_ARQUIVOS).remove([arquivoInfo.arquivo_url]);
+      await removerArquivosDocumento(supabase, { arquivo_url: arquivoInfo.arquivo_url, arquivo_pdf_url: pdfInfo.arquivo_pdf_url });
       btnSubmit.disabled = false;
       return toast('Erro: ' + error.message, 'erro');
     }
