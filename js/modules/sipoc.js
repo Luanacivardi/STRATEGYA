@@ -121,22 +121,7 @@ export async function render(container, state) {
     ` : '<div class="empty-state"><i class="ti ti-arrows-right-left"></i>Nenhum processo cadastrado no Macrofluxo ainda. Cadastre os processos na aba Macrofluxo para descrever o SIPOC de cada um.</div>'}
   `;
 
-  container.querySelector('#btn-imprimir-sipoc')?.addEventListener('click', () => {
-    imprimirSecao(`
-      <h2 style="margin-bottom:4px">SIPOC por Processo</h2>
-      <p class="text-muted">${escapeHtml(empresaAtual.nome)}</p>
-      <hr class="sep">
-      ${linhas.map((linha) => `
-        <h4 style="margin:14px 0 6px">${escapeHtml(rotuloProcesso(linha.processo))} <span style="font-weight:400;color:#666">(${TIPO_LABEL[linha.processo.tipo] || ''})</span></h4>
-        <table class="print-detalhe-tabela">
-          <tbody>
-            <tr><th>Fornecedores / Entradas</th><td>${linha.entradas.length ? linha.entradas.map((e) => `${escapeHtml(e.fornecedor_processo_id ? (dados.processos.find((p) => p.id === e.fornecedor_processo_id)?.nome || '—') : e.fornecedor_externo)}: ${escapeHtml(e.descricao)}`).join('<br>') : '—'}</td></tr>
-            <tr><th>Atividades</th><td>${linha.atividades ? escapeHtml(linha.atividades).replaceAll('\n', '<br>') : '—'}</td></tr>
-            <tr><th>Saídas / Clientes</th><td>${[...linha.saidasAuto.map((s) => `${escapeHtml(s.descricao)} → ${escapeHtml(s.destino)}`), ...linha.saidasManuais.map((s) => `${escapeHtml(s.descricao)} → ${escapeHtml(s.destino_processo_id ? (dados.processos.find((p) => p.id === s.destino_processo_id)?.nome || '—') : s.destino_externo)}`)].join('<br>') || '—'}</td></tr>
-          </tbody>
-        </table>`).join('')}
-    `);
-  });
+  container.querySelector('#btn-imprimir-sipoc')?.addEventListener('click', () => imprimirSipoc(linhas, dados.processos, empresaAtual.nome));
 
   container.querySelectorAll('[data-editar]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -144,6 +129,58 @@ export async function render(container, state) {
       abrirFormulario(state, container, linha, dados.processos);
     });
   });
+}
+
+// Impressão no formato do Anexo B (Mapa de Processo) usado como referência: uma página por
+// processo, com uma tabela de 5 colunas (Processo de Entrada | Entrada | Atividade do Processo |
+// Saída | Processo de Saída). Entradas e saídas são listadas cada uma na sua coluna, lado a lado,
+// sem relação linha a linha entre elas (podem ter quantidades diferentes) — a Atividade ocupa uma
+// única célula central que se estende por todas as linhas da página (rowspan).
+function imprimirSipoc(linhas, processos, empresaNome) {
+  const nomeFornecedor = (item, campoInternoId, campoExterno) => (item[campoInternoId]
+    ? rotuloProcesso(processos.find((p) => p.id === item[campoInternoId]) || { nome: '—' })
+    : item[campoExterno]);
+
+  const paginas = linhas.map((linha) => {
+    const entradas = linha.entradas.map((e) => ({ origem: nomeFornecedor(e, 'fornecedor_processo_id', 'fornecedor_externo'), texto: e.descricao }));
+    const saidas = [
+      ...linha.saidasAuto.map((s) => ({ texto: s.descricao, destino: s.destino })),
+      ...linha.saidasManuais.map((s) => ({ texto: s.descricao, destino: nomeFornecedor(s, 'destino_processo_id', 'destino_externo') })),
+    ];
+    const totalLinhas = Math.max(entradas.length, saidas.length, 1);
+
+    const linhasTabela = Array.from({ length: totalLinhas }).map((_, i) => `
+      <tr>
+        <td>${entradas[i] ? escapeHtml(entradas[i].origem) : ''}</td>
+        <td>${entradas[i] ? escapeHtml(entradas[i].texto) : ''}</td>
+        ${i === 0 ? `<td rowspan="${totalLinhas}" class="sipoc-print-atividade">${linha.atividades ? escapeHtml(linha.atividades).replaceAll('\n', '<br>') : '<span class="text-muted">—</span>'}</td>` : ''}
+        <td>${saidas[i] ? escapeHtml(saidas[i].texto) : ''}</td>
+        <td>${saidas[i] ? escapeHtml(saidas[i].destino) : ''}</td>
+      </tr>`).join('');
+
+    return `
+      <div class="sipoc-print-pagina">
+        <div class="sipoc-print-cabecalho">
+          <h2>SIPOC — ${escapeHtml(rotuloProcesso(linha.processo))}</h2>
+          <span class="sipoc-print-tipo">${TIPO_LABEL[linha.processo.tipo] || ''}</span>
+        </div>
+        <table class="sipoc-print-tabela">
+          <thead><tr>
+            <th>Processo de Entrada</th>
+            <th>Entrada</th>
+            <th>Atividade do Processo</th>
+            <th>Saída</th>
+            <th>Processo de Saída</th>
+          </tr></thead>
+          <tbody>${linhasTabela}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  imprimirSecao(`
+    <p class="text-muted" style="margin-bottom:14px">${escapeHtml(empresaNome)} · SIPOC por Processo</p>
+    ${paginas}
+  `);
 }
 
 function abrirFormulario(state, container, linha, todosProcessos) {
