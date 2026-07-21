@@ -55,7 +55,7 @@ async function renderPartes(container, state) {
 
 async function renderCenario(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
   const { data, error } = await supabase
     .from('contexto_organizacional')
@@ -172,7 +172,7 @@ async function renderSipoc(container, state) {
 
 async function renderMissaoVisaoValores(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
   const { data: empresa, error } = await supabase
     .from('empresas')

@@ -66,7 +66,7 @@ function montarEstrutura({ processos, entradas, saidasManuais, atividadesPorProc
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
   let dados;
   try {

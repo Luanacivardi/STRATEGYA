@@ -128,6 +128,15 @@ export async function mensagemErroFuncao(error) {
   return error?.message || 'Erro desconhecido.';
 }
 
+// Nível de edição do usuário nesta empresa (ver carregarNivelEdicao em app.js): 'total' já libera
+// tudo; 'proprio' libera só quando a própria pessoa é a responsável do registro (comparar com o
+// campo responsavel_id do objetivo/indicador/plano/tarefa/etc.); 'leitura' (ou nada) não libera.
+// Espelha exatamente as políticas de RLS do banco — mantém a tela e o banco sempre de acordo.
+export function podeEditarRegistro(state, responsavelId) {
+  if (state.papelAtual !== 'usuario' || state.nivelEdicao === 'total') return true;
+  return state.nivelEdicao === 'proprio' && !!responsavelId && responsavelId === state.user.id;
+}
+
 export function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)

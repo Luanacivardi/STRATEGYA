@@ -5,7 +5,7 @@ const INFLUENCIA_LABEL = { baixo: 'Baixo', medio: 'Médio', alto: 'Alto' };
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
   const { data, error } = await supabase
     .from('partes_interessadas')

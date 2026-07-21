@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro } from '../ui.js';
 import { definirFiltroObjetivo } from './planosAcao.js';
 import { renderMapa, wireMapa } from './mapaEstrategico.js';
 
@@ -32,7 +32,10 @@ export async function listarObjetivos(supabase, empresaId) {
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  // Nível "próprio": não edita tudo, mas pode criar um objetivo novo (sempre com ela mesma como
+  // responsável) e editar/excluir os objetivos em que já é a responsável.
+  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
 
   let itens, membros, planos, riscos;
   try {
@@ -84,9 +87,11 @@ export async function render(container, state) {
     const area = container.querySelector('#objetivos-tabela-area');
     area.innerHTML = filtrados.length ? `
         <table class="table">
-          <thead><tr><th><input type="checkbox" id="ob-selecionar-todas"></th><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Riscos e Oport.</th><th>Plano de Ação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+          <thead><tr><th><input type="checkbox" id="ob-selecionar-todas"></th><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Riscos e Oport.</th><th>Plano de Ação</th><th></th></tr></thead>
           <tbody>
-            ${filtrados.map((o) => `
+            ${filtrados.map((o) => {
+              const podeEditarEste = podeEditarRegistro(state, o.responsavel_id);
+              return `
               <tr>
                 <td><input type="checkbox" class="ob-checkbox" data-id="${o.id}" ${selecionados.has(o.id) ? 'checked' : ''}></td>
                 <td><strong>${escapeHtml(o.nome)}</strong><br><span class="text-muted">${escapeHtml(o.descricao || '')}</span></td>
@@ -108,11 +113,14 @@ export async function render(container, state) {
                     ${planosPorObjetivo.get(o.id) ? `${planosPorObjetivo.get(o.id)} plano(s)` : 'Sem plano — criar'}
                   </button>
                 </td>
-                ${podeEditar ? `<td class="table-actions">
-                  <button class="icon-btn" data-editar="${o.id}" title="Editar"><i class="ti ti-pencil"></i></button>
-                  <button class="icon-btn" data-excluir="${o.id}" title="Excluir"><i class="ti ti-trash"></i></button>
-                </td>` : ''}
-              </tr>`).join('')}
+                <td class="table-actions">
+                  ${podeEditarEste ? `
+                    <button class="icon-btn" data-editar="${o.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                    <button class="icon-btn" data-excluir="${o.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+                  ` : ''}
+                </td>
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>` : '<div class="empty-state"><i class="ti ti-flag"></i>Nenhum objetivo encontrado.</div>';
 
@@ -174,7 +182,7 @@ export async function render(container, state) {
         <span><i class="ti ti-flag"></i> Objetivos Estratégicos</span>
         <div style="display:flex;gap:8px">
           <button class="btn btn-secondary btn-sm" id="btn-objetivos-pdf"><i class="ti ti-printer"></i> Imprimir</button>
-          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-objetivo"><i class="ti ti-plus"></i> Novo objetivo</button>' : ''}
+          ${podeCriar ? '<button class="btn btn-primary btn-sm" id="btn-add-objetivo"><i class="ti ti-plus"></i> Novo objetivo</button>' : ''}
         </div>
       </div>
       ${itens.length ? `
@@ -235,7 +243,10 @@ function imprimirListaObjetivos(itens, emailPorId) {
 }
 
 function abrirFormulario(state, container, membros, item = null, riscosVinculados = []) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, user } = state;
+  // Nível "próprio" só grava se responsavel_id for a própria pessoa (regra do banco) — trava o
+  // campo já na tela em vez de deixar escolher outra pessoa e a gravação falhar depois.
+  const travarResponsavelEmSiMesmo = state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
   // Análises já registradas a partir deste formulário (uma de risco, uma de oportunidade).
   const analiseRisco = riscosVinculados.find((r) => r.tipo === 'risco' && r.categoria === CATEGORIA_ANALISE_OBJETIVO) || null;
   const analiseOportunidade = riscosVinculados.find((r) => r.tipo === 'oportunidade' && r.categoria === CATEGORIA_ANALISE_OBJETIVO) || null;
@@ -265,10 +276,11 @@ function abrirFormulario(state, container, membros, item = null, riscosVinculado
       </div>
       <div class="form-group">
         <label>Responsável</label>
-        <select id="ob-responsavel">
+        <select id="ob-responsavel" ${travarResponsavelEmSiMesmo ? 'disabled' : ''}>
           <option value="">—</option>
-          ${membros.map((m) => `<option value="${m.usuario_id}" ${item?.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
+          ${membros.map((m) => `<option value="${m.usuario_id}" ${(item ? item.responsavel_id === m.usuario_id : (travarResponsavelEmSiMesmo && m.usuario_id === user.id)) ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
         </select>
+        ${travarResponsavelEmSiMesmo ? '<p class="text-muted" style="font-size:12px;margin-top:4px">Seu nível de acesso só permite criar objetivos com você mesmo como responsável.</p>' : ''}
       </div>
       <hr class="sep">
       <p style="font-weight:700;font-size:13px;color:var(--navy-titulo);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Análise de Riscos e Oportunidades do objetivo</p>

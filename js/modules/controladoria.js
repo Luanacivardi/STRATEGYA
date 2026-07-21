@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro } from '../ui.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
 const CATEGORIA_BADGE = { receita: 'badge-success', custo: 'badge-warning', despesa: 'badge-danger', investimento: 'badge-neutral' };
@@ -18,7 +18,7 @@ let filtroStatus = 'ativo';
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
   let contas, departamentos, membros;
   try {
@@ -397,8 +397,10 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
 
 function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba) {
   const { supabase, empresaAtual, user } = state;
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id);
 
   areaAba.innerHTML = `
+    ${podeGerenciar ? `
     <form id="form-nova-analise" style="margin-bottom:1.25rem">
       <div class="form-row">
         <div class="form-group">
@@ -420,6 +422,7 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
       </div>
       <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-plus"></i> Registrar análise</button>
     </form>
+    ` : '<p class="text-muted" style="margin-bottom:1rem"><i class="ti ti-lock"></i> Apenas o responsável pela análise desta conta (ou a Qualidade/administração) pode registrar novas análises.</p>'}
 
     ${analises.length ? analises.map((a) => `
       <div class="card" style="padding:12px;margin-bottom:10px">
@@ -432,13 +435,16 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
         </div>
         <p style="margin:8px 0 4px">${escapeHtml(a.texto_analise)}</p>
         ${a.houve_desvio && a.justificativa_desvio ? `<p class="text-muted" style="font-size:13px"><strong>Justificativa:</strong> ${escapeHtml(a.justificativa_desvio)}</p>` : ''}
+        ${podeGerenciar ? `
         <div class="table-actions" style="margin-top:8px">
           <button class="btn btn-secondary btn-sm" data-criar-plano="${a.id}"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
           <button class="btn btn-secondary btn-sm" data-criar-tarefa="${a.id}"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
-        </div>
+        </div>` : ''}
       </div>
     `).join('') : '<div class="empty-state"><i class="ti ti-notes"></i>Nenhuma análise registrada ainda.</div>'}
   `;
+
+  if (!podeGerenciar) return;
 
   const chkDesvio = areaAba.querySelector('#an-houve-desvio');
   chkDesvio.addEventListener('change', (e) => {
@@ -479,8 +485,10 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
 
 function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) {
   const { supabase, empresaAtual, user } = state;
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id);
 
   areaAba.innerHTML = `
+    ${podeGerenciar ? `
     <form id="form-novo-anexo" style="margin-bottom:1.25rem">
       <div class="form-row">
         <div class="form-group">
@@ -494,6 +502,7 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
       </div>
       <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-upload"></i> Enviar</button>
     </form>
+    ` : '<p class="text-muted" style="margin-bottom:1rem"><i class="ti ti-lock"></i> Apenas o responsável pela análise desta conta (ou a Qualidade/administração) pode enviar novos arquivos.</p>'}
 
     <p class="text-muted" style="font-size:12px;margin-bottom:0.5rem">Histórico de uploads</p>
     ${anexos.length ? `
@@ -510,7 +519,7 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
               <td class="table-actions">
                 <button class="icon-btn" data-visualizar-anexo="${a.id}" title="Visualizar e analisar"><i class="ti ti-eye"></i></button>
                 <button class="icon-btn" data-baixar-anexo="${a.id}" title="Baixar"><i class="ti ti-download"></i></button>
-                <button class="icon-btn" data-excluir-anexo="${a.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+                ${podeGerenciar ? `<button class="icon-btn" data-excluir-anexo="${a.id}" title="Excluir"><i class="ti ti-trash"></i></button>` : ''}
               </td>
             </tr>
           `).join('')}
@@ -518,7 +527,7 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
       </table>` : '<div class="empty-state"><i class="ti ti-paperclip"></i>Nenhum arquivo enviado ainda.</div>'}
   `;
 
-  areaAba.querySelector('#form-novo-anexo').addEventListener('submit', async (e) => {
+  if (podeGerenciar) areaAba.querySelector('#form-novo-anexo').addEventListener('submit', async (e) => {
     e.preventDefault();
     const arquivo = areaAba.querySelector('#ax-arquivo').files[0];
     const competencia = areaAba.querySelector('#ax-competencia').value + '-01';
@@ -591,6 +600,7 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
   const { supabase, user } = state;
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const ehImagem = anexo.arquivo_tipo === 'png' || anexo.arquivo_tipo === 'jpg';
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id);
 
   let analises;
   try {
@@ -622,6 +632,7 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
             : `<a href="${signed.signedUrl}" target="_blank" class="btn btn-primary"><i class="ti ti-external-link"></i> Abrir ${TIPO_ARQUIVO_LABEL[anexo.arquivo_tipo]}</a>`}
       </div>
       <div class="apresentacao-analise">
+        ${podeGerenciar ? `
         <label>Registrar análise deste ${ehImagem ? 'gráfico' : 'arquivo'}</label>
         <textarea id="av-texto" placeholder="O que este gráfico/relatório mostra? Está dentro da meta?"></textarea>
         <label class="checkbox-linha" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px">
@@ -633,9 +644,10 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
           <textarea id="av-justificativa" style="min-height:80px"></textarea>
         </div>
         <button class="btn btn-primary" id="av-salvar-analise"><i class="ti ti-device-floppy"></i> Registrar análise</button>
+        ` : '<p class="text-muted"><i class="ti ti-lock"></i> Apenas o responsável pela análise desta conta (ou a Qualidade/administração) pode registrar análises.</p>'}
 
         <div id="av-lista-analises" style="margin-top:1.5rem">
-          ${renderListaAnalisesAnexo(analises, nomeMembroPorId)}
+          ${renderListaAnalisesAnexo(analises, nomeMembroPorId, podeGerenciar)}
         </div>
       </div>
     </div>
@@ -648,7 +660,7 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
   document.addEventListener('keydown', onEsc);
 
   const chkDesvio = overlay.querySelector('#av-houve-desvio');
-  chkDesvio.addEventListener('change', (e) => {
+  chkDesvio?.addEventListener('change', (e) => {
     overlay.querySelector('#av-grupo-justificativa').style.display = e.target.checked ? '' : 'none';
   });
 
@@ -668,7 +680,7 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
   };
   wireAcoesAnalise();
 
-  overlay.querySelector('#av-salvar-analise').addEventListener('click', async () => {
+  overlay.querySelector('#av-salvar-analise')?.addEventListener('click', async () => {
     const texto = overlay.querySelector('#av-texto').value.trim();
     if (!texto) return toast('Escreva a análise antes de registrar.', 'erro');
     const houveDesvio = chkDesvio.checked;
@@ -690,12 +702,12 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
     overlay.querySelector('#av-houve-desvio').checked = false;
     overlay.querySelector('#av-grupo-justificativa').style.display = 'none';
     overlay.querySelector('#av-justificativa').value = '';
-    overlay.querySelector('#av-lista-analises').innerHTML = renderListaAnalisesAnexo(analises, nomeMembroPorId);
+    overlay.querySelector('#av-lista-analises').innerHTML = renderListaAnalisesAnexo(analises, nomeMembroPorId, podeGerenciar);
     wireAcoesAnalise();
   });
 }
 
-function renderListaAnalisesAnexo(analises, nomeMembroPorId) {
+function renderListaAnalisesAnexo(analises, nomeMembroPorId, podeGerenciar = true) {
   if (!analises.length) return '<div class="empty-state"><i class="ti ti-notes"></i>Nenhuma análise registrada para este arquivo ainda.</div>';
   return analises.map((a) => `
     <div class="card" style="padding:12px;margin-bottom:10px">
@@ -704,10 +716,11 @@ function renderListaAnalisesAnexo(analises, nomeMembroPorId) {
       </div>
       <p style="margin:8px 0 4px">${escapeHtml(a.texto_analise)}</p>
       ${a.houve_desvio && a.justificativa_desvio ? `<p class="text-muted" style="font-size:13px"><strong>Justificativa:</strong> ${escapeHtml(a.justificativa_desvio)}</p>` : ''}
+      ${podeGerenciar ? `
       <div class="table-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-sm" data-criar-plano-anexo="${a.id}"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
         <button class="btn btn-secondary btn-sm" data-criar-tarefa-anexo="${a.id}"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
-      </div>
+      </div>` : ''}
     </div>
   `).join('');
 }

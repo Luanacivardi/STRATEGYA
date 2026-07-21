@@ -7,8 +7,9 @@ let modoEdicao = false;
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
   // Só entra em modo edição quem tem permissão de escrita; para quem só visualiza, nunca mostra os controles.
-  const podeEditar = papelAtual !== 'usuario' && modoEdicao;
-  const podeAtivarEdicao = papelAtual !== 'usuario';
+  const temPermissaoEdicao = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = temPermissaoEdicao && modoEdicao;
+  const podeAtivarEdicao = temPermissaoEdicao;
 
   const { data, error } = await supabase
     .from('macrofluxo_processos')

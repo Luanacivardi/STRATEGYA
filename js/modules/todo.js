@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
 import { recalcularPercentualMacro } from './planosAcao.js';
 import { listarObjetivos } from './objetivos.js';
 
@@ -169,7 +169,8 @@ function aplicarFiltros(linhas, container) {
 
 export async function renderCorpo(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
 
   let linhas, membros, indicadores, objetivos;
   try {
@@ -213,7 +214,7 @@ export async function renderCorpo(container, state) {
         <button class="btn btn-secondary btn-sm" id="btn-todo-csv"><i class="ti ti-download"></i> CSV</button>
         <button class="btn btn-secondary btn-sm" id="btn-todo-email"><i class="ti ti-mail"></i> E-mail</button>
         <button class="btn btn-secondary btn-sm" id="btn-todo-pdf"><i class="ti ti-printer"></i> PDF</button>
-        ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-todo-add"><i class="ti ti-plus"></i> Nova tarefa</button>' : ''}
+        ${podeCriar ? '<button class="btn btn-primary btn-sm" id="btn-todo-add"><i class="ti ti-plus"></i> Nova tarefa</button>' : ''}
       </div>
     </div>
     <div id="todo-tabela-area"></div>
@@ -255,7 +256,7 @@ export async function renderCorpo(container, state) {
               <td><span class="badge ${l.statusKey === 'concluido' ? 'status-concluido' : 'status-nao_iniciado'}">${STATUS_LABEL[l.statusKey]}</span></td>
               <td class="table-actions">
                 <button class="icon-btn" data-imprimir-tarefa="${l.origem}:${l.id}" title="Imprimir esta tarefa"><i class="ti ti-printer"></i></button>
-                ${podeEditar ? `
+                ${podeEditarRegistro(state, l.raw.responsavel_id) ? `
                   <button class="icon-btn" data-concluir-tarefa="${l.origem}:${l.id}" title="${l.statusKey === 'concluido' ? 'Reabrir' : 'Concluir'}">
                     <i class="ti ${l.statusKey === 'concluido' ? 'ti-rotate-clockwise-2' : 'ti-circle-check'}"></i>
                   </button>
@@ -413,9 +414,10 @@ async function alternarConclusao(state, linha) {
 // Modal único de detalhe/edição, usado para as 3 origens. Cada origem tem sua tabela e seus
 // próprios campos de status; o campo "Evolução" (histórico do que já foi feito) é comum aos três.
 function abrirDetalheTarefa(state, container, membros, indicadores, linha = null) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, user } = state;
   const origem = linha?.origem || 'manual';
   const raw = linha?.raw;
+  const travarResponsavelEmSiMesmo = !linha && state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
 
   const mostraIndicador = origem === 'manual';
   const mostraStatusManual = origem === 'manual';
@@ -430,10 +432,11 @@ function abrirDetalheTarefa(state, container, membros, indicadores, linha = null
       <div class="form-row">
         <div class="form-group">
           <label>Responsável</label>
-          <select id="tarefa-responsavel">
+          <select id="tarefa-responsavel" ${travarResponsavelEmSiMesmo ? 'disabled' : ''}>
             <option value="">—</option>
-            ${membros.map((m) => `<option value="${m.usuario_id}" ${raw?.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
+            ${membros.map((m) => `<option value="${m.usuario_id}" ${(travarResponsavelEmSiMesmo ? m.usuario_id === user.id : raw?.responsavel_id === m.usuario_id) ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
           </select>
+          ${travarResponsavelEmSiMesmo ? '<small class="text-muted">Seu nível de acesso só permite criar tarefas com você mesmo como responsável.</small>' : ''}
         </div>
         ${mostraIndicador ? `
         <div class="form-group">

@@ -1,8 +1,8 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
 
   let atas, indicadores, membros, indicadoresPorAta, acoesPorAta;
   try {
@@ -495,8 +495,10 @@ function abrirFormulario(state, container, indicadores, membros, item = null) {
 }
 
 async function abrirAcoesTodo(state, containerPai, ata, membros) {
-  const { supabase, empresaAtual } = state;
-  const podeEditar = state.papelAtual !== 'usuario';
+  const { supabase, empresaAtual, user } = state;
+  const podeEditar = state.papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
+  const travarResponsavelEmSiMesmo = state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
 
   const { data: acoesData, error } = await supabase
@@ -509,7 +511,7 @@ async function abrirAcoesTodo(state, containerPai, ata, membros) {
 
   const modal = abrirModal(`Tarefas — Ata de ${ata.data}`, `
     <div id="lista-acoes-todo"></div>
-    ${podeEditar ? `
+    ${podeCriar ? `
       <hr class="sep">
       <form id="form-acao-todo">
         <input type="hidden" id="acao-id">
@@ -520,10 +522,11 @@ async function abrirAcoesTodo(state, containerPai, ata, membros) {
         <div class="form-row">
           <div class="form-group">
             <label>Responsável</label>
-            <select id="acao-responsavel">
+            <select id="acao-responsavel" ${travarResponsavelEmSiMesmo ? 'disabled' : ''}>
               <option value="">—</option>
-              ${membros.map((m) => `<option value="${m.usuario_id}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
+              ${membros.map((m) => `<option value="${m.usuario_id}" ${travarResponsavelEmSiMesmo && m.usuario_id === user.id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
             </select>
+            ${travarResponsavelEmSiMesmo ? '<small class="text-muted">Seu nível de acesso só permite criar ações com você mesmo como responsável.</small>' : ''}
           </div>
           <div class="form-group">
             <label>Prazo</label>
@@ -544,22 +547,22 @@ async function abrirAcoesTodo(state, containerPai, ata, membros) {
     const listaEl = modal.querySelector('#lista-acoes-todo');
     listaEl.innerHTML = acoes.length ? `
       <table class="table">
-        <thead><tr><th></th><th>Descrição</th><th>Responsável</th><th>Prazo</th><th>Plano de Ação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+        <thead><tr><th></th><th>Descrição</th><th>Responsável</th><th>Prazo</th><th>Plano de Ação</th><th></th></tr></thead>
         <tbody>
-          ${acoes.map((a) => `
+          ${acoes.map((a) => { const podeEditarEsta = podeEditarRegistro(state, a.responsavel_id); return `
             <tr>
-              <td><input type="checkbox" data-toggle-concluida="${a.id}" ${a.concluida ? 'checked' : ''} ${podeEditar ? '' : 'disabled'}></td>
+              <td><input type="checkbox" data-toggle-concluida="${a.id}" ${a.concluida ? 'checked' : ''} ${podeEditarEsta ? '' : 'disabled'}></td>
               <td style="${a.concluida ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${escapeHtml(a.descricao)}</td>
               <td>${escapeHtml(emailPorId.get(a.responsavel_id) || '—')}</td>
               <td>${a.prazo || '—'}</td>
               <td>${a.plano_acao_id
                 ? `<span class="badge badge-neutral">${escapeHtml(a.planos_acao?.numero || 'vinculado')}</span>`
-                : (podeEditar ? `<button class="icon-btn" data-abrir-plano="${a.id}" title="Abrir Plano de Ação"><i class="ti ti-clipboard-plus"></i></button>` : '—')}</td>
-              ${podeEditar ? `<td class="table-actions">
+                : (podeEditarEsta ? `<button class="icon-btn" data-abrir-plano="${a.id}" title="Abrir Plano de Ação"><i class="ti ti-clipboard-plus"></i></button>` : '—')}</td>
+              ${podeEditarEsta ? `<td class="table-actions">
                 <button class="icon-btn" data-editar-acao="${a.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                 <button class="icon-btn" data-excluir-acao="${a.id}" title="Excluir"><i class="ti ti-trash"></i></button>
-              </td>` : ''}
-            </tr>`).join('')}
+              </td>` : '<td></td>'}
+            </tr>`; }).join('')}
         </tbody>
       </table>` : '<p class="text-muted">Nenhuma ação cadastrada ainda.</p>';
 
@@ -571,7 +574,7 @@ async function abrirAcoesTodo(state, containerPai, ata, membros) {
       });
     });
 
-    if (!podeEditar) return;
+    if (!podeCriar) return;
 
     listaEl.querySelectorAll('[data-abrir-plano]').forEach((btn) => {
       btn.addEventListener('click', async () => {

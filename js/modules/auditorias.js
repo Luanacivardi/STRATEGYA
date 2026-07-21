@@ -233,7 +233,8 @@ async function carregarBaseCadastros(supabase, empresaId) {
 
 // ==================== TAB: TURNOS ====================
 async function renderTurnos(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
   container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div id="at-corpo" style="margin-top:1rem">Carregando...</div></div>`;
   wireFiltrosGrupo(container, state);
   const area = container.querySelector('#at-corpo');
@@ -249,12 +250,15 @@ async function renderTurnos(container, state) {
           <tr>
             <td>${escapeHtml(t.nome)}</td><td>${t.hora_inicio.slice(0, 5)}</td><td>${t.hora_fim.slice(0, 5)}</td>
             <td class="table-actions">
+              ${podeEditar ? `
               <button class="icon-btn" data-editar="${t.id}" title="Editar"><i class="ti ti-pencil"></i></button>
               <button class="icon-btn" data-excluir="${t.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+              ` : ''}
             </td>
           </tr>`).join('') || '<tr><td colspan="4" class="text-muted">Nenhum turno cadastrado.</td></tr>'}
       </tbody>
     </table>
+    ${podeEditar ? `
     <form id="form-turno" class="form-row" style="margin-top:1rem;align-items:flex-end">
       <div class="form-group"><label>Nome do turno</label><input type="text" id="tn-nome" placeholder="Ex: Turno 1" required></div>
       <div class="form-group"><label>Início</label><input type="time" id="tn-inicio" required></div>
@@ -262,7 +266,10 @@ async function renderTurnos(container, state) {
       <div class="form-group"><button class="btn btn-primary btn-block" type="submit" id="btn-salvar-turno">Adicionar</button></div>
       <div class="form-group" id="grupo-cancelar-turno" style="display:none"><button type="button" class="btn btn-secondary btn-block" id="btn-cancelar-turno">Cancelar edição</button></div>
     </form>
+    ` : ''}
   `;
+
+  if (!podeEditar) return;
 
   const form = area.querySelector('#form-turno');
   const btnSalvar = area.querySelector('#btn-salvar-turno');
@@ -316,13 +323,14 @@ async function renderTurnos(container, state) {
 
 // ==================== TAB: PROCESSOS AUDITÁVEIS ====================
 async function renderProcessos(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
   container.innerHTML = `
     <div class="card">
       ${renderFiltrosGrupo()}
       <div class="lista-toolbar" style="margin-top:1rem">
         <span></span>
-        <button class="btn btn-primary btn-sm" id="btn-add-processo"><i class="ti ti-plus"></i> Novo processo</button>
+        ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-processo"><i class="ti ti-plus"></i> Novo processo</button>' : ''}
       </div>
       <div id="ap-corpo">Carregando...</div>
     </div>`;
@@ -353,13 +361,17 @@ async function renderProcessos(container, state) {
             <td>${(turnosPorProcesso.get(p.id) || []).map((tid) => escapeHtml(nomeTurno(tid))).join(', ') || '—'}</td>
             <td><span class="badge ${PRIORIDADE_BADGE[classificarIPA(ipa)]}">${ipa.toFixed(1)} (${PRIORIDADE_LABEL[classificarIPA(ipa)]})</span></td>
             <td class="table-actions">
+              ${podeEditar ? `
               <button class="icon-btn" data-editar="${p.id}" title="Editar"><i class="ti ti-pencil"></i></button>
               <button class="icon-btn" data-excluir="${p.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+              ` : ''}
             </td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>` : '<div class="empty-state"><i class="ti ti-sitemap"></i>Nenhum processo auditável cadastrado.</div>';
+
+  if (!podeEditar) return;
 
   area.querySelectorAll('[data-editar]').forEach((btn) => btn.addEventListener('click', () => {
     abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo, processos.find((p) => p.id === btn.dataset.editar));
@@ -370,7 +382,7 @@ async function renderProcessos(container, state) {
     if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
     renderProcessos(container, state);
   }));
-  container.querySelector('#btn-add-processo').addEventListener('click', () => abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo));
+  container.querySelector('#btn-add-processo')?.addEventListener('click', () => abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo));
 }
 
 function abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, nomesMacrofluxo, item = null) {
@@ -478,11 +490,12 @@ function abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, no
 
 // ==================== TAB: AUDITORES ====================
 async function renderAuditores(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
   container.innerHTML = `
     <div class="card">
       ${renderFiltrosGrupo()}
-      <div class="lista-toolbar" style="margin-top:1rem"><span></span><button class="btn btn-primary btn-sm" id="btn-add-auditor"><i class="ti ti-plus"></i> Novo auditor</button></div>
+      <div class="lista-toolbar" style="margin-top:1rem"><span></span>${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-auditor"><i class="ti ti-plus"></i> Novo auditor</button>' : ''}</div>
       <div id="aud-corpo">Carregando...</div>
     </div>`;
   wireFiltrosGrupo(container, state);
@@ -511,12 +524,16 @@ async function renderAuditores(container, state) {
             }).join(' ') || '—'}</td>
             <td>${a.ativo ? '<span class="badge badge-success">Ativo</span>' : '<span class="badge badge-neutral">Inativo</span>'}</td>
             <td class="table-actions">
+              ${podeEditar ? `
               <button class="icon-btn" data-editar="${a.id}"><i class="ti ti-pencil"></i></button>
               <button class="icon-btn" data-excluir="${a.id}"><i class="ti ti-trash"></i></button>
+              ` : ''}
             </td>
           </tr>`).join('')}
       </tbody>
     </table>` : '<div class="empty-state"><i class="ti ti-users"></i>Nenhum auditor cadastrado.</div>';
+
+  if (!podeEditar) return;
 
   area.querySelectorAll('[data-editar]').forEach((btn) => btn.addEventListener('click', () => {
     abrirFormularioAuditor(state, container, auditores.find((a) => a.id === btn.dataset.editar));
@@ -527,7 +544,7 @@ async function renderAuditores(container, state) {
     if (errDel) return toast('Erro ao excluir: ' + errDel.message, 'erro');
     renderAuditores(container, state);
   }));
-  container.querySelector('#btn-add-auditor').addEventListener('click', () => abrirFormularioAuditor(state, container));
+  container.querySelector('#btn-add-auditor')?.addEventListener('click', () => abrirFormularioAuditor(state, container));
 }
 
 function abrirFormularioAuditor(state, container, item = null) {
@@ -703,12 +720,13 @@ function abrirFormularioAuditor(state, container, item = null) {
 
 // ==================== TAB: AUDITORIAS (fluxo completo) ====================
 async function renderAuditorias(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, papelAtual } = state;
+  const podeEditar = papelAtual !== 'usuario';
   container.innerHTML = `
     <div class="card">
       <div class="lista-toolbar">
         <span style="font-weight:700;font-size:14px;color:var(--navy-titulo)"><i class="ti ti-clipboard-check"></i> Gestão de Auditorias</span>
-        <button class="btn btn-primary btn-sm" id="btn-add-auditoria"><i class="ti ti-plus"></i> Solicitar auditoria</button>
+        ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-auditoria"><i class="ti ti-plus"></i> Solicitar auditoria</button>' : ''}
       </div>
       ${renderFiltrosGrupo()}
       <div id="auditorias-corpo" style="margin-top:1rem">Carregando...</div>
@@ -731,10 +749,12 @@ async function renderAuditorias(container, state) {
             <td>${(a.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td>
             <td>${a.prioridade_classificacao ? `<span class="badge ${PRIORIDADE_BADGE[a.prioridade_classificacao]}">${PRIORIDADE_LABEL[a.prioridade_classificacao]}</span>` : '—'}</td>
             <td><span class="badge ${STATUS_BADGE[a.status]}">${STATUS_LABEL[a.status]}</span></td>
-            <td class="table-actions"><button class="icon-btn" data-abrir="${a.id}"><i class="ti ti-pencil"></i></button></td>
+            <td class="table-actions">${podeEditar ? `<button class="icon-btn" data-abrir="${a.id}"><i class="ti ti-pencil"></i></button>` : ''}</td>
           </tr>`).join('')}
       </tbody>
     </table>` : '<div class="empty-state"><i class="ti ti-clipboard-check"></i>Nenhuma auditoria solicitada ainda.</div>';
+
+  if (!podeEditar) return;
 
   area.querySelectorAll('[data-abrir]').forEach((btn) => btn.addEventListener('click', () => {
     abrirAuditoria(state, container, auditorias.find((a) => a.id === btn.dataset.abrir));
@@ -1488,7 +1508,12 @@ const SITUACAO_BADGE = { conforme: 'badge-success', nao_atende: 'badge-danger', 
 let relatorioAuditoriaId = null; // auditoria selecionada na aba Relatórios, persiste entre re-renders
 
 async function renderRelatorios(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, papelAtual } = state;
+  if (papelAtual === 'usuario') {
+    container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div class="empty-state" style="margin-top:1rem"><i class="ti ti-lock"></i>Apenas administradores e a equipe ORBEEX podem elaborar relatórios de auditoria.</div></div>`;
+    wireFiltrosGrupo(container, state);
+    return;
+  }
   const { data: auditorias } = await supabase.from('auditorias').select('id, numero, titulo').eq('empresa_id', empresaAtual.id).order('numero', { ascending: false });
 
   container.innerHTML = `

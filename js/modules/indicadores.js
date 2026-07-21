@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, formatarValor, formatarMesAno, enviarPorEmail, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, formatarValor, formatarMesAno, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 
 const PERIODICIDADE = { mensal: 'Mensal', trimestral: 'Trimestral', anual: 'Anual' };
@@ -49,7 +49,8 @@ export function abrirIndicadorPorId(id) {
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
 
   let itens, objetivos, membros;
   try {
@@ -108,7 +109,7 @@ export async function render(container, state) {
                 <td class="table-actions">
                   <button class="icon-btn" data-resultados="${ind.id}" title="Resultados"><i class="ti ti-chart-dots"></i></button>
                   <button class="icon-btn" data-apresentar="${ind.id}" title="Apresentar (tela cheia)"><i class="ti ti-presentation"></i></button>
-                  ${podeEditar ? `
+                  ${podeEditarRegistro(state, ind.responsavel_id) ? `
                     <button class="icon-btn" data-editar="${ind.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${ind.id}" title="Excluir"><i class="ti ti-trash"></i></button>
                   ` : ''}
@@ -156,7 +157,7 @@ export async function render(container, state) {
         <div style="display:flex;gap:8px">
           <button class="btn btn-secondary btn-sm" id="btn-indicadores-email"><i class="ti ti-mail"></i> Enviar por e-mail</button>
           <button class="btn btn-secondary btn-sm" id="btn-indicadores-pdf"><i class="ti ti-printer"></i> Imprimir lista</button>
-          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-indicador"><i class="ti ti-plus"></i> Novo indicador</button>' : ''}
+          ${podeCriar ? '<button class="btn btn-primary btn-sm" id="btn-add-indicador"><i class="ti ti-plus"></i> Novo indicador</button>' : ''}
         </div>
       </div>
       ${filtroBanner}
@@ -219,7 +220,8 @@ function imprimirListaIndicadores(itens, nomeObjetivoPorId, emailPorId) {
 }
 
 function abrirFormulario(state, container, objetivos, membros, item = null) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, user } = state;
+  const travarResponsavelEmSiMesmo = state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
   const classificacaoAtual = item?.classificacao || 'com_meta';
   const tipoMetaAtual = item?.tipo_meta || 'fixa';
   const unidadeAtual = item?.unidade || '';
@@ -293,10 +295,11 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
         </div>
         <div class="form-group">
           <label>Responsável pela apuração</label>
-          <select id="in-responsavel">
+          <select id="in-responsavel" ${travarResponsavelEmSiMesmo ? 'disabled' : ''}>
             <option value="">—</option>
-            ${membros.map((m) => `<option value="${m.usuario_id}" ${item?.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
+            ${membros.map((m) => `<option value="${m.usuario_id}" ${(item ? item.responsavel_id === m.usuario_id : (travarResponsavelEmSiMesmo && m.usuario_id === user.id)) ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
           </select>
+          ${travarResponsavelEmSiMesmo ? '<p class="text-muted" style="font-size:12px;margin-top:4px">Seu nível de acesso só permite criar indicadores com você mesmo como responsável.</p>' : ''}
         </div>
       </div>
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
@@ -355,8 +358,8 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
 }
 
 async function abrirResultados(state, indicador) {
-  const { supabase, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const { supabase } = state;
+  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id);
   const ehVariavel = metaEhVariavel(indicador);
 
   const { data: resultadosData, error } = await supabase
@@ -557,8 +560,8 @@ function renderHistoricoAnalises(analises, nomeMembroPorId) {
 }
 
 async function abrirApresentacao(state, indicador) {
-  const { supabase, papelAtual, empresaAtual, user } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const { supabase, empresaAtual, user } = state;
+  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id);
   const ehVariavel = metaEhVariavel(indicador);
 
   const [{ data: resultadosData, error }, { data: analisesData, error: errAnalises }, membros] = await Promise.all([
