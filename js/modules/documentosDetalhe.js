@@ -28,7 +28,7 @@ export function abrirDetalhe(state, container, doc, ctx) {
     const revisaoVigentePublicada = (revisoes || []).find((r) => r.status_final === 'publicado');
     const temArquivo = !!doc.arquivo_url;
 
-    const modal = abrirModal(`${doc.numero} — ${escapeHtml(doc.nome)}`, `
+    const modal = abrirModal(`${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}`, `
       <div class="doc-secao-modal">
         <div class="doc-secao-modal-titulo">Identificação</div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
@@ -280,7 +280,7 @@ function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
     const { supabase } = state;
     const { data: vinculados } = await supabase.from('documentos').select('numero, nome').or(`procedimento_id.eq.${doc.id},it_id.eq.${doc.id}`).neq('status', 'obsoleto');
     if (vinculados && vinculados.length) {
-      return toast(`Não é possível excluir: há documentos vinculados (${vinculados.map((v) => v.numero).join(', ')}).`, 'erro');
+      return toast(`Não é possível excluir: há documentos vinculados (${vinculados.map((v) => escapeHtml(v.numero)).join(', ')}).`, 'erro');
     }
     if (!(await confirmar('Excluir este documento e todo o seu histórico de revisões? Esta ação não pode ser desfeita.'))) return;
     const { data: revisoesDoc } = await supabase.from('documentos_revisoes').select('arquivo_url').eq('documento_id', doc.id);

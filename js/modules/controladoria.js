@@ -343,7 +343,7 @@ let abaDetalheAtiva = 'analises';
 
 async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'analises') {
   abaDetalheAtiva = abaInicial;
-  const modal = abrirModal(`${conta.codigo} — ${conta.nome}`, '<div id="detalhe-conta-corpo">Carregando...</div>');
+  const modal = abrirModal(`${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}`, '<div id="detalhe-conta-corpo">Carregando...</div>');
   modal.classList.add('modal-xl');
   await renderDetalheConta(state, containerPai, modal, conta, membros);
 }
@@ -715,7 +715,7 @@ function renderListaAnalisesAnexo(analises, nomeMembroPorId) {
 // ---------- "Criar Plano de Ação" a partir de uma análise ----------
 function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise, membros) {
   const { supabase, empresaAtual } = state;
-  const modal = abrirModal(`Criar Plano de Ação — ${conta.codigo}`, `
+  const modal = abrirModal(`Criar Plano de Ação — ${escapeHtml(conta.codigo)}`, `
     <form id="form-plano-da-analise">
       <div class="form-group">
         <label>Problema identificado</label>
@@ -781,7 +781,7 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
 // ---------- "Criar Tarefa" a partir de uma análise ----------
 function abrirFormularioTarefaDaAnalise(state, conta, analise, membros) {
   const { supabase, empresaAtual } = state;
-  const modal = abrirModal(`Criar Tarefa — ${conta.codigo}`, `
+  const modal = abrirModal(`Criar Tarefa — ${escapeHtml(conta.codigo)}`, `
     <form id="form-tarefa-da-analise">
       <div class="form-group">
         <label>Descrição</label>
