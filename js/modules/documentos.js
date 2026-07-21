@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao, confirmar } from '../ui.js';
 import { abrirDetalhe } from './documentosDetalhe.js';
 
 export const STATUS = {
@@ -111,6 +111,75 @@ export async function hashConteudo(conteudo) {
   const bytes = new TextEncoder().encode(JSON.stringify(conteudo || {}));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Aprovar e publicar um documento. Regra: o aprovador designado pelo elaborador
+// (aprovador_solicitado_id) sempre pode aprovar o próprio documento — qualquer usuário cadastrado
+// serve, não precisa ter permissão de edição. Só a equipe da Qualidade (mesmo critério usado para
+// cópia controlada: papel orbeex ou departamento Qualidade) pode aprovar EM NOME de outro usuário,
+// e nesse caso é obrigada a registrar a justificativa. O controle de acesso de verdade acontece
+// dentro da função aprovar_documento no banco (esta checagem aqui só decide o que mostrar na tela).
+export function abrirModalAprovar(state, container, doc, ctx = {}) {
+  const { podeAlterarCopiaControlada, nomeUsuario } = ctx;
+  const souAprovadorDesignado = doc.aprovador_solicitado_id === state.user.id;
+  const podeAprovarPorOutro = !souAprovadorDesignado && !!podeAlterarCopiaControlada;
+
+  if (!souAprovadorDesignado && !podeAprovarPorOutro) {
+    return toast('Você não é o aprovador designado deste documento. Apenas ele (ou a equipe da Qualidade, com justificativa) pode aprovar.', 'erro');
+  }
+
+  const nomeAprovadorDesignado = nomeUsuario ? nomeUsuario(doc.aprovador_solicitado_id) : '—';
+  const modal = abrirModal('Aprovar e publicar', `
+    ${podeAprovarPorOutro ? `
+      <div class="alert alert-warning" style="margin-bottom:10px">
+        <i class="ti ti-alert-triangle"></i>
+        <span>Você está aprovando em nome de <strong>${escapeHtml(nomeAprovadorDesignado)}</strong>, o aprovador designado deste documento. Isso só deve ser feito pela equipe da Qualidade, em situações justificadas.</span>
+      </div>
+      <div class="form-group">
+        <label>Justificativa (obrigatória)</label>
+        <textarea id="ap-justificativa" required placeholder="Por que a Qualidade está aprovando no lugar do usuário designado?"></textarea>
+      </div>
+    ` : ''}
+    <p class="text-muted">Confirme sua senha para assinar eletronicamente a aprovação deste documento.</p>
+    <form id="form-aprovar">
+      <div class="form-group">
+        <label>Sua senha</label>
+        <input type="password" id="ap-senha" required autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Confirmar aprovação e publicar</button>
+    </form>
+  `);
+
+  modal.querySelector('#form-aprovar').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const { supabase, user } = state;
+    if (doc.arquivo_url && !doc.arquivo_pdf_url) {
+      fecharModal();
+      return toast('Este documento ainda não tem o PDF de visualização anexado.', 'erro');
+    }
+    const justificativa = podeAprovarPorOutro ? modal.querySelector('#ap-justificativa').value.trim() : null;
+    if (podeAprovarPorOutro && !justificativa) return toast('Informe a justificativa.', 'erro');
+
+    const senha = modal.querySelector('#ap-senha').value;
+    const { error: errAuth } = await supabase.auth.signInWithPassword({ email: user.email, password: senha });
+    if (errAuth) return toast('Senha incorreta.', 'erro');
+
+    const dadosParaHash = doc.arquivo_url
+      ? { arquivo_url: doc.arquivo_url, arquivo_nome: doc.arquivo_nome, arquivo_tamanho: doc.arquivo_tamanho, arquivo_pdf_url: doc.arquivo_pdf_url }
+      : doc.conteudo;
+    const hash = await hashConteudo(dadosParaHash);
+
+    const { error } = await supabase.rpc('aprovar_documento', {
+      p_documento_id: doc.id,
+      p_hash_documento: hash,
+      p_justificativa: justificativa,
+    });
+    if (error) return toast('Erro ao aprovar: ' + error.message, 'erro');
+
+    toast('Documento aprovado e publicado.', 'sucesso');
+    fecharModal();
+    render(container, state);
+  });
 }
 
 export function formatarData(iso) {
@@ -305,15 +374,39 @@ function construirArvoreDocumentos(docs) {
 const ICONE_TIPO = { procedimento: 'ti-file-text', it: 'ti-list-details', registro: 'ti-clipboard-list' };
 
 function renderCaixas(area, state, ctx) {
-  const { processos, documentos, podeEditar } = ctx;
+  const { processos, documentos, nomeUsuario } = ctx;
 
   const publicados = documentos.filter((d) => d.status === 'publicado');
   const pendentes = documentos.filter((d) => d.status === 'aprovacao');
+  // Visível a todo mundo, independente de cargo ou departamento: os documentos que o próprio
+  // usuário foi designado a aprovar (aprovador_solicitado_id) — é aqui que ele visualiza o PDF e
+  // aprova/devolve, sem precisar de acesso à Gestão de Documentos.
+  const minhasAprovacoes = pendentes.filter((d) => d.aprovador_solicitado_id === state.user.id);
 
   const caixaInstitucional = { id: null, nome: 'Documentos Institucionais', institucional: true };
   const caixas = [caixaInstitucional, ...processos];
 
   area.innerHTML = `
+    ${minhasAprovacoes.length ? `
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-header"><span><i class="ti ti-clock-exclamation"></i> Aguardando sua aprovação (${minhasAprovacoes.length})</span></div>
+        <table class="table">
+          <thead><tr><th>Nº</th><th>Nome</th><th>Elaborado por</th><th></th></tr></thead>
+          <tbody>
+            ${minhasAprovacoes.map((d) => `
+              <tr>
+                <td>${escapeHtml(d.numero)}</td>
+                <td>${escapeHtml(d.nome)}</td>
+                <td>${escapeHtml(nomeUsuario(d.elaborado_por))}</td>
+                <td class="table-actions">
+                  <button class="icon-btn" data-visualizar-aprovacao="${d.id}" title="Visualizar"><i class="ti ti-eye"></i></button>
+                  <button class="btn btn-primary btn-sm" data-aprovar="${d.id}">Aprovar</button>
+                  <button class="btn btn-secondary btn-sm" data-devolver="${d.id}">Devolver</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
     <div class="doc-caixas-grid">
       ${caixas.map((p) => {
         const docsDaCaixa = publicados.filter((d) => (p.institucional ? d.processo_id === null : d.processo_id === p.id));
@@ -328,6 +421,31 @@ function renderCaixas(area, state, ctx) {
       }).join('')}
     </div>
   `;
+
+  area.querySelectorAll('[data-visualizar-aprovacao]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const doc = documentos.find((d) => d.id === btn.dataset.visualizarAprovacao);
+      abrirVisualizadorDocumento(state, doc, ctx);
+    });
+  });
+
+  area.querySelectorAll('[data-aprovar]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const doc = documentos.find((d) => d.id === btn.dataset.aprovar);
+      abrirModalAprovar(state, state.__documentosTopContainer, doc, ctx);
+    });
+  });
+
+  area.querySelectorAll('[data-devolver]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const doc = documentos.find((d) => d.id === btn.dataset.devolver);
+      if (!(await confirmar(`Devolver "${doc.nome}" para elaboração?`))) return;
+      const { error } = await state.supabase.rpc('devolver_documento_para_elaboracao', { p_documento_id: doc.id });
+      if (error) return toast('Erro: ' + error.message, 'erro');
+      toast('Documento devolvido para elaboração.', 'sucesso');
+      render(state.__documentosTopContainer, state);
+    });
+  });
 
   area.querySelectorAll('[data-abrir-caixa]').forEach((btn) => {
     btn.addEventListener('click', () => {

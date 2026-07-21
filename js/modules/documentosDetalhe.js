@@ -6,8 +6,8 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js'
 import { imprimirDocumentoLegado, visualizarPdfDocumentoLegado } from './documentosImpressaoLegado.js';
 import {
   render, STATUS, CLASSIFICACAO, ehRegistro, formatarData, formatarTamanho,
-  hashConteudo, uploadArquivoDocumento, uploadPdfDocumento, removerArquivosDocumento,
-  abrirArquivoDocumento, abrirVisualizadorDocumento, arquivoEhPdf,
+  uploadArquivoDocumento, uploadPdfDocumento, removerArquivosDocumento,
+  abrirArquivoDocumento, abrirVisualizadorDocumento, abrirModalAprovar, arquivoEhPdf,
   BUCKET_ARQUIVOS, BUCKET_PDF, ACCEPT_ARQUIVO, ACCEPT_PDF,
 } from './documentos.js';
 
@@ -272,10 +272,13 @@ function substituirArquivoDocumento(state, container, doc) {
 }
 
 function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
-  const { podeEditar, usuarios } = ctx;
+  const { podeEditar, usuarios, podeAlterarCopiaControlada } = ctx;
   const { user } = state;
   const temArquivo = !!doc.arquivo_url;
   const botoes = [];
+  // Aprovar/devolver é ação de quem foi designado como aprovador (qualquer usuário cadastrado
+  // serve, não precisa de permissão de edição) — ou da equipe da Qualidade, em nome dele.
+  const podeAgirNaAprovacao = doc.aprovador_solicitado_id === user.id || podeAlterarCopiaControlada;
 
   if (podeEditar && !temArquivo && (doc.status === 'elaboracao' || doc.status === 'revisao')) {
     botoes.push('<button class="btn btn-secondary btn-sm" id="dd-salvar-rascunho">Salvar rascunho</button>');
@@ -283,7 +286,7 @@ function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
   if (podeEditar && (doc.status === 'elaboracao' || doc.status === 'revisao')) {
     botoes.push('<button class="btn btn-primary btn-sm" id="dd-enviar-aprovacao">Enviar para aprovação</button>');
   }
-  if (doc.status === 'aprovacao' && (podeEditar || doc.aprovador_solicitado_id === user.id)) {
+  if (doc.status === 'aprovacao' && podeAgirNaAprovacao) {
     botoes.push('<button class="btn btn-primary btn-sm" id="dd-aprovar">Aprovar e publicar</button>');
     botoes.push('<button class="btn btn-secondary btn-sm" id="dd-devolver">Devolver para elaboração</button>');
   }
@@ -319,12 +322,12 @@ function renderAcoes(state, container, modal, doc, ctx, acoesEl) {
   });
 
   const btnAprovar = acoesEl.querySelector('#dd-aprovar');
-  if (btnAprovar) btnAprovar.addEventListener('click', () => abrirModalAprovar(state, container, doc));
+  if (btnAprovar) btnAprovar.addEventListener('click', () => abrirModalAprovar(state, container, doc, ctx));
 
   const btnDevolver = acoesEl.querySelector('#dd-devolver');
   if (btnDevolver) btnDevolver.addEventListener('click', async () => {
     if (!(await confirmar('Devolver este documento para Elaboração?'))) return;
-    const { error } = await state.supabase.from('documentos').update({ status: 'elaboracao', aprovador_solicitado_id: null }).eq('id', doc.id);
+    const { error } = await state.supabase.rpc('devolver_documento_para_elaboracao', { p_documento_id: doc.id });
     if (error) return toast('Erro: ' + error.message, 'erro');
     toast('Documento devolvido para elaboração.', 'sucesso');
     fecharModal();
@@ -364,6 +367,7 @@ function abrirModalEnviarAprovacao(state, container, doc, conteudo, usuarios) {
           <option value="">Selecione...</option>
           ${usuarios.filter((u) => u.ativo).map((u) => `<option value="${u.usuario_id}">${escapeHtml(u.nome || u.email)}</option>`).join('')}
         </select>
+        <p class="text-muted" style="font-size:12px;margin-top:6px">Qualquer usuário cadastrado pode ser escolhido — ele verá este documento numa área própria (aba Documentos) para aprovar ou devolver.</p>
       </div>
       <button class="btn btn-primary btn-block" type="submit">Enviar</button>
     </form>
@@ -380,75 +384,6 @@ function abrirModalEnviarAprovacao(state, container, doc, conteudo, usuarios) {
     const { error } = await state.supabase.from('documentos').update(payload).eq('id', doc.id);
     if (error) return toast('Erro: ' + error.message, 'erro');
     toast('Enviado para aprovação.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-}
-
-function abrirModalAprovar(state, container, doc) {
-  const modal = abrirModal('Aprovar e publicar', `
-    <p class="text-muted">Confirme sua senha para assinar eletronicamente a aprovação deste documento.</p>
-    <form id="form-aprovar">
-      <div class="form-group">
-        <label>Sua senha</label>
-        <input type="password" id="ap-senha" required autocomplete="current-password">
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Confirmar aprovação e publicar</button>
-    </form>
-  `);
-
-  modal.querySelector('#form-aprovar').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const { supabase, user } = state;
-    if (doc.arquivo_url && !doc.arquivo_pdf_url) {
-      fecharModal();
-      return toast('Este documento ainda não tem o PDF de visualização anexado. Use "Substituir arquivo" para anexá-lo antes de aprovar.', 'erro');
-    }
-    const senha = modal.querySelector('#ap-senha').value;
-    const { error: errAuth } = await supabase.auth.signInWithPassword({ email: user.email, password: senha });
-    if (errAuth) return toast('Senha incorreta.', 'erro');
-
-    const alertaSegregacao = doc.aprovador_solicitado_id === doc.elaborado_por;
-    const dadosParaHash = doc.arquivo_url
-      ? { arquivo_url: doc.arquivo_url, arquivo_nome: doc.arquivo_nome, arquivo_tamanho: doc.arquivo_tamanho, arquivo_pdf_url: doc.arquivo_pdf_url }
-      : doc.conteudo;
-    const hash = await hashConteudo(dadosParaHash);
-    const nomeAprovador = user.user_metadata?.nome || user.email;
-    const assinaturaAprovador = { usuario_id: user.id, nome: nomeAprovador, data_hora: new Date().toISOString(), hash_documento: hash };
-
-    const { error: errUpd } = await supabase.from('documentos').update({
-      status: 'publicado',
-      aprovado_por: user.id,
-      assinatura_aprovador: assinaturaAprovador,
-      data_publicacao: new Date().toISOString(),
-    }).eq('id', doc.id);
-    if (errUpd) return toast('Erro ao publicar: ' + errUpd.message, 'erro');
-
-    await supabase.from('documentos_revisoes')
-      .update({ status_final: 'obsoleto' })
-      .eq('documento_id', doc.id)
-      .eq('status_final', 'publicado');
-
-    const { error: errRev } = await supabase.from('documentos_revisoes').insert({
-      documento_id: doc.id,
-      numero_revisao: doc.revisao_atual,
-      descricao_alteracao: doc.descricao_alteracao_pendente || 'Primeira emissão',
-      conteudo_snapshot: dadosParaHash,
-      arquivo_url: doc.arquivo_url || null,
-      arquivo_nome: doc.arquivo_nome || null,
-      arquivo_pdf_url: doc.arquivo_pdf_url || null,
-      arquivo_pdf_nome: doc.arquivo_pdf_nome || null,
-      elaborado_por: doc.elaborado_por,
-      aprovado_por: user.id,
-      status_final: 'publicado',
-      exige_treinamento: doc.exige_treinamento,
-      aprovacao_com_alerta_segregacao: alertaSegregacao,
-    });
-    if (errRev) return toast('Documento publicado, mas houve erro ao gravar o histórico: ' + errRev.message, 'erro');
-
-    await supabase.from('documentos').update({ descricao_alteracao_pendente: null }).eq('id', doc.id);
-
-    toast('Documento aprovado e publicado.', 'sucesso');
     fecharModal();
     render(container, state);
   });
