@@ -106,7 +106,7 @@ export async function render(container, state) {
 
       <div class="macro-principal-wrap">
         <div class="macro-cliente-tab macro-cliente-entrada">
-          <span>Necessidades do Cliente</span>
+          <span>Expectativas das Partes Interessadas</span>
           <i class="ti ti-arrow-right"></i>
         </div>
         <div class="macro-principal-corpo">
@@ -115,12 +115,12 @@ export async function render(container, state) {
         </div>
         <div class="macro-cliente-tab macro-cliente-saida">
           <i class="ti ti-arrow-right"></i>
-          <span>Satisfação do Cliente</span>
+          <span>Satisfação das Partes Interessadas</span>
         </div>
       </div>
 
       <div class="macro-conectores-apoio" aria-hidden="true">
-        <i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i>
+        ${'<i class="ti ti-arrow-up"></i>'.repeat(Math.min(Math.max(porTipo('apoio').length, 2), 8))}
       </div>
       <div class="macro-mapa-secao-titulo">Processos de Apoio</div>
       ${renderApoio()}
@@ -205,7 +205,7 @@ function abrirTelaCheiaMacrofluxo(itens) {
           </div>
         </div>
         <div class="macro-principal-wrap">
-          <div class="macro-cliente-tab macro-cliente-entrada"><span>Necessidades do Cliente</span><i class="ti ti-arrow-right"></i></div>
+          <div class="macro-cliente-tab macro-cliente-entrada"><span>Expectativas das Partes Interessadas</span><i class="ti ti-arrow-right"></i></div>
           <div class="macro-principal-corpo">
             <div class="macro-mapa-secao-titulo" style="text-align:center">Processos Principais</div>
             <div class="macro-chevron-row">
@@ -217,10 +217,10 @@ function abrirTelaCheiaMacrofluxo(itens) {
                 </div>`).join('') : '<span class="text-muted">Nenhum processo cadastrado.</span>'}
             </div>
           </div>
-          <div class="macro-cliente-tab macro-cliente-saida"><i class="ti ti-arrow-right"></i><span>Satisfação do Cliente</span></div>
+          <div class="macro-cliente-tab macro-cliente-saida"><i class="ti ti-arrow-right"></i><span>Satisfação das Partes Interessadas</span></div>
         </div>
         <div class="macro-conectores-apoio" aria-hidden="true">
-          <i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i><i class="ti ti-arrow-up"></i>
+          ${'<i class="ti ti-arrow-up"></i>'.repeat(Math.min(Math.max(apoio.length, 2), 8))}
         </div>
         <div class="macro-mapa-secao-titulo">Processos de Apoio</div>
         <div class="macro-apoio-row">

@@ -17,6 +17,10 @@ export const STATUS = {
   atrasado: 'Atrasado',
 };
 
+// Categoria usada para identificar itens de Riscos e Oportunidades criados a partir da análise
+// feita no formulário do objetivo (permite editar/remover a análise sem tocar em itens manuais).
+const CATEGORIA_ANALISE_OBJETIVO = 'Análise do objetivo';
+
 export async function listarObjetivos(supabase, empresaId) {
   const { data, error } = await supabase
     .from('objetivos_estrategicos')
@@ -30,12 +34,13 @@ export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
   const podeEditar = papelAtual !== 'usuario';
 
-  let itens, membros, planos;
+  let itens, membros, planos, riscos;
   try {
-    [itens, membros, planos] = await Promise.all([
+    [itens, membros, planos, riscos] = await Promise.all([
       listarObjetivos(supabase, empresaAtual.id),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
       supabase.from('planos_acao').select('id, origem_id').eq('empresa_id', empresaAtual.id).eq('origem', 'objetivo').then((r) => r.data || []),
+      supabase.from('riscos_oportunidades').select('id, tipo, descricao, categoria, objetivo_id').eq('empresa_id', empresaAtual.id).not('objetivo_id', 'is', null).then((r) => r.data || []),
     ]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-warning">Erro ao carregar objetivos: ${escapeHtml(err.message)}</div>`;
@@ -45,6 +50,11 @@ export async function render(container, state) {
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const planosPorObjetivo = new Map();
   planos.forEach((p) => planosPorObjetivo.set(p.origem_id, (planosPorObjetivo.get(p.origem_id) || 0) + 1));
+  const riscosPorObjetivo = new Map();
+  riscos.forEach((r) => {
+    if (!riscosPorObjetivo.has(r.objetivo_id)) riscosPorObjetivo.set(r.objetivo_id, []);
+    riscosPorObjetivo.get(r.objetivo_id).push(r);
+  });
 
   const selecionados = new Set(); // ids marcados para impressão em massa
 
@@ -74,7 +84,7 @@ export async function render(container, state) {
     const area = container.querySelector('#objetivos-tabela-area');
     area.innerHTML = filtrados.length ? `
         <table class="table">
-          <thead><tr><th><input type="checkbox" id="ob-selecionar-todas"></th><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Plano de Ação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+          <thead><tr><th><input type="checkbox" id="ob-selecionar-todas"></th><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Riscos e Oport.</th><th>Plano de Ação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
           <tbody>
             ${filtrados.map((o) => `
               <tr>
@@ -83,6 +93,16 @@ export async function render(container, state) {
                 <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
                 <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
                 <td><span class="badge status-${o.status}">${STATUS[o.status]}</span></td>
+                <td>${(() => {
+                  const doObjetivo = riscosPorObjetivo.get(o.id) || [];
+                  const nRiscos = doObjetivo.filter((r) => r.tipo === 'risco').length;
+                  const nOports = doObjetivo.filter((r) => r.tipo === 'oportunidade').length;
+                  if (!nRiscos && !nOports) return '<span class="text-muted">—</span>';
+                  return `<a href="#" data-ver-riscos="${o.id}" title="Ver na Matriz de Riscos e Oportunidades" style="display:inline-flex;gap:4px;flex-wrap:wrap">
+                    ${nRiscos ? `<span class="badge badge-danger">${nRiscos} risco(s)</span>` : ''}
+                    ${nOports ? `<span class="badge badge-success">${nOports} oportunidade(s)</span>` : ''}
+                  </a>`;
+                })()}</td>
                 <td>
                   <button class="btn btn-secondary btn-sm" data-ver-planos="${o.id}">
                     ${planosPorObjetivo.get(o.id) ? `${planosPorObjetivo.get(o.id)} plano(s)` : 'Sem plano — criar'}
@@ -118,7 +138,7 @@ export async function render(container, state) {
     area.querySelectorAll('[data-editar]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const item = itens.find((i) => i.id === btn.dataset.editar);
-        abrirFormulario(state, container, membros, item);
+        abrirFormulario(state, container, membros, item, riscosPorObjetivo.get(item.id) || []);
       });
     });
 
@@ -136,6 +156,13 @@ export async function render(container, state) {
       btn.addEventListener('click', () => {
         definirFiltroObjetivo(btn.dataset.verPlanos);
         document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'planos' } }));
+      });
+    });
+
+    area.querySelectorAll('[data-ver-riscos]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'riscos' } }));
       });
     });
   }
@@ -207,8 +234,11 @@ function imprimirListaObjetivos(itens, emailPorId) {
   `);
 }
 
-function abrirFormulario(state, container, membros, item = null) {
+function abrirFormulario(state, container, membros, item = null, riscosVinculados = []) {
   const { supabase, empresaAtual } = state;
+  // Análises já registradas a partir deste formulário (uma de risco, uma de oportunidade).
+  const analiseRisco = riscosVinculados.find((r) => r.tipo === 'risco' && r.categoria === CATEGORIA_ANALISE_OBJETIVO) || null;
+  const analiseOportunidade = riscosVinculados.find((r) => r.tipo === 'oportunidade' && r.categoria === CATEGORIA_ANALISE_OBJETIVO) || null;
   const modal = abrirModal(item ? 'Editar objetivo estratégico' : 'Novo objetivo estratégico', `
     <form id="form-objetivo">
       <div class="form-group">
@@ -240,6 +270,17 @@ function abrirFormulario(state, container, membros, item = null) {
           ${membros.map((m) => `<option value="${m.usuario_id}" ${item?.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
         </select>
       </div>
+      <hr class="sep">
+      <p style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Análise de Riscos e Oportunidades do objetivo</p>
+      <div class="form-group">
+        <label>Risco associado a este objetivo</label>
+        <textarea id="ob-analise-risco" placeholder="O que pode impedir ou atrapalhar o alcance deste objetivo?">${analiseRisco ? escapeHtml(analiseRisco.descricao) : ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Oportunidade associada a este objetivo</label>
+        <textarea id="ob-analise-oportunidade" placeholder="Que oportunidade este objetivo pode gerar ou aproveitar?">${analiseOportunidade ? escapeHtml(analiseOportunidade.descricao) : ''}</textarea>
+      </div>
+      <p class="text-muted" style="font-size:12px">Quando preenchidas, as análises são enviadas para a Matriz de Riscos e Oportunidades vinculadas a este objetivo (probabilidade e impacto entram como 3 x 3 — ajuste depois na aba Riscos e Oportunidades). Se apagar o texto, o item correspondente é removido da matriz.</p>
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
   `);
@@ -254,12 +295,46 @@ function abrirFormulario(state, container, membros, item = null) {
       status: modal.querySelector('#ob-status').value,
       responsavel_id: modal.querySelector('#ob-responsavel').value || null,
     };
-    const query = item
-      ? supabase.from('objetivos_estrategicos').update(payload).eq('id', item.id)
-      : supabase.from('objetivos_estrategicos').insert(payload);
-    const { error } = await query;
-    if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
-    toast('Objetivo salvo com sucesso.', 'sucesso');
+    let objetivoId = item?.id;
+    if (item) {
+      const { error } = await supabase.from('objetivos_estrategicos').update(payload).eq('id', item.id);
+      if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
+    } else {
+      const { data: novo, error } = await supabase.from('objetivos_estrategicos').insert(payload).select('id').single();
+      if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
+      objetivoId = novo.id;
+    }
+
+    const analises = [
+      { tipo: 'risco', texto: modal.querySelector('#ob-analise-risco').value.trim(), existente: analiseRisco },
+      { tipo: 'oportunidade', texto: modal.querySelector('#ob-analise-oportunidade').value.trim(), existente: analiseOportunidade },
+    ];
+    let sincronizouMatriz = false;
+    for (const a of analises) {
+      let errSync = null;
+      if (a.texto && a.existente) {
+        if (a.texto !== a.existente.descricao) {
+          ({ error: errSync } = await supabase.from('riscos_oportunidades').update({ descricao: a.texto }).eq('id', a.existente.id));
+        }
+        sincronizouMatriz = true;
+      } else if (a.texto) {
+        ({ error: errSync } = await supabase.from('riscos_oportunidades').insert({
+          empresa_id: empresaAtual.id,
+          tipo: a.tipo,
+          descricao: a.texto,
+          categoria: CATEGORIA_ANALISE_OBJETIVO,
+          objetivo_id: objetivoId,
+          probabilidade: 3,
+          impacto: 3,
+        }));
+        sincronizouMatriz = true;
+      } else if (a.existente) {
+        ({ error: errSync } = await supabase.from('riscos_oportunidades').delete().eq('id', a.existente.id));
+      }
+      if (errSync) return toast('Objetivo salvo, mas houve erro ao sincronizar com Riscos e Oportunidades: ' + errSync.message, 'erro');
+    }
+
+    toast('Objetivo salvo com sucesso.' + (sincronizouMatriz ? ' Análise enviada para a Matriz de Riscos e Oportunidades.' : ''), 'sucesso');
     fecharModal();
     render(container, state);
   });

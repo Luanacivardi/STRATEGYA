@@ -1,6 +1,7 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao } from '../ui.js';
 import * as macrofluxo from './macrofluxo.js';
 import * as partesInteressadas from './partesInteressadas.js';
+import * as sipoc from './sipoc.js';
 
 const SWOT_CATS = { forca: 'Forças', fraqueza: 'Fraquezas', oportunidade: 'Oportunidades', ameaca: 'Ameaças' };
 const SWOT_CLASSES = { forca: 'swot-forcas', fraqueza: 'swot-fraquezas', oportunidade: 'swot-oportunidades', ameaca: 'swot-ameacas' };
@@ -8,7 +9,7 @@ const SWOT_CLASSES = { forca: 'swot-forcas', fraqueza: 'swot-fraquezas', oportun
 // Fraquezas e ameaças alimentam Riscos e Oportunidades como "risco"; oportunidades, como "oportunidade"
 const SWOT_PARA_RISCO = { fraqueza: 'risco', ameaca: 'risco', oportunidade: 'oportunidade' };
 
-let grupoAtivo = 'cenario'; // 'cenario' (SWOT) | 'partes' | 'empresa' | 'macrofluxo'
+let grupoAtivo = 'cenario'; // 'cenario' (SWOT) | 'partes' | 'empresa' | 'macrofluxo' | 'sipoc'
 
 // Permite navegar direto para um grupo (ex: atalho do Dashboard para o Macrofluxo)
 export function irParaGrupo(grupo) {
@@ -22,6 +23,7 @@ function renderFiltrosGrupo() {
       <button class="tab-btn ${grupoAtivo === 'partes' ? 'active' : ''}" data-grupo="partes">Partes Interessadas</button>
       <button class="tab-btn ${grupoAtivo === 'empresa' ? 'active' : ''}" data-grupo="empresa">Informações da Empresa</button>
       <button class="tab-btn ${grupoAtivo === 'macrofluxo' ? 'active' : ''}" data-grupo="macrofluxo">Macrofluxo</button>
+      <button class="tab-btn ${grupoAtivo === 'sipoc' ? 'active' : ''}" data-grupo="sipoc">SIPOC</button>
     </nav>`;
 }
 
@@ -34,6 +36,7 @@ function wireFiltrosGrupo(container, state) {
 export async function render(container, state) {
   if (grupoAtivo === 'empresa') return renderMissaoVisaoValores(container, state);
   if (grupoAtivo === 'macrofluxo') return renderMacrofluxo(container, state);
+  if (grupoAtivo === 'sipoc') return renderSipoc(container, state);
   if (grupoAtivo === 'partes') return renderPartes(container, state);
   return renderCenario(container, state);
 }
@@ -153,13 +156,27 @@ async function renderMacrofluxo(container, state) {
   await macrofluxo.render(container.querySelector('#contexto-macrofluxo-corpo'), state);
 }
 
+async function renderSipoc(container, state) {
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header"><span><i class="ti ti-map-2"></i> Contexto Organizacional</span></div>
+      ${renderFiltrosGrupo()}
+      <div id="contexto-sipoc-corpo"></div>
+    </div>
+  `;
+
+  wireFiltrosGrupo(container, state);
+
+  await sipoc.render(container.querySelector('#contexto-sipoc-corpo'), state);
+}
+
 async function renderMissaoVisaoValores(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
   const podeEditar = papelAtual !== 'usuario';
 
   const { data: empresa, error } = await supabase
     .from('empresas')
-    .select('missao, visao, valores')
+    .select('missao, visao, valores, politica_sgq')
     .eq('id', empresaAtual.id)
     .single();
 
@@ -191,6 +208,10 @@ async function renderMissaoVisaoValores(container, state) {
           <label>Valores</label>
           <textarea id="mvv-valores" ${podeEditar ? '' : 'readonly'} placeholder="Princípios que guiam as decisões...">${escapeHtml(empresa.valores || '')}</textarea>
         </div>
+        <div class="form-group">
+          <label>Política do SGI/SGQ</label>
+          <textarea id="mvv-politica" ${podeEditar ? '' : 'readonly'} placeholder="Política do Sistema de Gestão Integrado / da Qualidade...">${escapeHtml(empresa.politica_sgq || '')}</textarea>
+        </div>
         ${podeEditar ? '<button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Salvar</button>' : ''}
       </form>
     </div>
@@ -200,7 +221,7 @@ async function renderMissaoVisaoValores(container, state) {
 
   container.querySelector('#btn-imprimir-contexto').addEventListener('click', () => {
     imprimirSecao(`
-      <h2 style="margin-bottom:4px">Missão, Visão e Valores</h2>
+      <h2 style="margin-bottom:4px">Informações da Empresa</h2>
       <p class="text-muted">${escapeHtml(empresaAtual.nome)}</p>
       <hr class="sep">
       <table class="print-detalhe-tabela">
@@ -208,13 +229,14 @@ async function renderMissaoVisaoValores(container, state) {
           <tr><th>Missão</th><td>${escapeHtml(empresa.missao || '—')}</td></tr>
           <tr><th>Visão</th><td>${escapeHtml(empresa.visao || '—')}</td></tr>
           <tr><th>Valores</th><td>${escapeHtml(empresa.valores || '—')}</td></tr>
+          <tr><th>Política do SGI/SGQ</th><td>${escapeHtml(empresa.politica_sgq || '—')}</td></tr>
         </tbody>
       </table>
     `);
   });
   container.querySelector('#btn-email-contexto').addEventListener('click', () => {
-    const corpo = `Missão:\n${empresa.missao || '—'}\n\nVisão:\n${empresa.visao || '—'}\n\nValores:\n${empresa.valores || '—'}`;
-    enviarPorEmail('Missão, Visão e Valores', corpo);
+    const corpo = `Missão:\n${empresa.missao || '—'}\n\nVisão:\n${empresa.visao || '—'}\n\nValores:\n${empresa.valores || '—'}\n\nPolítica do SGI/SGQ:\n${empresa.politica_sgq || '—'}`;
+    enviarPorEmail('Informações da Empresa', corpo);
   });
 
   if (!podeEditar) return;
@@ -225,10 +247,11 @@ async function renderMissaoVisaoValores(container, state) {
       missao: container.querySelector('#mvv-missao').value.trim(),
       visao: container.querySelector('#mvv-visao').value.trim(),
       valores: container.querySelector('#mvv-valores').value.trim(),
+      politica_sgq: container.querySelector('#mvv-politica').value.trim(),
     };
     const { error: errUpd } = await supabase.from('empresas').update(payload).eq('id', empresaAtual.id);
     if (errUpd) return toast('Erro ao salvar: ' + errUpd.message, 'erro');
-    toast('Missão, visão e valores salvos com sucesso.', 'sucesso');
+    toast('Informações da empresa salvas com sucesso.', 'sucesso');
   });
 }
 

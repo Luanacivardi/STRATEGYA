@@ -4,7 +4,33 @@ import { listarObjetivos } from './objetivos.js';
 const PERIODICIDADE = { mensal: 'Mensal', trimestral: 'Trimestral', anual: 'Anual' };
 const POLARIDADE = { maior_melhor: 'Maior é melhor', menor_melhor: 'Menor é melhor' };
 const CLASSIFICACAO = { com_meta: 'Com meta', monitoramento: 'Monitoramento', complementar: 'Complementar' };
+const TIPO_META = { fixa: 'Fixa', variavel: 'Variável por período' };
 const UNIDADES = ['%', 'R$', 'un', 'dias', 'horas', 'pontos', 'kg', 'ton', 'm²'];
+
+// Meta variável: as metas ficam em indicador_metas, uma por mês (periodo normalizado no dia 1º).
+export function metaEhVariavel(indicador) {
+  return indicador.classificacao === 'com_meta' && indicador.tipo_meta === 'variavel';
+}
+
+function mesDoPeriodo(periodo) {
+  return (periodo || '').slice(0, 7); // 'YYYY-MM'
+}
+
+export async function carregarMetasPorMes(supabase, indicadorId) {
+  const { data, error } = await supabase.from('indicador_metas').select('*').eq('indicador_id', indicadorId);
+  if (error) throw error;
+  return new Map((data || []).map((m) => [mesDoPeriodo(m.periodo), Number(m.meta)]));
+}
+
+// Meta vigente para um período: fixa usa indicadores.meta; variável usa a meta do mês.
+export function metaDoPeriodo(indicador, metasPorMes, periodo) {
+  if (indicador.classificacao !== 'com_meta') return null;
+  if (indicador.tipo_meta === 'variavel') {
+    const m = metasPorMes?.get(mesDoPeriodo(periodo));
+    return m === undefined ? null : m;
+  }
+  return indicador.meta;
+}
 
 let chartInstance = null;
 let objetivoFiltroId = null;
@@ -72,9 +98,11 @@ export async function render(container, state) {
                   ${ind.descricao ? `<br><span class="text-muted">${escapeHtml(ind.descricao)}</span>` : ''}
                 </td>
                 <td>${escapeHtml(nomeObjetivoPorId.get(ind.objetivo_id) || '—')}</td>
-                <td>${ind.classificacao === 'com_meta' && ind.meta !== null
-                  ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}<br><span class="text-muted">${POLARIDADE[ind.polaridade] || ''}</span>`
-                  : '<span class="text-muted">—</span>'}</td>
+                <td>${metaEhVariavel(ind)
+                  ? `<span class="badge badge-neutral">Variável por período</span><br><span class="text-muted">${POLARIDADE[ind.polaridade] || ''}</span>`
+                  : (ind.classificacao === 'com_meta' && ind.meta !== null
+                    ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}<br><span class="text-muted">${POLARIDADE[ind.polaridade] || ''}</span>`
+                    : '<span class="text-muted">—</span>')}</td>
                 <td>${PERIODICIDADE[ind.periodicidade]}</td>
                 <td>${escapeHtml(emailPorId.get(ind.responsavel_id) || '—')}</td>
                 <td class="table-actions">
@@ -153,7 +181,7 @@ export async function render(container, state) {
     imprimirListaIndicadores(itensExibidos(), nomeObjetivoPorId, emailPorId);
   });
   container.querySelector('#btn-indicadores-email').addEventListener('click', () => {
-    const corpo = itensExibidos().map((ind) => `${ind.nome}\nObjetivo: ${nomeObjetivoPorId.get(ind.objetivo_id) || '—'} | Meta: ${ind.classificacao === 'com_meta' && ind.meta !== null ? formatarValor(ind.meta, ind.unidade) + ' ' + (ind.unidade || '') : '—'} | Responsável: ${emailPorId.get(ind.responsavel_id) || '—'}\n`).join('\n');
+    const corpo = itensExibidos().map((ind) => `${ind.nome}\nObjetivo: ${nomeObjetivoPorId.get(ind.objetivo_id) || '—'} | Meta: ${metaEhVariavel(ind) ? 'Variável por período' : (ind.classificacao === 'com_meta' && ind.meta !== null ? formatarValor(ind.meta, ind.unidade) + ' ' + (ind.unidade || '') : '—')} | Responsável: ${emailPorId.get(ind.responsavel_id) || '—'}\n`).join('\n');
     enviarPorEmail('Indicadores (KPIs)', corpo || 'Nenhum indicador encontrado.');
   });
 
@@ -181,7 +209,7 @@ function imprimirListaIndicadores(itens, nomeObjetivoPorId, emailPorId) {
             <tr>
               <td>${escapeHtml(ind.nome)}${ind.descricao ? `<br><span class="text-muted">${escapeHtml(ind.descricao)}</span>` : ''}</td>
               <td>${escapeHtml(nomeObjetivoPorId.get(ind.objetivo_id) || '—')}</td>
-              <td>${ind.classificacao === 'com_meta' && ind.meta !== null ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}` : '—'}</td>
+              <td>${metaEhVariavel(ind) ? 'Variável por período' : (ind.classificacao === 'com_meta' && ind.meta !== null ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}` : '—')}</td>
               <td>${PERIODICIDADE[ind.periodicidade]}</td>
               <td>${escapeHtml(emailPorId.get(ind.responsavel_id) || '—')}</td>
             </tr>`).join('')}
@@ -193,6 +221,7 @@ function imprimirListaIndicadores(itens, nomeObjetivoPorId, emailPorId) {
 function abrirFormulario(state, container, objetivos, membros, item = null) {
   const { supabase, empresaAtual } = state;
   const classificacaoAtual = item?.classificacao || 'com_meta';
+  const tipoMetaAtual = item?.tipo_meta || 'fixa';
   const unidadeAtual = item?.unidade || '';
   const unidadeEhCustom = unidadeAtual && !UNIDADES.includes(unidadeAtual);
 
@@ -226,11 +255,20 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
           </select>
           <input type="text" id="in-unidade-custom" placeholder="Digite a unidade" style="margin-top:6px;display:${unidadeEhCustom ? '' : 'none'}" value="${unidadeEhCustom ? escapeHtml(unidadeAtual) : ''}">
         </div>
-        <div class="form-group" id="grupo-meta" style="display:${classificacaoAtual === 'com_meta' ? '' : 'none'}">
-          <label>Meta</label>
-          <input type="number" step="any" id="in-meta" value="${item?.meta ?? ''}">
+        <div class="form-group" id="grupo-tipo-meta" style="display:${classificacaoAtual === 'com_meta' ? '' : 'none'}">
+          <label>Tipo de meta</label>
+          <select id="in-tipo-meta">
+            ${Object.entries(TIPO_META).map(([v, l]) => `<option value="${v}" ${tipoMetaAtual === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
         </div>
       </div>
+      <div class="form-group" id="grupo-meta" style="display:${classificacaoAtual === 'com_meta' && tipoMetaAtual === 'fixa' ? '' : 'none'}">
+        <label>Meta</label>
+        <input type="number" step="any" id="in-meta" value="${item?.meta ?? ''}">
+      </div>
+      <p class="text-muted" id="dica-meta-variavel" style="font-size:12px;display:${classificacaoAtual === 'com_meta' && tipoMetaAtual === 'variavel' ? '' : 'none'}">
+        Meta variável: defina a meta de cada período diretamente na tela de <strong>Resultados</strong> do indicador, junto com o lançamento do realizado.
+      </p>
       <div class="form-row">
         <div class="form-group">
           <label>Periodicidade</label>
@@ -265,11 +303,16 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
     </form>
   `);
 
-  modal.querySelector('#in-classificacao').addEventListener('change', (e) => {
-    const ehComMeta = e.target.value === 'com_meta';
-    modal.querySelector('#grupo-meta').style.display = ehComMeta ? '' : 'none';
+  function atualizarCamposMeta() {
+    const ehComMeta = modal.querySelector('#in-classificacao').value === 'com_meta';
+    const ehVariavel = modal.querySelector('#in-tipo-meta').value === 'variavel';
+    modal.querySelector('#grupo-tipo-meta').style.display = ehComMeta ? '' : 'none';
+    modal.querySelector('#grupo-meta').style.display = ehComMeta && !ehVariavel ? '' : 'none';
+    modal.querySelector('#dica-meta-variavel').style.display = ehComMeta && ehVariavel ? '' : 'none';
     modal.querySelector('#grupo-polaridade').style.display = ehComMeta ? '' : 'none';
-  });
+  }
+  modal.querySelector('#in-classificacao').addEventListener('change', atualizarCamposMeta);
+  modal.querySelector('#in-tipo-meta').addEventListener('change', atualizarCamposMeta);
 
   modal.querySelector('#in-unidade').addEventListener('change', (e) => {
     modal.querySelector('#in-unidade-custom').style.display = e.target.value === 'outro' ? '' : 'none';
@@ -279,7 +322,9 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
     e.preventDefault();
     const classificacao = modal.querySelector('#in-classificacao').value;
     const ehComMeta = classificacao === 'com_meta';
-    if (ehComMeta && !modal.querySelector('#in-meta').value) return toast('Informe a meta para um indicador "Com meta".', 'erro');
+    const tipoMeta = modal.querySelector('#in-tipo-meta').value;
+    const ehMetaFixa = ehComMeta && tipoMeta === 'fixa';
+    if (ehMetaFixa && !modal.querySelector('#in-meta').value) return toast('Informe a meta para um indicador "Com meta" de meta fixa.', 'erro');
 
     const unidadeSelecionada = modal.querySelector('#in-unidade').value;
     const unidade = unidadeSelecionada === 'outro' ? modal.querySelector('#in-unidade-custom').value.trim() : unidadeSelecionada;
@@ -291,7 +336,8 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
       formula: modal.querySelector('#in-formula').value.trim(),
       classificacao,
       unidade,
-      meta: ehComMeta ? Number(modal.querySelector('#in-meta').value) : null,
+      tipo_meta: ehComMeta ? tipoMeta : 'fixa',
+      meta: ehMetaFixa ? Number(modal.querySelector('#in-meta').value) : null,
       periodicidade: modal.querySelector('#in-periodicidade').value,
       polaridade: ehComMeta ? modal.querySelector('#in-polaridade').value : null,
       objetivo_id: modal.querySelector('#in-objetivo').value || null,
@@ -311,6 +357,7 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
 async function abrirResultados(state, indicador) {
   const { supabase, papelAtual } = state;
   const podeEditar = papelAtual !== 'usuario';
+  const ehVariavel = metaEhVariavel(indicador);
 
   const { data: resultadosData, error } = await supabase
     .from('resultados_indicadores')
@@ -319,6 +366,15 @@ async function abrirResultados(state, indicador) {
     .order('periodo');
 
   if (error) return toast('Erro ao carregar resultados: ' + error.message, 'erro');
+
+  let metasPorMes = new Map();
+  if (ehVariavel) {
+    try {
+      metasPorMes = await carregarMetasPorMes(supabase, indicador.id);
+    } catch (errMetas) {
+      return toast('Erro ao carregar metas por período: ' + errMetas.message, 'erro');
+    }
+  }
 
   // Ordenação explícita por período (defensiva: garante ordem cronológica mesmo que
   // algum registro antigo tenha sido salvo antes da validação de ano em dataValida()).
@@ -339,6 +395,11 @@ async function abrirResultados(state, indicador) {
             <label>Valor realizado</label>
             <input type="number" step="any" id="res-valor" required>
           </div>
+          ${ehVariavel ? `
+          <div class="form-group">
+            <label>Meta do período</label>
+            <input type="number" step="any" id="res-meta" placeholder="Meta deste mês">
+          </div>` : ''}
         </div>
         <div class="form-group">
           <label>Observação</label>
@@ -370,12 +431,13 @@ async function abrirResultados(state, indicador) {
     const area = modal.querySelector('#resultados-tabela-area');
     area.innerHTML = filtrados.length ? `
       <table class="table">
-        <thead><tr><th>Período</th><th>Realizado</th><th>Observação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+        <thead><tr><th>Período</th><th>Realizado</th>${ehVariavel ? '<th>Meta do período</th>' : ''}<th>Observação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
         <tbody>
           ${filtrados.map((r) => `
             <tr>
               <td>${r.periodo}</td>
               <td>${formatarValor(r.valor_realizado, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}</td>
+              ${ehVariavel ? `<td>${(() => { const m = metaDoPeriodo(indicador, metasPorMes, r.periodo); return m === null ? '<span class="text-muted">—</span>' : `${formatarValor(m, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}`; })()}</td>` : ''}
               <td>${escapeHtml(r.observacao || '')}</td>
               ${podeEditar ? `<td class="table-actions">
                 <button class="icon-btn" data-editar-resultado="${r.id}" title="Editar"><i class="ti ti-pencil"></i></button>
@@ -385,7 +447,7 @@ async function abrirResultados(state, indicador) {
         </tbody>
       </table>` : `<p class="text-muted">Nenhum resultado apurado${anoFiltroAtivo ? ' em ' + anoFiltroAtivo : ' ainda'}.</p>`;
 
-    desenharGrafico(filtrados, indicador);
+    desenharGrafico(filtrados, indicador, metasPorMes);
 
     area.querySelectorAll('[data-editar-resultado]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -394,6 +456,10 @@ async function abrirResultados(state, indicador) {
         modal.querySelector('#res-periodo').value = r.periodo;
         modal.querySelector('#res-valor').value = r.valor_realizado;
         modal.querySelector('#res-observacao').value = r.observacao || '';
+        if (ehVariavel) {
+          const metaMes = metaDoPeriodo(indicador, metasPorMes, r.periodo);
+          modal.querySelector('#res-meta').value = metaMes === null ? '' : metaMes;
+        }
         modal.querySelector('#btn-salvar-resultado').textContent = 'Salvar edição';
         modal.querySelector('#grupo-cancelar-edicao').style.display = '';
         modal.querySelector('#res-periodo').focus();
@@ -434,6 +500,16 @@ async function abrirResultados(state, indicador) {
       grupoCancelar.style.display = 'none';
     });
 
+    // Meta variável: ao escolher o período, sugere a meta já cadastrada para aquele mês.
+    if (ehVariavel) {
+      modal.querySelector('#res-periodo').addEventListener('change', (e) => {
+        const campoMeta = modal.querySelector('#res-meta');
+        if (campoMeta.value !== '') return; // não sobrescreve o que a pessoa já digitou
+        const metaMes = metaDoPeriodo(indicador, metasPorMes, e.target.value);
+        if (metaMes !== null) campoMeta.value = metaMes;
+      });
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const periodo = modal.querySelector('#res-periodo').value;
@@ -446,6 +522,17 @@ async function abrirResultados(state, indicador) {
       };
       const { error: errIns } = await supabase.from('resultados_indicadores').upsert(payload, { onConflict: 'indicador_id,periodo' });
       if (errIns) return toast('Erro ao salvar resultado: ' + errIns.message, 'erro');
+
+      if (ehVariavel) {
+        const metaInformada = modal.querySelector('#res-meta').value;
+        if (metaInformada !== '') {
+          // Meta guardada por mês (dia 1º), valendo para qualquer lançamento daquele mês.
+          const { error: errMeta } = await supabase.from('indicador_metas')
+            .upsert({ indicador_id: indicador.id, periodo: periodo.slice(0, 7) + '-01', meta: Number(metaInformada) }, { onConflict: 'indicador_id,periodo' });
+          if (errMeta) return toast('Resultado salvo, mas houve erro ao salvar a meta do período: ' + errMeta.message, 'erro');
+        }
+      }
+
       toast('Resultado salvo com sucesso.', 'sucesso');
       fecharModal();
       abrirResultados(state, indicador);
@@ -472,6 +559,7 @@ function renderHistoricoAnalises(analises, nomeMembroPorId) {
 async function abrirApresentacao(state, indicador) {
   const { supabase, papelAtual, empresaAtual, user } = state;
   const podeEditar = papelAtual !== 'usuario';
+  const ehVariavel = metaEhVariavel(indicador);
 
   const [{ data: resultadosData, error }, { data: analisesData, error: errAnalises }, membros] = await Promise.all([
     supabase.from('resultados_indicadores').select('*').eq('indicador_id', indicador.id).order('periodo'),
@@ -481,8 +569,18 @@ async function abrirApresentacao(state, indicador) {
   if (error) return toast('Erro ao carregar resultados: ' + error.message, 'erro');
   if (errAnalises) return toast('Erro ao carregar análises: ' + errAnalises.message, 'erro');
 
+  let metasPorMes = new Map();
+  if (ehVariavel) {
+    try {
+      metasPorMes = await carregarMetasPorMes(supabase, indicador.id);
+    } catch (errMetas) {
+      return toast('Erro ao carregar metas por período: ' + errMetas.message, 'erro');
+    }
+  }
+
   const resultados = [...resultadosData].sort((a, b) => a.periodo.localeCompare(b.periodo));
   const ultimo = resultados[resultados.length - 1] || null;
+  const metaUltimoPeriodo = ultimo ? metaDoPeriodo(indicador, metasPorMes, ultimo.periodo) : null;
   let analises = analisesData || [];
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
 
@@ -498,8 +596,10 @@ async function abrirApresentacao(state, indicador) {
       <p class="apresentacao-subtitulo">${escapeHtml(indicador.descricao || '')}</p>
       <div class="apresentacao-meta-row">
         <div class="apresentacao-meta-item">
-          <span>Meta</span>
-          <strong>${indicador.classificacao === 'com_meta' && indicador.meta !== null ? `${formatarValor(indicador.meta, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}` : '—'}</strong>
+          <span>Meta${ehVariavel ? ' do período' : ''}</span>
+          <strong>${ehVariavel
+            ? (metaUltimoPeriodo !== null ? `${formatarValor(metaUltimoPeriodo, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}` : 'Variável')
+            : (indicador.classificacao === 'com_meta' && indicador.meta !== null ? `${formatarValor(indicador.meta, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}` : '—')}</strong>
         </div>
         <div class="apresentacao-meta-item">
           <span>Último resultado</span>
@@ -555,7 +655,7 @@ async function abrirApresentacao(state, indicador) {
         labels: resultados.map((r) => formatarMesAno(r.periodo)),
         datasets: [
           { label: 'Realizado', data: resultados.map((r) => r.valor_realizado), borderColor: '#E8B84B', backgroundColor: 'rgba(232,184,75,0.15)', tension: 0.25, borderWidth: 3 },
-          { label: 'Meta', data: resultados.map(() => indicador.meta), borderColor: '#252538', borderDash: [6, 4], pointRadius: 0 },
+          { label: 'Meta', data: resultados.map((r) => metaDoPeriodo(indicador, metasPorMes, r.periodo)), borderColor: '#252538', borderDash: [6, 4], pointRadius: 0 },
         ],
       },
       options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 14 } } } } },
@@ -628,7 +728,7 @@ async function registrarAnaliseNaAtaDoDia(supabase, empresaId, indicadorId, text
   return { error: errUpsert };
 }
 
-function desenharGrafico(resultados, indicador) {
+function desenharGrafico(resultados, indicador, metasPorMes = null) {
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
   const canvas = document.getElementById('grafico-resultado');
   if (!canvas || !window.Chart) return;
@@ -646,7 +746,7 @@ function desenharGrafico(resultados, indicador) {
         },
         {
           label: 'Meta',
-          data: resultados.map(() => indicador.meta),
+          data: resultados.map((r) => metaDoPeriodo(indicador, metasPorMes, r.periodo)),
           borderColor: '#252538',
           borderDash: [6, 4],
           pointRadius: 0,

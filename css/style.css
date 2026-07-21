@@ -568,17 +568,20 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .macro-direcao-conteudo .icon-btn { color: color-mix(in srgb, var(--navy-text) 60%, transparent); }
 .macro-direcao-conteudo .icon-btn:hover { color: var(--navy-text); }
 
-.macro-chevron-row { display: flex; align-items: center; flex-wrap: nowrap; gap: 0; padding: 10px 4px 16px; overflow-x: auto; }
+/* flex-wrap + flex-basis: o fluxo quebra em quantas linhas forem necessárias, então o layout
+   se adapta sozinho à quantidade de processos da empresa (sem scroll horizontal). */
+.macro-chevron-row { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px 0; padding: 10px 4px 16px; }
 .macro-chevron {
   position: relative; background: var(--surface-1); border: 2px solid var(--gold); border-radius: var(--radius);
-  padding: 14px 18px; min-width: 140px; flex-shrink: 0;
+  padding: 14px 18px; min-width: 140px; max-width: 100%; flex: 1 1 150px;
+  display: flex; flex-direction: column; justify-content: center;
   transition: transform 0.15s, box-shadow 0.15s;
 }
 .macro-chevron:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 1; }
 
 .macro-conector-linha {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 26px; color: var(--gold-dark); font-size: 16px;
+  width: 22px; color: var(--gold-dark); font-size: 16px;
 }
 
 .macro-apoio-row { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0; }
@@ -589,7 +592,6 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 }
 .macro-apoio-box:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
-.macro-item-nome { font-size: 13px; font-weight: 700; color: var(--text-primary); text-align: center; }
 .macro-item-nome { font-size: 13px; font-weight: 700; color: var(--text-primary); text-align: center; }
 .macro-item-desc { font-size: 11px; color: var(--text-secondary); text-align: center; margin-top: 4px; }
 .macro-item-actions { display: flex; justify-content: center; gap: 4px; margin-top: 6px; flex-wrap: wrap; }

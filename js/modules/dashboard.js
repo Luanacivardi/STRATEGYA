@@ -7,10 +7,12 @@ const PERSPECTIVAS = [
   { key: 'aprendizado_crescimento', label: 'Aprendizado e Crescimento' },
 ];
 
-function calcularAtingimento(indicador, ultimoResultado) {
+// meta: já resolvida para o período do último resultado (fixa = indicadores.meta;
+// variável = indicador_metas do mês correspondente).
+function calcularAtingimento(indicador, ultimoResultado, meta) {
   if (!ultimoResultado) return null;
   if (indicador.classificacao && indicador.classificacao !== 'com_meta') return null;
-  const { meta, polaridade } = indicador;
+  const { polaridade } = indicador;
   const realizado = Number(ultimoResultado.valor_realizado);
   if (meta === null || meta === undefined || meta === 0) return null;
   const pct = polaridade === 'maior_melhor' ? (realizado / meta) * 100 : (meta / realizado) * 100;
@@ -35,19 +37,36 @@ export async function render(container, state) {
 
   const indicadorIds = (indicadores || []).map((i) => i.id);
   let resultados = [];
+  let metasVariaveis = [];
   if (indicadorIds.length) {
-    const { data } = await supabase
-      .from('resultados_indicadores')
-      .select('*')
-      .in('indicador_id', indicadorIds)
-      .order('periodo', { ascending: false });
+    const [{ data }, { data: metasData }] = await Promise.all([
+      supabase
+        .from('resultados_indicadores')
+        .select('*')
+        .in('indicador_id', indicadorIds)
+        .order('periodo', { ascending: false }),
+      supabase
+        .from('indicador_metas')
+        .select('indicador_id, periodo, meta')
+        .in('indicador_id', indicadorIds),
+    ]);
     resultados = data || [];
+    metasVariaveis = metasData || [];
   }
 
   const ultimoPorIndicador = new Map();
   for (const r of resultados) {
     if (!ultimoPorIndicador.has(r.indicador_id)) ultimoPorIndicador.set(r.indicador_id, r);
   }
+
+  // Metas variáveis indexadas por indicador+mês ('YYYY-MM').
+  const metaVariavelPorMes = new Map(metasVariaveis.map((m) => [`${m.indicador_id}|${m.periodo.slice(0, 7)}`, Number(m.meta)]));
+  const metaVigente = (ind, ultimo) => {
+    if (ind.tipo_meta !== 'variavel') return ind.meta;
+    if (!ultimo) return null;
+    const m = metaVariavelPorMes.get(`${ind.id}|${ultimo.periodo.slice(0, 7)}`);
+    return m === undefined ? null : m;
+  };
 
   const totalObjetivos = (objetivos || []).length;
   const objetivosAtingidos = (objetivos || []).filter((o) => o.status === 'atingido').length;
@@ -56,12 +75,13 @@ export async function render(container, state) {
   let verde = 0, amarelo = 0, vermelho = 0, semDados = 0;
   const linhasIndicadores = (indicadores || []).map((ind) => {
     const ultimo = ultimoPorIndicador.get(ind.id);
-    const pct = calcularAtingimento(ind, ultimo);
+    const meta = metaVigente(ind, ultimo);
+    const pct = calcularAtingimento(ind, ultimo, meta);
     if (pct === null) semDados++;
     else if (pct >= 100) verde++;
     else if (pct >= 80) amarelo++;
     else vermelho++;
-    return { ind, ultimo, pct };
+    return { ind, ultimo, pct, meta };
   });
 
   const perspectivaHtml = PERSPECTIVAS.map((p) => {
@@ -80,11 +100,13 @@ export async function render(container, state) {
     ? `<table class="table">
         <thead><tr><th></th><th>Indicador</th><th>Meta</th><th>Último resultado</th><th>Atingimento</th><th></th></tr></thead>
         <tbody>
-          ${linhasIndicadores.map(({ ind, ultimo, pct }) => `
+          ${linhasIndicadores.map(({ ind, ultimo, pct, meta }) => `
             <tr>
               <td><span class="semaforo-dot ${semaforoClasse(pct)}"></span></td>
               <td>${escapeHtml(ind.nome)}</td>
-              <td>${ind.meta !== null && ind.meta !== undefined ? `${formatarValor(ind.meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}` : '<span class="text-muted">—</span>'}</td>
+              <td>${meta !== null && meta !== undefined
+                ? `${formatarValor(meta, ind.unidade)} ${escapeHtml(ind.unidade || '')}${ind.tipo_meta === 'variavel' ? ' <span class="text-muted" style="font-size:11px">(do período)</span>' : ''}`
+                : (ind.tipo_meta === 'variavel' ? '<span class="text-muted">variável</span>' : '<span class="text-muted">—</span>')}</td>
               <td>${ultimo ? `${formatarValor(ultimo.valor_realizado, ind.unidade)} ${escapeHtml(ind.unidade || '')} (${ultimo.periodo})` : '<span class="text-muted">sem dados</span>'}</td>
               <td>${pct === null ? '—' : Math.round(pct) + '%'}</td>
               <td><button class="icon-btn" data-ir-indicador="${ind.id}" title="Ver indicador"><i class="ti ti-external-link"></i></button></td>

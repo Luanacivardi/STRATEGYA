@@ -620,6 +620,18 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
         <input type="text" id="nd-nome" required>
       </div>
       <div class="form-group">
+        <label>Numeração</label>
+        <select id="nd-modo-numeracao">
+          <option value="automatica">Automática — o sistema gera o próximo número (padrão P-01 / IT-01.01 / RG-01.01.01)</option>
+          <option value="propria">Própria — a empresa já possui numeração vigente</option>
+        </select>
+      </div>
+      <div class="form-group" id="nd-grupo-numero-proprio" style="display:none">
+        <label>Número do documento (numeração vigente da empresa) *</label>
+        <input type="text" id="nd-numero-proprio" placeholder="Ex: PQ-051, IT 7.3-02, FOR-123...">
+        <p class="text-muted" style="font-size:12px;margin-top:4px">O número é mantido exatamente como digitado — o controle de revisão, aprovação e lista mestra funciona normalmente.</p>
+      </div>
+      <div class="form-group">
         <label>Arquivo do documento (Word ou PDF) *</label>
         <input type="file" id="nd-arquivo" accept="${ACCEPT_ARQUIVO}" required>
       </div>
@@ -629,6 +641,10 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
   `);
 
   const camposEl = modal.querySelector('#nd-campos-condicionais');
+
+  modal.querySelector('#nd-modo-numeracao').addEventListener('change', (e) => {
+    modal.querySelector('#nd-grupo-numero-proprio').style.display = e.target.value === 'propria' ? '' : 'none';
+  });
 
   modal.querySelector('#nd-tipo').addEventListener('change', async (e) => {
     const tipo = tipos.find((t) => t.id === e.target.value);
@@ -646,13 +662,25 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
     const arquivo = modal.querySelector('#nd-arquivo').files[0];
     if (!arquivo) return toast('Anexe o arquivo do documento (Word ou PDF).', 'erro');
 
+    // Numeração própria: mantém o número vigente da empresa (o gatilho do banco só gera número
+    // automático quando o campo vem vazio). Valida duplicidade dentro da empresa antes de criar.
+    let numeroProprio = null;
+    if (modal.querySelector('#nd-modo-numeracao').value === 'propria') {
+      numeroProprio = modal.querySelector('#nd-numero-proprio').value.trim();
+      if (!numeroProprio) return toast('Informe o número do documento (numeração vigente da empresa).', 'erro');
+      const jaExiste = documentos.some((d) => d.status !== 'obsoleto' && (d.numero || '').trim().toLowerCase() === numeroProprio.toLowerCase());
+      if (jaExiste) return toast(`Já existe um documento ativo com o número "${escapeHtml(numeroProprio)}" nesta empresa.`, 'erro');
+    }
+
     const processoId = modal.querySelector('#nd-processo')?.value || null;
     const procedimentoId = modal.querySelector('#nd-procedimento')?.value || null;
     const itId = modal.querySelector('#nd-it')?.value || null;
     const classificacao = modal.querySelector('#nd-classificacao')?.value || 'confidencial';
 
     if (tipo.exige_processo && !processoId) return toast('Este tipo de documento exige um Processo vinculado.', 'erro');
-    if (tipo.exige_procedimento && !procedimentoId) return toast('Este tipo de documento exige um Procedimento vinculado.', 'erro');
+    // O vínculo obrigatório com Procedimento existe para montar a numeração hierárquica automática;
+    // com numeração própria da empresa ele passa a ser opcional (mas continua recomendado).
+    if (tipo.exige_procedimento && !procedimentoId && !numeroProprio) return toast('Este tipo de documento exige um Procedimento vinculado.', 'erro');
 
     let tempoRetencao = null, localArmazenamento = null, formaDescarte = null;
     if (ehRegistro(tipo)) {
@@ -681,6 +709,7 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
       id: novoId,
       empresa_id: empresaAtual.id,
       tipo_documento_id: tipoId,
+      numero: numeroProprio, // null = numeração automática pelo gatilho do banco
       nome: modal.querySelector('#nd-nome').value.trim(),
       processo_id: processoId,
       procedimento_id: procedimentoId,
