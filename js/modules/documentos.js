@@ -138,7 +138,7 @@ export async function abrirArquivoDocumento(supabase, caminho) {
 // origem (o link assinado aponta para o domínio do Supabase Storage). Arquivos .doc/.docx/.odt
 // não têm visualização embutida seguro (exigiria enviar o arquivo a um serviço externo de
 // conversão, o que exporia documentos confidenciais a terceiros) — nesse caso mostra só um aviso.
-export async function visualizarArquivoRestrito(supabase, caminho, nomeArquivo) {
+async function abrirVisualizacaoArquivo(supabase, caminho, nomeArquivo, mensagemInfo) {
   const { data, error } = await supabase.storage.from(BUCKET_ARQUIVOS).createSignedUrl(caminho, 120);
   if (error) return toast('Erro ao gerar visualização: ' + error.message, 'erro');
 
@@ -146,13 +146,33 @@ export async function visualizarArquivoRestrito(supabase, caminho, nomeArquivo) 
   const modal = abrirModal(nomeArquivo || 'Documento', `
     <div class="alert alert-info" style="margin-bottom:10px">
       <i class="ti ti-eye"></i>
-      <span>Visualização somente leitura — download e impressão não estão disponíveis para o seu perfil de acesso.</span>
+      <span>${mensagemInfo}</span>
     </div>
     ${ehPdf
       ? `<iframe src="${data.signedUrl}#toolbar=0&navpanes=0&scrollbar=0" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:8px" title="${escapeHtml(nomeArquivo || 'Documento')}"></iframe>`
       : `<div class="empty-state"><i class="ti ti-file-off"></i>Pré-visualização disponível apenas para arquivos PDF. Solicite ao setor de Qualidade se precisar consultar este formato.</div>`}
   `);
   modal.classList.add('modal-xl');
+}
+
+// Visualização somente leitura para usuários sem permissão de edição: embute o PDF numa janela
+// interna (sem botão de download/impressão do app) com link de curta duração. Aviso importante:
+// isto é uma barreira de interface, não uma proteção real contra cópia — o navegador ainda expõe
+// atalhos próprios (Ctrl+P, "Salvar como") que o app não tem como bloquear num iframe de outra
+// origem (o link assinado aponta para o domínio do Supabase Storage). Arquivos .doc/.docx/.odt
+// não têm visualização embutida seguro (exigiria enviar o arquivo a um serviço externo de
+// conversão, o que exporia documentos confidenciais a terceiros) — nesse caso mostra só um aviso.
+export function visualizarArquivoRestrito(supabase, caminho, nomeArquivo) {
+  return abrirVisualizacaoArquivo(supabase, caminho, nomeArquivo,
+    'Visualização somente leitura — download e impressão não estão disponíveis para o seu perfil de acesso.');
+}
+
+// Visualização padrão ao abrir um documento pelas caixinhas (todos os perfis, inclusive quem
+// edita): sempre mostra o documento inteiro embutido, sem baixar/abrir arquivo automaticamente.
+// O download automático fica reservado à Gestão de Documentos (Lista Mestra / ficha do documento).
+export function visualizarArquivo(supabase, caminho, nomeArquivo) {
+  return abrirVisualizacaoArquivo(supabase, caminho, nomeArquivo,
+    'Visualização do documento. Para baixar o arquivo original ou editar, use a Gestão de Documentos.');
 }
 
 export async function render(container, state) {
@@ -300,8 +320,9 @@ function abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCai
       const doc = documentos.find((d) => d.id === link.dataset.verDoc);
       if (!doc) return;
       if (doc.arquivo_url) {
-        // Abre o upload: completo para quem edita; visualização restrita para os demais.
-        if (podeEditar) abrirArquivoDocumento(state.supabase, doc.arquivo_url);
+        // Visualiza o documento inteiro embutido — nunca baixa/abre automaticamente aqui.
+        // O download automático fica reservado à Gestão de Documentos (ícone de ficha ao lado).
+        if (podeEditar) visualizarArquivo(state.supabase, doc.arquivo_url, doc.arquivo_nome);
         else visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome);
       } else if (podeEditar) {
         fecharModal();
