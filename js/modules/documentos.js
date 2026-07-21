@@ -33,15 +33,18 @@ async function listarTiposDocumento(supabase) {
   return data;
 }
 
+// Todos os processos do Macrofluxo (principais e de apoio) — só a Direção fica de fora,
+// porque não recebe documentos. Principais primeiro, na mesma ordenação da tela do Macrofluxo.
 async function listarProcessos(supabase, empresaId) {
   const { data, error } = await supabase
     .from('macrofluxo_processos')
-    .select('id, nome, numero')
+    .select('id, nome, numero, tipo, ordem, created_at')
     .eq('empresa_id', empresaId)
-    .eq('tipo', 'principal')
-    .order('nome');
+    .neq('tipo', 'direcao');
   if (error) throw error;
-  return data;
+  return [...data].sort((a, b) => (a.tipo === b.tipo
+    ? (a.ordem - b.ordem || a.created_at.localeCompare(b.created_at))
+    : (a.tipo === 'principal' ? -1 : 1)));
 }
 
 // Rótulo do processo puxando o número cadastrado no Macrofluxo (ex: "3.1 - Compras"), quando existir.
@@ -269,16 +272,23 @@ function abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCai
   const { documentos, podeEditar } = ctx;
   const arvore = construirArvoreDocumentos(docsDaCaixa);
 
+  // Clicar no documento abre direto o arquivo enviado (upload); a ficha completa do documento
+  // (revisões, aprovação...) fica no ícone ao lado, visível só para quem pode editar.
+  const botaoDetalhe = (doc) => (podeEditar
+    ? `<button type="button" class="icon-btn" data-abrir-detalhe="${doc.id}" title="Abrir ficha do documento (revisões, aprovação...)"><i class="ti ti-file-info"></i></button>`
+    : '');
+
   const linhaDoc = (doc, profundidade) => `
-    <li style="padding-left:${profundidade * 20}px">
+    <li style="padding-left:${profundidade * 20}px;display:flex;align-items:center;gap:6px">
       <a href="#" data-ver-doc="${doc.id}"><i class="ti ${ICONE_TIPO[doc.tipos_documento.chave] || 'ti-file-text'}"></i> <span class="doc-modal-numero">${escapeHtml(doc.numero)}</span> ${escapeHtml(doc.nome)}</a>
+      ${botaoDetalhe(doc)}
     </li>`;
 
   const modal = abrirModal(p.institucional ? p.nome : rotuloProcesso(p), `
     ${pendentesDaCaixa.length ? `
       <div class="doc-caixa-pendente">
         <p class="doc-caixa-pendente-titulo"><i class="ti ti-clock-exclamation"></i> Pendente de aprovação (${pendentesDaCaixa.length})</p>
-        <ul class="doc-caixa-lista">${pendentesDaCaixa.map((d) => `<li><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.numero)} — ${escapeHtml(d.nome)}</a></li>`).join('')}</ul>
+        <ul class="doc-caixa-lista">${pendentesDaCaixa.map((d) => `<li style="display:flex;align-items:center;gap:6px"><a href="#" data-ver-doc="${d.id}">${escapeHtml(d.numero)} — ${escapeHtml(d.nome)}</a>${botaoDetalhe(d)}</li>`).join('')}</ul>
       </div>` : ''}
     ${arvore.length ? `<ul class="doc-caixa-lista doc-arvore">${arvore.map(({ doc, profundidade }) => linhaDoc(doc, profundidade)).join('')}</ul>` : '<div class="empty-state"><i class="ti ti-file-off"></i>Nenhum documento publicado ainda para este processo.</div>'}
   `);
@@ -289,14 +299,25 @@ function abrirModalDocumentosProcesso(state, ctx, p, docsDaCaixa, pendentesDaCai
       e.preventDefault();
       const doc = documentos.find((d) => d.id === link.dataset.verDoc);
       if (!doc) return;
-      if (podeEditar) {
+      if (doc.arquivo_url) {
+        // Abre o upload: completo para quem edita; visualização restrita para os demais.
+        if (podeEditar) abrirArquivoDocumento(state.supabase, doc.arquivo_url);
+        else visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome);
+      } else if (podeEditar) {
         fecharModal();
         abrirDetalhe(state, state.__documentosTopContainer, doc, ctx);
-      } else if (doc.arquivo_url) {
-        visualizarArquivoRestrito(state.supabase, doc.arquivo_url, doc.arquivo_nome);
       } else {
         toast('Este documento ainda não tem conteúdo publicado para visualização.', 'erro');
       }
+    });
+  });
+
+  modal.querySelectorAll('[data-abrir-detalhe]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const doc = documentos.find((d) => d.id === btn.dataset.abrirDetalhe);
+      if (!doc) return;
+      fecharModal();
+      abrirDetalhe(state, state.__documentosTopContainer, doc, ctx);
     });
   });
 }
