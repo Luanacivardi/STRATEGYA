@@ -95,6 +95,9 @@ export function aplicarTema(empresa) {
   root.setProperty('--gold-bg', ajustarCor(gold, 88));
   root.setProperty('--bg-warning', ajustarCor(gold, 88));
   root.setProperty('--navy-text', textoNavy);
+  // Títulos sobre fundo claro: se a cor primária da empresa for clara demais (ex: cinza claro),
+  // usar preto para manter a leitura — senão, mantém a cor da marca.
+  root.setProperty('--navy-titulo', corTextoIdeal(navy) === '#ffffff' ? navy : '#1a1a1a');
 
   const headerIcon = document.getElementById('header-icon');
   const headerLogoImg = document.getElementById('header-logo-img');

@@ -9,6 +9,7 @@
   --gold-light: #f0cc76;
   --gold-bg: #fdf6e3;
   --navy-text: #ffffff; /* cor da fonte sobre fundos escuros (navy), configurável por empresa */
+  --navy-titulo: #252538; /* cor de títulos sobre fundo claro: a cor primária da empresa quando legível, senão preto (calculada em tema.js) */
 
   --color-success: #10b981;
   --color-danger: #ef4444;
@@ -132,7 +133,7 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   width: 52px; height: 52px; border-radius: 50%; background: var(--gold-bg); color: var(--gold-dark);
   display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 4px;
 }
-.doc-caixa-nome { font-size: 13.5px; font-weight: 700; color: var(--navy); line-height: 1.3; }
+.doc-caixa-nome { font-size: 13.5px; font-weight: 700; color: var(--navy-titulo); line-height: 1.3; }
 .doc-caixa-contagem { font-size: 11px; color: var(--text-secondary); }
 .doc-caixa-badge-pendente {
   position: absolute; top: -8px; right: -8px; background: #b45309; color: #fff; font-size: 10px;
@@ -162,7 +163,7 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   box-shadow: 0 1px 3px rgba(37,37,56,0.05);
 }
 .planejamento-box-titulo {
-  font-size: 12px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.6px;
+  font-size: 12px; font-weight: 700; color: var(--navy-titulo); text-transform: uppercase; letter-spacing: 0.6px;
   display: flex; align-items: center; gap: 8px; margin: -0.1rem 0 1rem; padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);
 }

@@ -283,7 +283,7 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
   container.innerHTML = `
     <div class="card">
       <div class="lista-toolbar">
-        <span style="font-weight:700;font-size:14px;color:var(--navy)"><i class="ti ti-list-details"></i> Gestão de Apurações</span>
+        <span style="font-weight:700;font-size:14px;color:var(--navy-titulo)"><i class="ti ti-list-details"></i> Gestão de Apurações</span>
         <div class="lista-toolbar-acoes">
           <button class="btn btn-primary btn-sm" id="btn-add-apuracao"><i class="ti ti-plus"></i> Nova apuração</button>
         </div>

@@ -193,7 +193,7 @@ async function renderIndicadoresGrupo(container, state) {
     </div>
 
     <div class="card" style="padding:14px;margin-bottom:1rem">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:10px">Por status</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:10px">Por status</p>
       ${Object.entries(STATUS_LABEL).map(([v, l]) => {
         const qtd = porStatus[v] || 0;
         const pct = total ? Math.round((qtd / total) * 100) : 0;
@@ -209,7 +209,7 @@ async function renderIndicadoresGrupo(container, state) {
     </div>
 
     <div class="card" style="padding:14px">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:10px">Por origem</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:10px">Por origem</p>
       ${Object.entries(porOrigem).map(([label, qtd]) => `
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
           <span>${escapeHtml(label)}</span><span class="badge badge-neutral">${qtd}</span>
@@ -379,7 +379,7 @@ async function renderPlanos(container, state) {
   container.innerHTML = `
     <div class="card">
       <div class="lista-toolbar">
-        <span style="font-weight:700;font-size:14px;color:var(--navy)"><i class="ti ti-list-check"></i> Ações</span>
+        <span style="font-weight:700;font-size:14px;color:var(--navy-titulo)"><i class="ti ti-list-check"></i> Ações</span>
         <div class="lista-toolbar-acoes">
           <button class="btn btn-secondary btn-sm" id="btn-planos-csv"><i class="ti ti-download"></i> CSV</button>
           <button class="btn btn-secondary btn-sm" id="btn-planos-email"><i class="ti ti-mail"></i> E-mail</button>

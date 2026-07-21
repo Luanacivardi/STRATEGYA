@@ -47,7 +47,7 @@ export async function render(container, state) {
 
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <span style="font-weight:700;font-size:13px;color:var(--navy)"><i class="ti ti-arrows-right-left"></i> SIPOC por Processo</span>
+      <span style="font-weight:700;font-size:13px;color:var(--navy-titulo)"><i class="ti ti-arrows-right-left"></i> SIPOC por Processo</span>
       <button class="btn btn-secondary btn-sm" id="btn-imprimir-sipoc"><i class="ti ti-printer"></i> Imprimir</button>
     </div>
     ${processos.length ? `

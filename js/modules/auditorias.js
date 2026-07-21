@@ -707,7 +707,7 @@ async function renderAuditorias(container, state) {
   container.innerHTML = `
     <div class="card">
       <div class="lista-toolbar">
-        <span style="font-weight:700;font-size:14px;color:var(--navy)"><i class="ti ti-clipboard-check"></i> Gestão de Auditorias</span>
+        <span style="font-weight:700;font-size:14px;color:var(--navy-titulo)"><i class="ti ti-clipboard-check"></i> Gestão de Auditorias</span>
         <button class="btn btn-primary btn-sm" id="btn-add-auditoria"><i class="ti ti-plus"></i> Solicitar auditoria</button>
       </div>
       ${renderFiltrosGrupo()}
@@ -775,7 +775,7 @@ async function abrirAuditoria(state, container, item = null) {
 
   const modal = abrirModal(item ? `Auditoria ${escapeHtml(item.numero)}` : 'Solicitar auditoria', `
     <form id="form-auditoria">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">1. Solicitação</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">1. Solicitação</p>
       <div class="form-row">
         <div class="form-group"><label>Título</label><input type="text" id="ad-titulo" required value="${item ? escapeHtml(item.titulo) : ''}"></div>
         <div class="form-group"><label>Unidade</label><input type="text" id="ad-unidade" value="${item ? escapeHtml(item.unidade || '') : ''}"></div>
@@ -815,17 +815,17 @@ async function abrirAuditoria(state, container, item = null) {
       ${item ? `
       ${['externa', 'certificacao', 'recertificacao'].includes(item.tipo) ? `
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">2. Documentos do organismo certificador</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">2. Documentos do organismo certificador</p>
       <div class="alert alert-info"><i class="ti ti-info-circle"></i><span>Plano de auditoria, relatório do auditor externo, certificado etc. — documentos recebidos do organismo certificador, não gerados internamente.</span></div>
       <div id="ad-documentos-area"></div>
       ` : ''}
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">3. Priorização (IPA) — selecione os processos auditados</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">3. Priorização (IPA) — selecione os processos auditados</p>
       <div id="ad-priorizacao-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">4. Planejamento inteligente</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">4. Planejamento inteligente</p>
 
       <div class="planejamento-box">
         <p class="planejamento-box-titulo"><i class="ti ti-calendar-time"></i> Duração da auditoria</p>
@@ -871,16 +871,16 @@ async function abrirAuditoria(state, container, item = null) {
       <div id="ad-agenda-area" style="margin-top:1rem"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">5. Equipe auditora</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">5. Equipe auditora</p>
       <div id="ad-equipe-area"></div>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">6. Fluxo de aprovação</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">6. Fluxo de aprovação</p>
       <div id="ad-aprovacao-area"></div>
       <p class="text-muted" style="font-size:12px;margin-top:6px">Execução (achados) e o relatório detalhado por requisito ficam na aba "Relatórios".</p>
 
       <hr class="sep">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:8px">7. Conclusão do relatório</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">7. Conclusão do relatório</p>
       <div class="form-group">
         <label>Conclusão</label>
         <select id="ad-conclusao">
@@ -1929,7 +1929,7 @@ async function renderDashboard(container, state) {
       <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Horas planejadas (total)</div><div style="font-size:22px;font-weight:700">${horasPlanejadas.toFixed(1)}h</div></div>
     </div>
     <div class="card" style="padding:14px">
-      <p style="font-weight:700;color:var(--navy);margin-bottom:10px">Auditorias por norma</p>
+      <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:10px">Auditorias por norma</p>
       ${Object.entries(NORMA_LABEL).map(([v, l]) => `
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>${l}</span><span class="badge badge-neutral">${porNorma[v] || 0}</span></div>
       `).join('')}

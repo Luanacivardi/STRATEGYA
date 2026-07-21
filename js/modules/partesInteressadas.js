@@ -20,7 +20,7 @@ export async function render(container, state) {
 
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <span style="font-weight:700;font-size:13px;color:var(--navy)"><i class="ti ti-users-group"></i> Partes Interessadas</span>
+      <span style="font-weight:700;font-size:13px;color:var(--navy-titulo)"><i class="ti ti-users-group"></i> Partes Interessadas</span>
       ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-parte"><i class="ti ti-plus"></i> Nova parte interessada</button>' : ''}
     </div>
     ${itens.length ? `

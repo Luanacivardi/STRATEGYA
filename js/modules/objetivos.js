@@ -271,7 +271,7 @@ function abrirFormulario(state, container, membros, item = null, riscosVinculado
         </select>
       </div>
       <hr class="sep">
-      <p style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Análise de Riscos e Oportunidades do objetivo</p>
+      <p style="font-weight:700;font-size:13px;color:var(--navy-titulo);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Análise de Riscos e Oportunidades do objetivo</p>
       <div class="form-group">
         <label>Risco associado a este objetivo</label>
         <textarea id="ob-analise-risco" placeholder="O que pode impedir ou atrapalhar o alcance deste objetivo?">${analiseRisco ? escapeHtml(analiseRisco.descricao) : ''}</textarea>
