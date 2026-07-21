@@ -540,8 +540,8 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .macro-cliente-tab {
   background: var(--gold); color: var(--navy); font-size: 10.5px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.3px; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 6px; padding: 10px 8px; min-width: 88px;
-  max-width: 110px; text-align: center; border-radius: var(--radius); flex-shrink: 0;
+  align-items: center; justify-content: center; gap: 6px; padding: 10px 6px; min-width: 74px;
+  max-width: 100px; text-align: center; border-radius: var(--radius); flex-shrink: 0;
 }
 .macro-cliente-entrada i { transform: none; }
 .macro-cliente-saida i { transform: none; }
@@ -569,15 +569,17 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .macro-direcao-conteudo .icon-btn { color: color-mix(in srgb, var(--navy-text) 60%, transparent); }
 .macro-direcao-conteudo .icon-btn:hover { color: var(--navy-text); }
 
-/* flex-wrap + flex-basis: o fluxo quebra em quantas linhas forem necessárias, então o layout
-   se adapta sozinho à quantidade de processos da empresa (sem scroll horizontal). */
-.macro-chevron-row { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px 0; padding: 10px 4px 16px; }
+/* Processos principais sempre na mesma linha: cada chevron divide o espaço igualmente
+   (flex 1 1 0 + min-width 0) e encolhe conforme a quantidade de processos — o texto
+   quebra dentro do cartão em vez de quebrar a linha do fluxo. */
+.macro-chevron-row { display: flex; align-items: stretch; flex-wrap: nowrap; gap: 0; padding: 10px 4px 16px; }
 .macro-chevron {
   position: relative; background: var(--surface-1); border: 2px solid var(--gold); border-radius: var(--radius);
-  padding: 14px 18px; min-width: 140px; max-width: 100%; flex: 1 1 150px;
+  padding: 12px 10px; min-width: 0; flex: 1 1 0;
   display: flex; flex-direction: column; justify-content: center;
   transition: transform 0.15s, box-shadow 0.15s;
 }
+.macro-chevron .macro-item-nome, .macro-chevron .macro-item-desc { overflow-wrap: break-word; hyphens: auto; }
 .macro-chevron:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 1; }
 
 .macro-conector-linha {
