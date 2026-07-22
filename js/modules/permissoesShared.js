@@ -8,6 +8,12 @@ import { MODULOS_SISTEMA, NIVEL_LABEL, NIVEL_DESCRICAO } from '../modulosConfig.
 
 const NIVEIS_SELECIONAVEIS = ['leitura', 'proprio', 'total', 'aprovacao', 'sem_acesso'];
 
+// Auditorias (sem responsável único por registro) e Apurações (nível só importa dentro do comitê,
+// que já é Visualização ou Edição Total por decisão de produto) não usam 'proprio'/'aprovacao' —
+// oferecer essas opções só confundiria, já que na prática elas se comportam como 'leitura'.
+const NIVEIS_POR_MODULO = { auditorias: ['leitura', 'total', 'sem_acesso'], apuracoes: ['leitura', 'total', 'sem_acesso'] };
+const niveisAplicaveis = (moduloId) => NIVEIS_POR_MODULO[moduloId] || NIVEIS_SELECIONAVEIS;
+
 // ---------- Editar colaborador (nome / papel / departamento) ----------
 // escopo 'empresa': mostra departamento (empresaUsuarios.js). escopo 'global': sem departamento,
 // mesma trava de papel ORBEEX (permissoes.js, tela cross-empresa).
@@ -109,18 +115,12 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
       <td>
         <select data-nivel-modulo="${modulo}" data-nivel-submodulo="${submodulo || ''}" title="Passe o mouse sobre uma opção para ver o que ela libera">
           <option value="" ${!nivelDe(modulo, submodulo) ? 'selected' : ''} title="Segue o comportamento automático do papel da pessoa neste módulo/submódulo.">Padrão do papel</option>
-          ${NIVEIS_SELECIONAVEIS.map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''} title="${escapeHtml(NIVEL_DESCRICAO[n])}">${NIVEL_LABEL[n]}</option>`).join('')}
+          ${niveisAplicaveis(modulo).map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''} title="${escapeHtml(NIVEL_DESCRICAO[n])}">${NIVEL_LABEL[n]}</option>`).join('')}
         </select>
       </td>
     </tr>`;
 
   const corpoHtml = MODULOS_SISTEMA.filter((m) => m.disponivel).map((m) => {
-    if (m.configuravel === false) {
-      const motivo = m.id === 'apuracoes'
-        ? 'Acesso controlado pelo comitê de apuração (fora deste sistema de níveis).'
-        : 'Somente leitura para todos com acesso à empresa; edição restrita a Admin/ORBEEX.';
-      return `<tr><td>${escapeHtml(m.nome)}</td><td class="text-muted" style="font-size:12px">${motivo}</td></tr>`;
-    }
     const linhaModulo = linhaHtml(m.id, null, m.submodulos?.length ? `${m.nome} (todo o módulo)` : m.nome, false);
     const linhasSub = (m.submodulos || []).map((s) => linhaHtml(m.id, s.id, s.nome, true)).join('');
     return linhaModulo + linhasSub;
@@ -128,7 +128,8 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
 
   const modal = abrirModal(titulo, `
     <form id="form-matriz-permissoes">
-      <p class="text-muted" style="margin-bottom:1rem;font-size:13px">"Padrão do papel" segue o nível automático do papel (ex: Gestor = Edição sob Responsabilidade, exceto Planejamento Estratégico = Visualização; Usuário = Visualização, exceto Planejamento Estratégico = Sem acesso). Escolha um nível específico só para sobrepor o padrão naquele módulo/submódulo.</p>
+      <p class="text-muted" style="margin-bottom:0.5rem;font-size:13px">"Padrão do papel" segue o nível automático do papel (ex: Gestor = Edição sob Responsabilidade, exceto Planejamento Estratégico = Visualização; Usuário = Visualização, exceto Planejamento Estratégico = Sem acesso). Escolha um nível específico só para sobrepor o padrão naquele módulo/submódulo.</p>
+      <p class="text-muted" style="margin-bottom:1rem;font-size:13px">Em Gestão de Apurações, o nível só tem efeito para quem já é membro ativo do comitê de apuração (gerenciado na própria tela do módulo) — configurar um nível aqui para quem não é membro não dá acesso algum, é a proteção contra conflito de interesse que continua valendo acima de tudo. Em Gestão de Auditorias não existe nível "Edição sob Responsabilidade" (não há um responsável único por registro) — só Visualização e Edição Total se aplicam.</p>
       <table class="table">
         <thead><tr><th>Módulo / Submódulo</th><th>Nível</th></tr></thead>
         <tbody>${corpoHtml}</tbody>

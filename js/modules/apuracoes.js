@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, resolverNivel } from '../ui.js';
 import { recarregarAcessoApuracoes } from '../app.js';
 
 // Módulo "Gestão de Apurações": controla apenas o FLUXO de apurações/investigações corporativas
@@ -206,6 +206,9 @@ async function renderComite(container, state, podeGerenciarComite) {
 // ---------- LISTA DE APURAÇÕES ----------
 async function renderApuracoes(container, state, podeGerenciarComite) {
   const { supabase, empresaAtual } = state;
+  // Nível configurável dentro do comitê (migração 0078/0080): ser membro dá acesso, mas só quem
+  // tem nível 'total' pode criar/editar/excluir — quem tem 'leitura' só visualiza.
+  const podeEditar = resolverNivel(state, 'apuracoes') === 'total';
 
   let apuracoes, membrosComite, todosUsuarios;
   try {
@@ -255,8 +258,8 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
               <td>${estaAtrasada(a) ? `<span class="badge badge-danger">Atrasada (${calcularDataLimite(a)})</span>` : (calcularDataLimite(a) || '—')}</td>
               <td>${escapeHtml(nomePorId.get(a.relator_id) || '—')}</td>
               <td class="table-actions">
-                <button class="icon-btn" data-editar="${a.id}" title="Abrir"><i class="ti ti-pencil"></i></button>
-                <button class="icon-btn" data-excluir="${a.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+                <button class="icon-btn" data-editar="${a.id}" title="${podeEditar ? 'Abrir' : 'Visualizar'}"><i class="ti ${podeEditar ? 'ti-pencil' : 'ti-eye'}"></i></button>
+                ${podeEditar ? `<button class="icon-btn" data-excluir="${a.id}" title="Excluir"><i class="ti ti-trash"></i></button>` : ''}
               </td>
             </tr>`).join('')}
         </tbody>
@@ -265,7 +268,7 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
     area.querySelectorAll('[data-editar]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const item = apuracoes.find((a) => a.id === btn.dataset.editar);
-        abrirFormulario(state, container, membrosComiteComNome, () => renderApuracoes(container, state, podeGerenciarComite), item);
+        abrirFormulario(state, container, membrosComiteComNome, () => renderApuracoes(container, state, podeGerenciarComite), item, podeEditar);
       });
     });
 
@@ -285,7 +288,7 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
       <div class="lista-toolbar">
         <span style="font-weight:700;font-size:14px;color:var(--navy-titulo)"><i class="ti ti-list-details"></i> Gestão de Apurações</span>
         <div class="lista-toolbar-acoes">
-          <button class="btn btn-primary btn-sm" id="btn-add-apuracao"><i class="ti ti-plus"></i> Nova apuração</button>
+          ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-apuracao"><i class="ti ti-plus"></i> Nova apuração</button>' : ''}
         </div>
       </div>
       ${renderFiltrosGrupo(podeGerenciarComite)}
@@ -315,13 +318,13 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
     el.addEventListener('change', renderTabela);
   });
 
-  container.querySelector('#btn-add-apuracao').addEventListener('click', () => {
-    abrirFormulario(state, container, membrosComiteComNome, () => renderApuracoes(container, state, podeGerenciarComite));
+  container.querySelector('#btn-add-apuracao')?.addEventListener('click', () => {
+    abrirFormulario(state, container, membrosComiteComNome, () => renderApuracoes(container, state, podeGerenciarComite), null, podeEditar);
   });
 }
 
 // ---------- FORMULÁRIO ----------
-function abrirFormulario(state, container, membrosComite, aoSalvar, item = null) {
+function abrirFormulario(state, container, membrosComite, aoSalvar, item = null, podeEditar = true) {
   const { supabase, empresaAtual, user } = state;
 
   const modal = abrirModal(item ? `Apuração ${escapeHtml(item.numero)}` : 'Nova apuração', `
@@ -412,10 +415,14 @@ function abrirFormulario(state, container, membrosComite, aoSalvar, item = null)
         <input type="date" id="ap-data-conclusao" value="${item?.data_conclusao || ''}">
       </div>
       ${item ? '<div id="ap-participantes-area"></div><div id="ap-historico-area"></div>' : ''}
-      <button class="btn btn-primary btn-block" type="submit">Salvar</button>
+      ${podeEditar ? '<button class="btn btn-primary btn-block" type="submit">Salvar</button>' : ''}
     </form>
   `);
   modal.classList.add('modal-xl');
+
+  if (!podeEditar) {
+    modal.querySelectorAll('#form-apuracao input, #form-apuracao select, #form-apuracao textarea').forEach((el) => { el.disabled = true; });
+  }
 
   modal.querySelector('#ap-status').addEventListener('change', (e) => {
     const concluidaOuArquivada = ['concluida', 'arquivada'].includes(e.target.value);
@@ -424,9 +431,11 @@ function abrirFormulario(state, container, membrosComite, aoSalvar, item = null)
   });
 
   if (item) {
-    montarParticipantes(state, modal, item, membrosComite);
+    montarParticipantes(state, modal, item, membrosComite, podeEditar);
     montarHistorico(state, modal, item);
   }
+
+  if (!podeEditar) return;
 
   modal.querySelector('#form-apuracao').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -474,7 +483,7 @@ function abrirFormulario(state, container, membrosComite, aoSalvar, item = null)
 }
 
 // ---------- PARTICIPANTES E CONFLITO DE INTERESSE ----------
-async function montarParticipantes(state, modal, apuracao, membrosComite) {
+async function montarParticipantes(state, modal, apuracao, membrosComite, podeEditar = true) {
   const { supabase } = state;
   const area = modal.querySelector('#ap-participantes-area');
 
@@ -497,11 +506,11 @@ async function montarParticipantes(state, modal, apuracao, membrosComite) {
                 <td>${escapeHtml(nomePorId.get(p.usuario_id) || '—')}</td>
                 <td>${p.conflito_interesse_declarado ? '<span class="badge badge-danger">Sim</span>' : '<span class="badge badge-neutral">Não</span>'}</td>
                 <td>${p.afastado ? '<span class="badge badge-warning">Sim</span>' : '<span class="badge badge-neutral">Não</span>'}</td>
-                <td class="table-actions"><button type="button" class="icon-btn" data-remover-participante="${p.id}"><i class="ti ti-trash"></i></button></td>
+                <td class="table-actions">${podeEditar ? `<button type="button" class="icon-btn" data-remover-participante="${p.id}"><i class="ti ti-trash"></i></button>` : ''}</td>
               </tr>`).join('') : '<tr><td colspan="4" class="text-muted">Nenhum participante registrado.</td></tr>'}
           </tbody>
         </table>
-        ${disponiveis.length ? `
+        ${podeEditar && disponiveis.length ? `
           <div class="form-row" style="align-items:flex-end">
             <div class="form-group">
               <label style="font-weight:400;font-size:12px">Adicionar participante</label>

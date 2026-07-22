@@ -283,10 +283,12 @@ async function carregarEmpresas() {
 // cascata) > default por papel (gestor: 'proprio', exceto PE = 'leitura'; usuario: 'leitura',
 // exceto PE = 'sem_acesso'). orbeex/admin sempre 'total', sem consultar linha nenhuma.
 async function carregarPermissoesEdicao(empresaId) {
-  if (state.papelAtual === 'orbeex' || state.papelAtual === 'admin') {
+  if (state.papelAtual === 'orbeex') {
     state.permissoesEdicao = [];
     return;
   }
+  // Administrador também precisa carregar suas linhas: em Apurações (migração 0078) o nível
+  // configurado vale mesmo para admin dentro do comitê — só ORBEEX ignora a tabela por completo.
   const departamentoId = state.empresaAtual?.departamentoId;
   let query = supabase.from('permissoes_edicao')
     .select('usuario_id, departamento_id, modulo, submodulo, nivel')
@@ -466,7 +468,9 @@ function moduloTemAcessoDoUsuario(moduloId) {
 function moduloHabilitadoParaEmpresa(moduloId) {
   if (state.papelAtual === 'orbeex') return true;
   const habilitado = (state.empresaAtual?.modulos_habilitados || []).includes(moduloId);
-  if (moduloId === 'apuracoes') return habilitado && !!state.acessoApuracoes;
+  // Apurações não tem mais tratamento especial aqui: resolverNivel('apuracoes') já embute o gate
+  // de comitê (migração 0078) e retorna 'sem_acesso' para quem não é membro ativo, então
+  // moduloTemAcessoDoUsuario cobre o caso igual aos demais módulos configuráveis.
   return habilitado && moduloTemAcessoDoUsuario(moduloId);
 }
 

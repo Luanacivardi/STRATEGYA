@@ -150,11 +150,12 @@ export async function mensagemErroFuncao(error) {
 }
 
 // Cascata de resolução de nível de edição por módulo/submódulo — espelha exatamente a função SQL
-// nivel_edicao_usuario(empresa,modulo,submodulo) (migração 0065): usuário específico (módulo+
-// submódulo > módulo inteiro > coringa '*') > departamento (mesma cascata) > default por papel
-// (gestor: 'proprio', exceto Planejamento Estratégico = 'leitura'; usuario: 'leitura', exceto
-// Planejamento Estratégico = 'sem_acesso'). Fica aqui (não em app.js) porque app.js já importa de
-// ui.js — colocar em app.js criaria import circular já que este arquivo também precisa dela.
+// nivel_edicao_usuario(empresa,modulo,submodulo) (migração 0065, com a exceção de Apurações da
+// migração 0078 abaixo): usuário específico (módulo+submódulo > módulo inteiro > coringa '*') >
+// departamento (mesma cascata) > default por papel (gestor: 'proprio', exceto Planejamento
+// Estratégico = 'leitura'; usuario: 'leitura', exceto Planejamento Estratégico = 'sem_acesso').
+// Fica aqui (não em app.js) porque app.js já importa de ui.js — colocar em app.js criaria import
+// circular já que este arquivo também precisa dela.
 function nivelConfiguradoEm(linhas, filtroChave, filtroValor, modulo, submodulo) {
   const doAlvo = linhas.filter((l) => l[filtroChave] === filtroValor);
   if (submodulo) {
@@ -168,8 +169,24 @@ function nivelConfiguradoEm(linhas, filtroChave, filtroValor, modulo, submodulo)
 }
 
 export function resolverNivel(state, modulo, submodulo = null) {
-  if (state.papelAtual === 'orbeex' || state.papelAtual === 'admin') return 'total';
   const linhas = state.permissoesEdicao || [];
+  // Apurações (migração 0078): o gate de comitê vem antes de qualquer outra regra — nem admin nem
+  // gestor recebem 'total' automático aqui, diferente de todos os outros módulos. Só ORBEEX passa
+  // direto; todo o resto (mesmo Administrador) precisa ser membro ativo do comitê
+  // (state.acessoApuracoes, espelho de usuario_no_comite_apuracao) para não ficar 'sem_acesso'.
+  if (modulo === 'apuracoes') {
+    if (state.papelAtual === 'orbeex') return 'total';
+    if (!state.acessoApuracoes) return 'sem_acesso';
+    const doUsuario = nivelConfiguradoEm(linhas, 'usuario_id', state.user.id, modulo, submodulo);
+    if (doUsuario) return doUsuario;
+    const departamentoId = state.empresaAtual?.departamentoId;
+    if (departamentoId) {
+      const doDepto = nivelConfiguradoEm(linhas, 'departamento_id', departamentoId, modulo, submodulo);
+      if (doDepto) return doDepto;
+    }
+    return 'total';
+  }
+  if (state.papelAtual === 'orbeex' || state.papelAtual === 'admin') return 'total';
   const doUsuario = nivelConfiguradoEm(linhas, 'usuario_id', state.user.id, modulo, submodulo);
   if (doUsuario) return doUsuario;
   const departamentoId = state.empresaAtual?.departamentoId;

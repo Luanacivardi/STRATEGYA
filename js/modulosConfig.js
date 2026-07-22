@@ -3,9 +3,17 @@
 // literal precisa ser atualizado nas políticas RLS e no catálogo (não há sincronização automática
 // entre JS e SQL — só a validação no banco impede um literal inválido em permissoes_edicao).
 //
-// "configuravel: false" marca módulos com sistema de acesso próprio, que não entram na matriz de
-// permissões: Apurações (comitê de apuração, tabela apuracoes_comite_membros) e Auditorias (sempre
-// leitura para quem acessa a empresa, escrita só orbeex/admin, sem nível configurável).
+// "configuravel: false" marca módulos sem sistema de nível algum (hoje só Treinamentos, ainda não
+// lançado) — ficam de fora da matriz de permissões porque não têm o que configurar.
+//
+// Apurações e Auditorias são configuráveis (migrações 0077-0080), mas cada um com uma peculiaridade
+// que a matriz de permissões (js/modules/permissoesShared.js) e o resolvedor de nível (resolverNivel
+// em ui.js / nivel_edicao_usuario no banco) tratam à parte:
+// - Apurações: ser membro ativo do comitê (tabela apuracoes_comite_membros) continua sendo um
+//   pré-requisito absoluto e não-contornável (proteção contra conflito de interesse) — o nível
+//   configurado aqui (Visualização/Edição Total) só tem efeito para quem já é membro.
+// - Auditorias: não existe responsável único por registro, então o nível 'proprio' (Edição sob
+//   Responsabilidade) não se aplica — só Visualização, Edição Total e Sem acesso.
 export const MODULOS_SISTEMA = [
   {
     id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true, configuravel: true,
@@ -40,14 +48,20 @@ export const MODULOS_SISTEMA = [
     submodulos: [],
   },
   {
-    id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true, configuravel: false,
+    id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true, configuravel: true,
     descricao: 'Controle do fluxo de apurações e investigações corporativas (ISO 37301/37002/37001) — acesso restrito ao comitê de apuração. Não armazena evidências ou documentos.',
     submodulos: [],
   },
   {
-    id: 'auditorias', nome: 'Gestão de Auditorias', icone: 'ti-clipboard-check', disponivel: true, configuravel: false,
+    id: 'auditorias', nome: 'Gestão de Auditorias', icone: 'ti-clipboard-check', disponivel: true, configuravel: true,
     descricao: 'Auditorias internas e externas (ISO 9001/14001/45001): priorização por risco (IPA), planejamento inteligente, distribuição automática de horas e agenda, execução, resultados e aprovação, com geração automática de plano de ação a partir de não conformidades.',
-    submodulos: [],
+    submodulos: [
+      { id: 'auditorias', nome: 'Auditorias' },
+      { id: 'processos', nome: 'Processos Auditáveis' },
+      { id: 'turnos', nome: 'Turnos' },
+      { id: 'auditores', nome: 'Auditores' },
+      { id: 'relatorios', nome: 'Relatórios' },
+    ],
   },
   {
     id: 'treinamentos', nome: 'Treinamentos', icone: 'ti-school', disponivel: false, configuravel: false,

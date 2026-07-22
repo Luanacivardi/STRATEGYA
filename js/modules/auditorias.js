@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao, enviarPorEmail } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao, enviarPorEmail, resolverNivel } from '../ui.js';
 
 // Módulo "Gestão de Auditorias Corporativas" (ISO 9001/14001/45001): solicitação → priorização
 // (IPA) → planejamento inteligente → distribuição automática de horas → agenda automática →
@@ -8,10 +8,11 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, impr
 // Ver comentário no topo da migration 0048_gestao_auditorias.sql para as decisões de design do
 // IPA (normalização 0-100 por critério) e da "pontuação do processo" usada na distribuição de horas.
 
-// Escrita neste módulo é sempre restrita a ORBEEX/Administrador — não usa nivel_edicao_usuario como
-// os demais módulos (ver js/modulosConfig.js, "auditorias" tem configuravel:false).
-function podeEditarAuditorias(papelAtual) {
-  return papelAtual === 'orbeex' || papelAtual === 'admin';
+// Escrita em cada submódulo segue nivel_edicao_usuario(empresa,'auditorias',submodulo) — não existe
+// nível "Edição sob Responsabilidade" aqui (não há responsável único por registro), só
+// Visualização/Edição Total (ver js/modulosConfig.js).
+function podeEditarAuditorias(state, submodulo) {
+  return resolverNivel(state, 'auditorias', submodulo) === 'total';
 }
 
 const TIPO_LABEL = {
@@ -39,15 +40,25 @@ const NIVEL_COMPETENCIA_LABEL = { auditor_interno: 'Auditor Interno', auditor_li
 
 let grupoAtivo = 'auditorias'; // 'auditorias' | 'processos' | 'turnos' | 'auditores' | 'dashboard'
 
-function renderFiltrosGrupo() {
+// Cada aba corresponde a um submódulo real (ver js/modulosConfig.js) — some da navegação se o nível
+// resolvido for 'sem_acesso'. Dashboard (leitura agregada) segue o mesmo acesso da aba 'auditorias'.
+const SUBMODULOS_POR_GRUPO = { auditorias: 'auditorias', processos: 'processos', turnos: 'turnos', auditores: 'auditores', relatorios: 'relatorios', dashboard: 'auditorias' };
+
+function renderFiltrosGrupo(state) {
+  const visivel = (grupo) => resolverNivel(state, 'auditorias', SUBMODULOS_POR_GRUPO[grupo]) !== 'sem_acesso';
+  const aba = (grupo, icone, label) => visivel(grupo)
+    ? `<button class="tab-btn ${grupoAtivo === grupo ? 'active' : ''}" data-grupo="${grupo}"><i class="ti ${icone}"></i> ${label}</button>` : '';
+  if (!visivel(grupoAtivo)) {
+    grupoAtivo = ['auditorias', 'processos', 'turnos', 'auditores', 'relatorios', 'dashboard'].find(visivel) || 'auditorias';
+  }
   return `
     <nav class="tabs">
-      <button class="tab-btn ${grupoAtivo === 'auditorias' ? 'active' : ''}" data-grupo="auditorias"><i class="ti ti-clipboard-check"></i> Auditorias</button>
-      <button class="tab-btn ${grupoAtivo === 'processos' ? 'active' : ''}" data-grupo="processos"><i class="ti ti-sitemap"></i> Processos Auditáveis</button>
-      <button class="tab-btn ${grupoAtivo === 'turnos' ? 'active' : ''}" data-grupo="turnos"><i class="ti ti-clock"></i> Turnos</button>
-      <button class="tab-btn ${grupoAtivo === 'auditores' ? 'active' : ''}" data-grupo="auditores"><i class="ti ti-users"></i> Auditores</button>
-      <button class="tab-btn ${grupoAtivo === 'relatorios' ? 'active' : ''}" data-grupo="relatorios"><i class="ti ti-report"></i> Relatórios</button>
-      <button class="tab-btn ${grupoAtivo === 'dashboard' ? 'active' : ''}" data-grupo="dashboard"><i class="ti ti-chart-bar"></i> Dashboard</button>
+      ${aba('auditorias', 'ti-clipboard-check', 'Auditorias')}
+      ${aba('processos', 'ti-sitemap', 'Processos Auditáveis')}
+      ${aba('turnos', 'ti-clock', 'Turnos')}
+      ${aba('auditores', 'ti-users', 'Auditores')}
+      ${aba('relatorios', 'ti-report', 'Relatórios')}
+      ${aba('dashboard', 'ti-chart-bar', 'Dashboard')}
     </nav>`;
 }
 function wireFiltrosGrupo(container, state) {
@@ -239,9 +250,9 @@ async function carregarBaseCadastros(supabase, empresaId) {
 
 // ==================== TAB: TURNOS ====================
 async function renderTurnos(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = podeEditarAuditorias(papelAtual);
-  container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div id="at-corpo" style="margin-top:1rem">Carregando...</div></div>`;
+  const { supabase, empresaAtual } = state;
+  const podeEditar = podeEditarAuditorias(state, 'turnos');
+  container.innerHTML = `<div class="card">${renderFiltrosGrupo(state)}<div id="at-corpo" style="margin-top:1rem">Carregando...</div></div>`;
   wireFiltrosGrupo(container, state);
   const area = container.querySelector('#at-corpo');
 
@@ -329,11 +340,11 @@ async function renderTurnos(container, state) {
 
 // ==================== TAB: PROCESSOS AUDITÁVEIS ====================
 async function renderProcessos(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = podeEditarAuditorias(papelAtual);
+  const { supabase, empresaAtual } = state;
+  const podeEditar = podeEditarAuditorias(state, 'processos');
   container.innerHTML = `
     <div class="card">
-      ${renderFiltrosGrupo()}
+      ${renderFiltrosGrupo(state)}
       <div class="lista-toolbar" style="margin-top:1rem">
         <span></span>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-processo"><i class="ti ti-plus"></i> Novo processo</button>' : ''}
@@ -496,11 +507,11 @@ function abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, no
 
 // ==================== TAB: AUDITORES ====================
 async function renderAuditores(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = podeEditarAuditorias(papelAtual);
+  const { supabase, empresaAtual } = state;
+  const podeEditar = podeEditarAuditorias(state, 'auditores');
   container.innerHTML = `
     <div class="card">
-      ${renderFiltrosGrupo()}
+      ${renderFiltrosGrupo(state)}
       <div class="lista-toolbar" style="margin-top:1rem"><span></span>${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-auditor"><i class="ti ti-plus"></i> Novo auditor</button>' : ''}</div>
       <div id="aud-corpo">Carregando...</div>
     </div>`;
@@ -726,15 +737,15 @@ function abrirFormularioAuditor(state, container, item = null) {
 
 // ==================== TAB: AUDITORIAS (fluxo completo) ====================
 async function renderAuditorias(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = podeEditarAuditorias(papelAtual);
+  const { supabase, empresaAtual } = state;
+  const podeEditar = podeEditarAuditorias(state, 'auditorias');
   container.innerHTML = `
     <div class="card">
       <div class="lista-toolbar">
         <span style="font-weight:700;font-size:14px;color:var(--navy-titulo)"><i class="ti ti-clipboard-check"></i> Gestão de Auditorias</span>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-auditoria"><i class="ti ti-plus"></i> Solicitar auditoria</button>' : ''}
       </div>
-      ${renderFiltrosGrupo()}
+      ${renderFiltrosGrupo(state)}
       <div id="auditorias-corpo" style="margin-top:1rem">Carregando...</div>
     </div>`;
   wireFiltrosGrupo(container, state);
@@ -1514,9 +1525,9 @@ const SITUACAO_BADGE = { conforme: 'badge-success', nao_atende: 'badge-danger', 
 let relatorioAuditoriaId = null; // auditoria selecionada na aba Relatórios, persiste entre re-renders
 
 async function renderRelatorios(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
-  if (!podeEditarAuditorias(papelAtual)) {
-    container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div class="empty-state" style="margin-top:1rem"><i class="ti ti-lock"></i>Apenas administradores e a equipe ORBEEX podem elaborar relatórios de auditoria.</div></div>`;
+  const { supabase, empresaAtual } = state;
+  if (!podeEditarAuditorias(state, 'relatorios')) {
+    container.innerHTML = `<div class="card">${renderFiltrosGrupo(state)}<div class="empty-state" style="margin-top:1rem"><i class="ti ti-lock"></i>Apenas administradores e a equipe ORBEEX podem elaborar relatórios de auditoria.</div></div>`;
     wireFiltrosGrupo(container, state);
     return;
   }
@@ -1524,7 +1535,7 @@ async function renderRelatorios(container, state) {
 
   container.innerHTML = `
     <div class="card">
-      ${renderFiltrosGrupo()}
+      ${renderFiltrosGrupo(state)}
       <div class="form-group" style="margin-top:1rem;max-width:460px">
         <label>Selecione a auditoria</label>
         <select id="rel-auditoria-select">
@@ -1921,7 +1932,7 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
 // ==================== DASHBOARD ====================
 async function renderDashboard(container, state) {
   const { supabase, empresaAtual } = state;
-  container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div id="dash-corpo" style="margin-top:1rem">Carregando...</div></div>`;
+  container.innerHTML = `<div class="card">${renderFiltrosGrupo(state)}<div id="dash-corpo" style="margin-top:1rem">Carregando...</div></div>`;
   wireFiltrosGrupo(container, state);
   const area = container.querySelector('#dash-corpo');
 
