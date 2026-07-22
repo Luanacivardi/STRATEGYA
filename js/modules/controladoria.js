@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
 const CATEGORIA_BADGE = { receita: 'badge-success', custo: 'badge-warning', despesa: 'badge-danger', investimento: 'badge-neutral' };
@@ -18,7 +18,7 @@ let filtroStatus = 'ativo';
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'controladoria') === 'total';
 
   let contas, departamentos, membros;
   try {
@@ -397,7 +397,7 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
 
 function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba) {
   const { supabase, empresaAtual, user } = state;
-  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id);
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
 
   areaAba.innerHTML = `
     ${podeGerenciar ? `
@@ -485,7 +485,7 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
 
 function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) {
   const { supabase, empresaAtual, user } = state;
-  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id);
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
 
   areaAba.innerHTML = `
     ${podeGerenciar ? `
@@ -600,7 +600,7 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
   const { supabase, user } = state;
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const ehImagem = anexo.arquivo_tipo === 'png' || anexo.arquivo_tipo === 'jpg';
-  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id);
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
 
   let analises;
   try {

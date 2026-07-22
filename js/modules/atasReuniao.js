@@ -1,8 +1,8 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'atas') === 'total';
 
   let atas, indicadores, membros, indicadoresPorAta, acoesPorAta;
   try {
@@ -496,9 +496,9 @@ function abrirFormulario(state, container, indicadores, membros, item = null) {
 
 async function abrirAcoesTodo(state, containerPai, ata, membros) {
   const { supabase, empresaAtual, user } = state;
-  const podeEditar = state.papelAtual !== 'usuario' || state.nivelEdicao === 'total';
-  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
-  const travarResponsavelEmSiMesmo = state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'atas') === 'total';
+  const podeCriar = podeEditar || resolverNivel(state, 'planejamento-estrategico', 'atas') === 'proprio';
+  const travarResponsavelEmSiMesmo = resolverNivel(state, 'planejamento-estrategico', 'atas') === 'proprio';
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
 
   const { data: acoesData, error } = await supabase
@@ -549,7 +549,7 @@ async function abrirAcoesTodo(state, containerPai, ata, membros) {
       <table class="table">
         <thead><tr><th></th><th>Descrição</th><th>Responsável</th><th>Prazo</th><th>Plano de Ação</th><th></th></tr></thead>
         <tbody>
-          ${acoes.map((a) => { const podeEditarEsta = podeEditarRegistro(state, a.responsavel_id); return `
+          ${acoes.map((a) => { const podeEditarEsta = podeEditarRegistro(state, a.responsavel_id, 'planejamento-estrategico', 'atas'); return `
             <tr>
               <td><input type="checkbox" data-toggle-concluida="${a.id}" ${a.concluida ? 'checked' : ''} ${podeEditarEsta ? '' : 'disabled'}></td>
               <td style="${a.concluida ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${escapeHtml(a.descricao)}</td>

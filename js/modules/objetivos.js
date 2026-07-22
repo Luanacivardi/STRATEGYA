@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 import { definirFiltroObjetivo } from './planosAcao.js';
 import { renderMapa, wireMapa } from './mapaEstrategico.js';
 
@@ -32,10 +32,10 @@ export async function listarObjetivos(supabase, empresaId) {
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'objetivos') === 'total';
   // Nível "próprio": não edita tudo, mas pode criar um objetivo novo (sempre com ela mesma como
   // responsável) e editar/excluir os objetivos em que já é a responsável.
-  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
+  const podeCriar = podeEditar || resolverNivel(state, 'planejamento-estrategico', 'objetivos') === 'proprio';
 
   let itens, membros, planos, riscos;
   try {
@@ -90,7 +90,7 @@ export async function render(container, state) {
           <thead><tr><th><input type="checkbox" id="ob-selecionar-todas"></th><th>Objetivo</th><th>Perspectiva</th><th>Responsável</th><th>Status</th><th>Riscos e Oport.</th><th>Plano de Ação</th><th></th></tr></thead>
           <tbody>
             ${filtrados.map((o) => {
-              const podeEditarEste = podeEditarRegistro(state, o.responsavel_id);
+              const podeEditarEste = podeEditarRegistro(state, o.responsavel_id, 'planejamento-estrategico', 'objetivos');
               return `
               <tr>
                 <td><input type="checkbox" class="ob-checkbox" data-id="${o.id}" ${selecionados.has(o.id) ? 'checked' : ''}></td>
@@ -246,7 +246,7 @@ function abrirFormulario(state, container, membros, item = null, riscosVinculado
   const { supabase, empresaAtual, user } = state;
   // Nível "próprio" só grava se responsavel_id for a própria pessoa (regra do banco) — trava o
   // campo já na tela em vez de deixar escolher outra pessoa e a gravação falhar depois.
-  const travarResponsavelEmSiMesmo = state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
+  const travarResponsavelEmSiMesmo = resolverNivel(state, 'planejamento-estrategico', 'objetivos') === 'proprio';
   // Análises já registradas a partir deste formulário (uma de risco, uma de oportunidade).
   const analiseRisco = riscosVinculados.find((r) => r.tipo === 'risco' && r.categoria === CATEGORIA_ANALISE_OBJETIVO) || null;
   const analiseOportunidade = riscosVinculados.find((r) => r.tipo === 'oportunidade' && r.categoria === CATEGORIA_ANALISE_OBJETIVO) || null;

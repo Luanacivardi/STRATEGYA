@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, resolverNivel } from '../ui.js';
 import * as macrofluxo from './macrofluxo.js';
 import * as partesInteressadas from './partesInteressadas.js';
 import * as sipoc from './sipoc.js';
@@ -55,7 +55,7 @@ async function renderPartes(container, state) {
 
 async function renderCenario(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'contexto-cenario') === 'total';
 
   const { data, error } = await supabase
     .from('contexto_organizacional')
@@ -172,7 +172,7 @@ async function renderSipoc(container, state) {
 
 async function renderMissaoVisaoValores(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'contexto-cenario') === 'total';
 
   const { data: empresa, error } = await supabase
     .from('empresas')

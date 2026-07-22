@@ -128,13 +128,49 @@ export async function mensagemErroFuncao(error) {
   return error?.message || 'Erro desconhecido.';
 }
 
-// Nível de edição do usuário nesta empresa (ver carregarNivelEdicao em app.js): 'total' já libera
+// Cascata de resolução de nível de edição por módulo/submódulo — espelha exatamente a função SQL
+// nivel_edicao_usuario(empresa,modulo,submodulo) (migração 0065): usuário específico (módulo+
+// submódulo > módulo inteiro > coringa '*') > departamento (mesma cascata) > default por papel
+// (gestor: 'proprio', exceto Planejamento Estratégico = 'leitura'; usuario: 'leitura', exceto
+// Planejamento Estratégico = 'sem_acesso'). Fica aqui (não em app.js) porque app.js já importa de
+// ui.js — colocar em app.js criaria import circular já que este arquivo também precisa dela.
+function nivelConfiguradoEm(linhas, filtroChave, filtroValor, modulo, submodulo) {
+  const doAlvo = linhas.filter((l) => l[filtroChave] === filtroValor);
+  if (submodulo) {
+    const exato = doAlvo.find((l) => l.modulo === modulo && l.submodulo === submodulo);
+    if (exato) return exato.nivel;
+  }
+  const doModulo = doAlvo.find((l) => l.modulo === modulo && !l.submodulo);
+  if (doModulo) return doModulo.nivel;
+  const coringa = doAlvo.find((l) => l.modulo === '*');
+  return coringa ? coringa.nivel : null;
+}
+
+export function resolverNivel(state, modulo, submodulo = null) {
+  if (state.papelAtual === 'orbeex' || state.papelAtual === 'admin') return 'total';
+  const linhas = state.permissoesEdicao || [];
+  const doUsuario = nivelConfiguradoEm(linhas, 'usuario_id', state.user.id, modulo, submodulo);
+  if (doUsuario) return doUsuario;
+  const departamentoId = state.empresaAtual?.departamentoId;
+  if (departamentoId) {
+    const doDepto = nivelConfiguradoEm(linhas, 'departamento_id', departamentoId, modulo, submodulo);
+    if (doDepto) return doDepto;
+  }
+  if (state.papelAtual === 'gestor') {
+    return modulo === 'planejamento-estrategico' ? 'leitura' : 'proprio';
+  }
+  return modulo === 'planejamento-estrategico' ? 'sem_acesso' : 'leitura';
+}
+
+// Nível de edição do usuário nesta empresa, para um módulo/submódulo específico (ver
+// catalogo_modulos_submodulos/js/modulosConfig.js para os literais válidos): 'total' já libera
 // tudo; 'proprio' libera só quando a própria pessoa é a responsável do registro (comparar com o
-// campo responsavel_id do objetivo/indicador/plano/tarefa/etc.); 'leitura' (ou nada) não libera.
+// campo responsavel_id do objetivo/indicador/plano/tarefa/etc.); 'leitura'/'sem_acesso' não libera.
 // Espelha exatamente as políticas de RLS do banco — mantém a tela e o banco sempre de acordo.
-export function podeEditarRegistro(state, responsavelId) {
-  if (state.papelAtual !== 'usuario' || state.nivelEdicao === 'total') return true;
-  return state.nivelEdicao === 'proprio' && !!responsavelId && responsavelId === state.user.id;
+export function podeEditarRegistro(state, responsavelId, modulo, submodulo = null) {
+  const nivel = resolverNivel(state, modulo, submodulo);
+  if (nivel === 'total') return true;
+  return nivel === 'proprio' && !!responsavelId && responsavelId === state.user.id;
 }
 
 export function escapeHtml(str) {

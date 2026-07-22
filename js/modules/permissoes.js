@@ -1,7 +1,6 @@
 import { toast, escapeHtml, confirmar, abrirModal, fecharModal, mensagemErroFuncao } from '../ui.js';
-import { MODULOS_SISTEMA } from '../app.js';
-
-const PAPEL_LABEL = { orbeex: 'ORBEEX', admin: 'Administrador', usuario: 'Usuário' };
+import { MODULOS_SISTEMA, PAPEL_LABEL } from '../modulosConfig.js';
+import { abrirModalEditarUsuario, abrirModalMatrizPermissoes, abrirModalCopiarPermissoes } from './permissoesShared.js';
 
 export async function render(container, state) {
   const { supabase, user, empresas } = state;
@@ -23,7 +22,10 @@ export async function render(container, state) {
 
     ${porEmpresa.map(({ empresa, membros }) => `
       <div class="card">
-        <div class="card-header"><span><i class="ti ti-building"></i> ${escapeHtml(empresa.nome)}</span></div>
+        <div class="card-header">
+          <span><i class="ti ti-building"></i> ${escapeHtml(empresa.nome)}</span>
+          ${membros.length > 1 ? `<button class="btn btn-secondary btn-sm" data-copiar-permissoes="${empresa.id}"><i class="ti ti-copy"></i> Copiar permissões</button>` : ''}
+        </div>
 
         <label>Módulos habilitados para esta empresa</label>
         <div class="permissoes-modulos-grid" data-modulos-empresa="${empresa.id}">
@@ -44,6 +46,7 @@ export async function render(container, state) {
             <label>Papel</label>
             <select data-novo-papel>
               <option value="usuario">Usuário</option>
+              <option value="gestor">Gestor</option>
               <option value="admin">Administrador</option>
               <option value="orbeex">ORBEEX</option>
             </select>
@@ -61,6 +64,7 @@ export async function render(container, state) {
                   <td><span class="badge ${m.ativo ? 'badge-success' : 'badge-danger'}">${m.ativo ? 'Ativo' : 'Inativo'}</span></td>
                   <td class="table-actions">
                     <button class="icon-btn" data-editar-usuario="${empresa.id}|${m.usuario_id}" title="Editar colaborador"><i class="ti ti-pencil"></i></button>
+                    ${(m.papel === 'usuario' || m.papel === 'gestor') ? `<button class="icon-btn" data-nivel-usuario="${empresa.id}|${m.usuario_id}" data-nome-usuario="${escapeHtml(m.nome || m.email)}" title="Configurar permissões"><i class="ti ti-shield-lock"></i></button>` : ''}
                     <button class="icon-btn" data-alterar-senha="${empresa.id}|${m.usuario_id}" title="Alterar senha"><i class="ti ti-key"></i></button>
                     ${m.usuario_id !== user.id ? `
                       <button class="icon-btn" data-toggle-ativo="${empresa.id}|${m.usuario_id}" data-ativo="${m.ativo}" title="${m.ativo ? 'Inativar' : 'Reativar'}"><i class="ti ${m.ativo ? 'ti-user-off' : 'ti-user-check'}"></i></button>
@@ -110,11 +114,29 @@ export async function render(container, state) {
     });
   });
 
+  container.querySelectorAll('[data-copiar-permissoes]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const empresaId = btn.dataset.copiarPermissoes;
+      const membros = porEmpresa.find((pe) => pe.empresa.id === empresaId)?.membros || [];
+      abrirModalCopiarPermissoes(state, { empresaId, membros }, () => render(container, state));
+    });
+  });
+
   container.querySelectorAll('[data-editar-usuario]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const [empresaId, usuarioId] = btn.dataset.editarUsuario.split('|');
       const membro = porEmpresa.find((pe) => pe.empresa.id === empresaId)?.membros.find((m) => m.usuario_id === usuarioId);
-      abrirModalEditarUsuario(state, container, empresaId, membro);
+      abrirModalEditarUsuario(state, { escopo: 'global', empresaId, membro }, () => render(container, state));
+    });
+  });
+
+  container.querySelectorAll('[data-nivel-usuario]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const [empresaId, usuarioId] = btn.dataset.nivelUsuario.split('|');
+      abrirModalMatrizPermissoes(state, {
+        sujeitoTipo: 'usuario', sujeitoId: usuarioId, empresaId,
+        titulo: `Permissões — ${btn.dataset.nomeUsuario}`,
+      }, () => render(container, state));
     });
   });
 
@@ -148,55 +170,6 @@ export async function render(container, state) {
       toast('Acesso removido.', 'sucesso');
       render(container, state);
     });
-  });
-}
-
-function abrirModalEditarUsuario(state, container, empresaId, membro) {
-  const { supabase, user } = state;
-  const editandoSiMesmo = membro.usuario_id === user.id;
-
-  const modal = abrirModal('Editar colaborador', `
-    <form id="form-editar-usuario">
-      <div class="form-group">
-        <label>Nome</label>
-        <input type="text" id="edit-nome" required value="${escapeHtml(membro.nome || '')}">
-      </div>
-      <div class="form-group">
-        <label>Papel</label>
-        <select id="edit-papel" ${editandoSiMesmo ? 'disabled title="Você não pode alterar seu próprio papel"' : ''}>
-          ${Object.entries(PAPEL_LABEL).map(([v, l]) => `<option value="${v}" ${membro.papel === v ? 'selected' : ''}>${l}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Salvar</button>
-    </form>
-  `);
-
-  modal.querySelector('#form-editar-usuario').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const nome = modal.querySelector('#edit-nome').value.trim();
-    const papel = modal.querySelector('#edit-papel').value;
-
-    // Nome e papel são independentes — uma falha em um não pode travar o outro
-    // (ex: falha ao salvar o nome não deve impedir a troca de papel).
-    const erros = [];
-
-    if (nome !== (membro.nome || '')) {
-      const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
-        body: { empresaId, usuarioId: membro.usuario_id, nome },
-      });
-      if (errNome) erros.push('nome: ' + await mensagemErroFuncao(errNome));
-    }
-
-    if (!editandoSiMesmo && papel !== membro.papel) {
-      const { error: errPapel } = await supabase.from('usuarios_empresas')
-        .update({ papel }).eq('empresa_id', empresaId).eq('usuario_id', membro.usuario_id);
-      if (errPapel) erros.push('papel: ' + errPapel.message);
-    }
-
-    if (erros.length) return toast('Erro ao salvar — ' + erros.join(' | '), 'erro');
-    toast('Usuário atualizado.', 'sucesso');
-    fecharModal();
-    render(container, state);
   });
 }
 

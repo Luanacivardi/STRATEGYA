@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao, confirmar } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao, confirmar, resolverNivel } from '../ui.js';
 import { abrirDetalhe } from './documentosDetalhe.js';
 
 export const STATUS = {
@@ -298,7 +298,7 @@ export async function abrirVisualizadorDocumento(state, doc, ctx = {}) {
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'documentos') === 'total';
   // Referência ao container raiz do módulo, para telas internas (detalhe do documento, formulário
   // de criação) conseguirem disparar um re-render completo depois de salvar, mesmo estando várias
   // camadas abaixo (visão em caixinhas ou Gestão de Documentos).
@@ -718,7 +718,7 @@ function renderAprovacoes(corpo, state, { documentos, usuarios, nomeUsuario, pod
         listarDocumentos(supabase, empresaAtual.id),
         supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
       ]);
-      const podeEditar = state.papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+      const podeEditar = resolverNivel(state, 'documentos') === 'total';
       const nomeU = (id) => usuariosResp.find((u) => u.usuario_id === id)?.nome || usuariosResp.find((u) => u.usuario_id === id)?.email || '—';
       const nomeP = (id) => rotuloProcesso(processos.find((p) => p.id === id));
       abrirDetalhe(state, corpo.closest('#documentos-corpo').parentElement, doc, { tipos, processos, documentos: todos, usuarios: usuariosResp, podeEditar, nomeUsuario: nomeU, nomeProcesso: nomeP, podeAlterarCopiaControlada, podeExcluirSempre });

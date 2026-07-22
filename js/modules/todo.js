@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 import { recalcularPercentualMacro } from './planosAcao.js';
 import { listarObjetivos } from './objetivos.js';
 
@@ -169,8 +169,8 @@ function aplicarFiltros(linhas, container) {
 
 export async function renderCorpo(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
-  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
+  const podeEditar = resolverNivel(state, 'acoes', 'tarefas') === 'total';
+  const podeCriar = podeEditar || resolverNivel(state, 'acoes', 'tarefas') === 'proprio';
 
   let linhas, membros, indicadores, objetivos;
   try {
@@ -256,7 +256,7 @@ export async function renderCorpo(container, state) {
               <td><span class="badge ${l.statusKey === 'concluido' ? 'status-concluido' : 'status-nao_iniciado'}">${STATUS_LABEL[l.statusKey]}</span></td>
               <td class="table-actions">
                 <button class="icon-btn" data-imprimir-tarefa="${l.origem}:${l.id}" title="Imprimir esta tarefa"><i class="ti ti-printer"></i></button>
-                ${podeEditarRegistro(state, l.raw.responsavel_id) ? `
+                ${podeEditarRegistro(state, l.raw.responsavel_id, 'acoes', 'tarefas') ? `
                   <button class="icon-btn" data-concluir-tarefa="${l.origem}:${l.id}" title="${l.statusKey === 'concluido' ? 'Reabrir' : 'Concluir'}">
                     <i class="ti ${l.statusKey === 'concluido' ? 'ti-rotate-clockwise-2' : 'ti-circle-check'}"></i>
                   </button>
@@ -417,7 +417,7 @@ function abrirDetalheTarefa(state, container, membros, indicadores, linha = null
   const { supabase, empresaAtual, user } = state;
   const origem = linha?.origem || 'manual';
   const raw = linha?.raw;
-  const travarResponsavelEmSiMesmo = !linha && state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
+  const travarResponsavelEmSiMesmo = !linha && resolverNivel(state, 'acoes', 'tarefas') === 'proprio';
 
   const mostraIndicador = origem === 'manual';
   const mostraStatusManual = origem === 'manual';

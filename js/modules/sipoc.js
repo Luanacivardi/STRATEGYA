@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao, resolverNivel } from '../ui.js';
 
 // SIPOC (Suppliers, Inputs, Process, Outputs, Customers) por processo do Macrofluxo.
 // Modelo relacional (não mais texto livre): cada processo tem vários fornecedores/entradas
@@ -66,7 +66,7 @@ function montarEstrutura({ processos, entradas, saidasManuais, atividadesPorProc
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'contexto-sipoc') === 'total';
 
   let dados;
   try {

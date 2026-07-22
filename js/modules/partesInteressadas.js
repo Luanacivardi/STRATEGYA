@@ -1,11 +1,11 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, resolverNivel } from '../ui.js';
 
 const INFLUENCIA_BADGE = { baixo: 'badge-neutral', medio: 'badge-warning', alto: 'badge-danger' };
 const INFLUENCIA_LABEL = { baixo: 'Baixo', medio: 'Médio', alto: 'Alto' };
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'contexto-partes') === 'total';
 
   const { data, error } = await supabase
     .from('partes_interessadas')

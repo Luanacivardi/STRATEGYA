@@ -1,19 +1,10 @@
 import { toast, escapeHtml, confirmar, abrirModal, fecharModal, mensagemErroFuncao } from '../ui.js';
 import { aplicarTema, extrairCoresDoLogo, corTextoIdeal } from '../tema.js';
 import { abrirModalNovaEmpresa } from '../app.js';
+import { PAPEL_LABEL } from '../modulosConfig.js';
 import * as historico from './historico.js';
 import { abrirSnapshot } from './snapshotViewer.js';
-
-const PAPEL_LABEL = { orbeex: 'ORBEEX', admin: 'Administrador', usuario: 'Usuário' };
-
-// Nível de edição (permissoes_edicao) — só vale pro papel 'usuario'; orbeex/admin sempre têm
-// edição total, reforçado no banco (nivel_edicao_usuario), não só aqui na tela.
-const NIVEL_LABEL = { leitura: 'Leitura', proprio: 'Só o que for responsável', total: 'Edição total' };
-const NIVEL_DESCRICAO = {
-  leitura: 'Só visualiza — não pode criar, editar ou excluir nada no sistema.',
-  proprio: 'Edita apenas os registros em que é o responsável (objetivos, indicadores, planos de ação e tarefas). O resto fica somente leitura.',
-  total: 'Mesma liberdade de edição de um Administrador, em todas as telas.',
-};
+import { abrirModalEditarUsuario, abrirModalMatrizPermissoes, abrirModalCopiarPermissoes } from './permissoesShared.js';
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual, user } = state;
@@ -43,14 +34,18 @@ export async function render(container, state) {
   }
   const nomeDeptoPorId = new Map(departamentos.map((d) => [d.id, d.nome]));
 
-  // Nível efetivo pra exibir na tabela de colaboradores: config do usuário > config do departamento > padrão (leitura).
+  // Nível agora é por módulo/submódulo (não um valor único) — a tabela mostra se há alguma
+  // configuração granular específica ("Personalizado") ou se o colaborador segue só o padrão
+  // automático do papel (Gestor: Edição sob Responsabilidade, exceto PE = Visualização; Usuário:
+  // Visualização, exceto PE = Sem acesso). Detalhe completo módulo a módulo fica no modal da matriz.
   function nivelEfetivoHtml(membro) {
     if (membro.papel === 'orbeex' || membro.papel === 'admin') return '<span class="badge badge-neutral">Total (papel)</span>';
-    const doUsuario = permissoesEdicao.find((p) => p.usuario_id === membro.usuario_id);
-    if (doUsuario) return `<span class="badge badge-neutral">${NIVEL_LABEL[doUsuario.nivel]}</span>`;
-    const doDepto = membro.departamento_id ? permissoesEdicao.find((p) => p.departamento_id === membro.departamento_id) : null;
-    if (doDepto) return `<span class="badge badge-neutral">${NIVEL_LABEL[doDepto.nivel]} <small class="text-muted">(depto)</small></span>`;
-    return '<span class="text-muted">Padrão (Leitura)</span>';
+    const doUsuario = permissoesEdicao.filter((p) => p.usuario_id === membro.usuario_id);
+    if (doUsuario.length) return '<span class="badge badge-neutral">Personalizado</span>';
+    const doDepto = membro.departamento_id ? permissoesEdicao.filter((p) => p.departamento_id === membro.departamento_id) : [];
+    if (doDepto.length) return '<span class="badge badge-neutral">Personalizado <small class="text-muted">(depto)</small></span>';
+    const padrao = membro.papel === 'gestor' ? 'Edição sob Responsabilidade' : 'Visualização';
+    return `<span class="text-muted">Padrão (${padrao})</span>`;
   }
 
   container.innerHTML = `
@@ -145,14 +140,14 @@ export async function render(container, state) {
           <tbody>
             ${departamentos.map((d) => {
               const qtd = membros.filter((m) => m.departamento_id === d.id).length;
-              const nivelDepto = permissoesEdicao.find((p) => p.departamento_id === d.id);
+              const temPermissaoPropria = permissoesEdicao.some((p) => p.departamento_id === d.id);
               return `
               <tr>
                 <td><strong>${escapeHtml(d.nome)}</strong></td>
                 <td>${qtd}</td>
-                <td>${nivelDepto ? `<span class="badge badge-neutral">${NIVEL_LABEL[nivelDepto.nivel]}</span>` : '<span class="text-muted">Padrão (Leitura)</span>'}</td>
+                <td>${temPermissaoPropria ? '<span class="badge badge-neutral">Personalizado</span>' : '<span class="text-muted">Padrão do papel</span>'}</td>
                 <td class="table-actions">
-                  <button class="icon-btn" data-nivel-depto="${d.id}" title="Configurar nível de edição"><i class="ti ti-shield-lock"></i></button>
+                  <button class="icon-btn" data-nivel-depto="${d.id}" data-nome-depto="${escapeHtml(d.nome)}" title="Configurar permissões"><i class="ti ti-shield-lock"></i></button>
                   <button class="icon-btn" data-excluir-depto="${d.id}" title="Excluir departamento"><i class="ti ti-trash"></i></button>
                 </td>
               </tr>`;
@@ -165,6 +160,7 @@ export async function render(container, state) {
     <div class="card">
       <div class="card-header">
         <span><i class="ti ti-users"></i> Colaboradores com acesso</span>
+        ${podeGerenciar ? '<button class="btn btn-secondary btn-sm" id="btn-copiar-permissoes"><i class="ti ti-copy"></i> Copiar permissões</button>' : ''}
       </div>
       ${podeGerenciar ? `
         <form id="form-criar-usuario" class="form-row" style="align-items:end">
@@ -184,6 +180,7 @@ export async function render(container, state) {
             <label>Papel</label>
             <select id="novo-papel">
               <option value="usuario">Usuário</option>
+              <option value="gestor">Gestor</option>
               <option value="admin">Administrador</option>
               ${ehOrbeex ? '<option value="orbeex">ORBEEX</option>' : ''}
             </select>
@@ -213,7 +210,7 @@ export async function render(container, state) {
               <td><span class="badge ${m.ativo ? 'badge-success' : 'badge-danger'}">${m.ativo ? 'Ativo' : 'Inativo'}</span></td>
               ${podeGerenciar ? `<td class="table-actions">
                 <button class="icon-btn" data-editar-usuario="${m.usuario_id}" title="Editar colaborador"><i class="ti ti-pencil"></i></button>
-                ${m.papel === 'usuario' ? `<button class="icon-btn" data-nivel-usuario="${m.usuario_id}" data-nome-usuario="${escapeHtml(m.nome || m.email)}" title="Configurar nível de edição"><i class="ti ti-shield-lock"></i></button>` : ''}
+                ${(m.papel === 'usuario' || m.papel === 'gestor') ? `<button class="icon-btn" data-nivel-usuario="${m.usuario_id}" data-nome-usuario="${escapeHtml(m.nome || m.email)}" title="Configurar permissões"><i class="ti ti-shield-lock"></i></button>` : ''}
                 <button class="icon-btn" data-alterar-senha="${m.usuario_id}" title="Alterar senha"><i class="ti ti-key"></i></button>
                 ${m.usuario_id !== user.id ? `
                   <button class="icon-btn" data-toggle-ativo="${m.usuario_id}" data-ativo="${m.ativo}" title="${m.ativo ? 'Inativar' : 'Reativar'}"><i class="ti ${m.ativo ? 'ti-user-off' : 'ti-user-check'}"></i></button>
@@ -400,33 +397,19 @@ export async function render(container, state) {
 
   container.querySelectorAll('[data-nivel-depto]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const depto = departamentos.find((d) => d.id === btn.dataset.nivelDepto);
-      const atual = permissoesEdicao.find((p) => p.departamento_id === depto.id);
-      abrirModalNivelEdicao(state, container, {
-        titulo: `Nível de edição — Departamento "${depto.nome}"`,
-        nivelAtual: atual?.nivel,
-        aoSalvar: async (nivel) => {
-          const { error: errNivel } = await supabase.from('permissoes_edicao')
-            .upsert({ empresa_id: empresaAtual.id, departamento_id: depto.id, nivel }, { onConflict: 'departamento_id' });
-          return errNivel;
-        },
-      });
+      abrirModalMatrizPermissoes(state, {
+        sujeitoTipo: 'departamento', sujeitoId: btn.dataset.nivelDepto, empresaId: empresaAtual.id,
+        titulo: `Permissões — Departamento "${btn.dataset.nomeDepto}"`,
+      }, () => render(container, state));
     });
   });
 
   container.querySelectorAll('[data-nivel-usuario]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const usuarioId = btn.dataset.nivelUsuario;
-      const atual = permissoesEdicao.find((p) => p.usuario_id === usuarioId);
-      abrirModalNivelEdicao(state, container, {
-        titulo: `Nível de edição — ${btn.dataset.nomeUsuario}`,
-        nivelAtual: atual?.nivel,
-        aoSalvar: async (nivel) => {
-          const { error: errNivel } = await supabase.from('permissoes_edicao')
-            .upsert({ empresa_id: empresaAtual.id, usuario_id: usuarioId, nivel }, { onConflict: 'usuario_id,empresa_id' });
-          return errNivel;
-        },
-      });
+      abrirModalMatrizPermissoes(state, {
+        sujeitoTipo: 'usuario', sujeitoId: btn.dataset.nivelUsuario, empresaId: empresaAtual.id,
+        titulo: `Permissões — ${btn.dataset.nomeUsuario}`,
+      }, () => render(container, state));
     });
   });
 
@@ -474,10 +457,17 @@ export async function render(container, state) {
     });
   }
 
+  const btnCopiarPermissoes = container.querySelector('#btn-copiar-permissoes');
+  if (btnCopiarPermissoes) {
+    btnCopiarPermissoes.addEventListener('click', () => {
+      abrirModalCopiarPermissoes(state, { empresaId: empresaAtual.id, membros }, () => render(container, state));
+    });
+  }
+
   container.querySelectorAll('[data-editar-usuario]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const membro = membros.find((m) => m.usuario_id === btn.dataset.editarUsuario);
-      abrirModalEditarUsuario(state, container, membro, departamentos);
+      abrirModalEditarUsuario(state, { escopo: 'empresa', empresaId: empresaAtual.id, membro, departamentos }, () => render(container, state));
     });
   });
 
@@ -508,114 +498,6 @@ export async function render(container, state) {
       toast('Acesso removido.', 'sucesso');
       render(container, state);
     });
-  });
-}
-
-function abrirModalEditarUsuario(state, container, membro, departamentos = []) {
-  const { supabase, empresaAtual, papelAtual, user } = state;
-  const ehOrbeex = papelAtual === 'orbeex';
-  const editandoSiMesmo = membro.usuario_id === user.id;
-  // Cadastros ORBEEX só podem ter o papel alterado (rebaixado ou não) por outro usuário ORBEEX —
-  // mesma regra reforçada no banco pelo trigger trg_proteger_papel_orbeex.
-  const podeEditarPapel = !editandoSiMesmo && (ehOrbeex || membro.papel !== 'orbeex');
-  const motivoTravado = editandoSiMesmo
-    ? 'Você não pode alterar seu próprio papel'
-    : (!podeEditarPapel ? 'Cadastros ORBEEX só podem ter o papel alterado por outro usuário ORBEEX' : '');
-
-  const modal = abrirModal('Editar colaborador', `
-    <form id="form-editar-usuario">
-      <div class="form-group">
-        <label>Nome</label>
-        <input type="text" id="edit-nome" required value="${escapeHtml(membro.nome || '')}">
-      </div>
-      <div class="form-group">
-        <label>Papel</label>
-        <select id="edit-papel" ${!podeEditarPapel ? `disabled title="${motivoTravado}"` : ''}>
-          <option value="usuario" ${membro.papel === 'usuario' ? 'selected' : ''}>Usuário</option>
-          <option value="admin" ${membro.papel === 'admin' ? 'selected' : ''}>Administrador</option>
-          ${(ehOrbeex || membro.papel === 'orbeex') ? `<option value="orbeex" ${membro.papel === 'orbeex' ? 'selected' : ''}>ORBEEX</option>` : ''}
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Departamento</label>
-        <select id="edit-departamento">
-          <option value="">—</option>
-          ${departamentos.map((d) => `<option value="${d.id}" ${membro.departamento_id === d.id ? 'selected' : ''}>${escapeHtml(d.nome)}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Salvar</button>
-    </form>
-  `);
-
-  modal.querySelector('#form-editar-usuario').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const nome = modal.querySelector('#edit-nome').value.trim();
-    const papel = modal.querySelector('#edit-papel').value;
-    const departamentoId = modal.querySelector('#edit-departamento').value || null;
-
-    // Nome, papel e departamento são independentes entre si — uma falha em um não deve
-    // impedir os outros de serem salvos (ex: nome falhar não pode travar a troca de papel).
-    const erros = [];
-
-    if (nome !== (membro.nome || '')) {
-      const { error: errNome } = await supabase.functions.invoke('editar-colaborador', {
-        body: { empresaId: empresaAtual.id, usuarioId: membro.usuario_id, nome },
-      });
-      if (errNome) erros.push('nome: ' + await mensagemErroFuncao(errNome));
-    }
-
-    if (!editandoSiMesmo && papel !== membro.papel) {
-      const { error: errPapel } = await supabase.from('usuarios_empresas')
-        .update({ papel }).eq('empresa_id', empresaAtual.id).eq('usuario_id', membro.usuario_id);
-      if (errPapel) erros.push('papel: ' + errPapel.message);
-    }
-
-    if (departamentoId !== membro.departamento_id) {
-      const { error: errDepto } = await supabase.from('usuarios_empresas')
-        .update({ departamento_id: departamentoId }).eq('empresa_id', empresaAtual.id).eq('usuario_id', membro.usuario_id);
-      if (errDepto) erros.push('departamento: ' + errDepto.message);
-    }
-
-    if (erros.length) return toast('Erro ao salvar — ' + erros.join(' | '), 'erro');
-    toast('Usuário atualizado.', 'sucesso');
-    fecharModal();
-    render(container, state);
-  });
-}
-
-// Modal reutilizável pra definir o nível de edição (leitura / edição do que for responsável /
-// edição total) de um departamento ou de um usuário específico (tabela permissoes_edicao).
-// Sem registro configurado, o nível efetivo é 'leitura' (padrão mais seguro).
-function abrirModalNivelEdicao(state, container, { titulo, nivelAtual, aoSalvar }) {
-  const nivel = nivelAtual || 'leitura';
-
-  const modal = abrirModal(titulo, `
-    <form id="form-nivel-edicao">
-      <div class="form-group">
-        <label>Nível de edição</label>
-        <select id="ne-nivel">
-          <option value="leitura" ${nivel === 'leitura' ? 'selected' : ''}>Leitura</option>
-          <option value="proprio" ${nivel === 'proprio' ? 'selected' : ''}>Edição do que for responsável</option>
-          <option value="total" ${nivel === 'total' ? 'selected' : ''}>Edição total</option>
-        </select>
-      </div>
-      <p class="text-muted" id="ne-descricao" style="font-size:12px;margin-top:-8px;margin-bottom:1rem">${NIVEL_DESCRICAO[nivel]}</p>
-      <button class="btn btn-primary btn-block" type="submit">Salvar</button>
-    </form>
-  `);
-
-  modal.querySelector('#ne-nivel').addEventListener('change', (e) => {
-    modal.querySelector('#ne-descricao').textContent = NIVEL_DESCRICAO[e.target.value];
-  });
-
-  modal.querySelector('#form-nivel-edicao').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const nivelSelecionado = modal.querySelector('#ne-nivel').value;
-    const erro = await aoSalvar(nivelSelecionado);
-    if (erro) return toast('Erro ao salvar nível de edição: ' + erro.message, 'erro');
-    toast('Nível de edição atualizado.', 'sucesso');
-    fecharModal();
-    render(container, state);
   });
 }
 

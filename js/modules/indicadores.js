@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, formatarValor, formatarMesAno, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, formatarValor, formatarMesAno, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 
 const PERIODICIDADE = { mensal: 'Mensal', trimestral: 'Trimestral', anual: 'Anual' };
@@ -49,8 +49,8 @@ export function abrirIndicadorPorId(id) {
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
-  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'indicadores') === 'total';
+  const podeCriar = podeEditar || resolverNivel(state, 'planejamento-estrategico', 'indicadores') === 'proprio';
 
   let itens, objetivos, membros;
   try {
@@ -109,7 +109,7 @@ export async function render(container, state) {
                 <td class="table-actions">
                   <button class="icon-btn" data-resultados="${ind.id}" title="Resultados"><i class="ti ti-chart-dots"></i></button>
                   <button class="icon-btn" data-apresentar="${ind.id}" title="Apresentar (tela cheia)"><i class="ti ti-presentation"></i></button>
-                  ${podeEditarRegistro(state, ind.responsavel_id) ? `
+                  ${podeEditarRegistro(state, ind.responsavel_id, 'planejamento-estrategico', 'indicadores') ? `
                     <button class="icon-btn" data-editar="${ind.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${ind.id}" title="Excluir"><i class="ti ti-trash"></i></button>
                   ` : ''}
@@ -221,7 +221,7 @@ function imprimirListaIndicadores(itens, nomeObjetivoPorId, emailPorId) {
 
 function abrirFormulario(state, container, objetivos, membros, item = null) {
   const { supabase, empresaAtual, user } = state;
-  const travarResponsavelEmSiMesmo = state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
+  const travarResponsavelEmSiMesmo = resolverNivel(state, 'planejamento-estrategico', 'indicadores') === 'proprio';
   const classificacaoAtual = item?.classificacao || 'com_meta';
   const tipoMetaAtual = item?.tipo_meta || 'fixa';
   const unidadeAtual = item?.unidade || '';
@@ -359,7 +359,7 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
 
 async function abrirResultados(state, indicador) {
   const { supabase } = state;
-  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id);
+  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id, 'planejamento-estrategico', 'indicadores');
   const ehVariavel = metaEhVariavel(indicador);
 
   const { data: resultadosData, error } = await supabase
@@ -561,7 +561,7 @@ function renderHistoricoAnalises(analises, nomeMembroPorId) {
 
 async function abrirApresentacao(state, indicador) {
   const { supabase, empresaAtual, user } = state;
-  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id);
+  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id, 'planejamento-estrategico', 'indicadores');
   const ehVariavel = metaEhVariavel(indicador);
 
   const [{ data: resultadosData, error }, { data: analisesData, error: errAnalises }, membros] = await Promise.all([

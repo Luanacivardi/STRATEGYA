@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, resolverNivel } from '../ui.js';
 
 const TIPO_LABEL = { direcao: 'Direção', principal: 'Processo Principal', apoio: 'Processo de Apoio' };
 
@@ -7,7 +7,7 @@ let modoEdicao = false;
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
   // Só entra em modo edição quem tem permissão de escrita; para quem só visualiza, nunca mostra os controles.
-  const temPermissaoEdicao = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const temPermissaoEdicao = resolverNivel(state, 'planejamento-estrategico', 'contexto-macrofluxo') === 'total';
   const podeEditar = temPermissaoEdicao && modoEdicao;
   const podeAtivarEdicao = temPermissaoEdicao;
 

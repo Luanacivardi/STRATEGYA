@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, resolverNivel } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 
 const NIVEIS = [1, 2, 3, 4, 5];
@@ -13,7 +13,7 @@ let filtroTipo = 'todos';
 
 export async function render(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
+  const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'riscos') === 'total';
 
   let itens, objetivos;
   try {

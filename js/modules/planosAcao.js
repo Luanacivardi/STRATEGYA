@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 import * as todo from './todo.js';
 
@@ -221,8 +221,8 @@ async function renderIndicadoresGrupo(container, state) {
 
 async function renderPlanos(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario' || state.nivelEdicao === 'total';
-  const podeCriar = podeEditar || state.nivelEdicao === 'proprio';
+  const podeEditar = resolverNivel(state, 'acoes', 'planos') === 'total';
+  const podeCriar = podeEditar || resolverNivel(state, 'acoes', 'planos') === 'proprio';
 
   let planos, origens, membros;
   try {
@@ -304,7 +304,7 @@ async function renderPlanos(container, state) {
                 <td>${p.evidencia_nome ? `<button class="icon-btn" data-ver-evidencia="${p.id}" title="Ver evidência"><i class="ti ti-paperclip"></i></button>` : '—'}</td>
                 <td class="table-actions">
                   <button class="icon-btn" data-imprimir-plano="${p.id}" title="Imprimir plano de ação"><i class="ti ti-printer"></i></button>
-                  ${podeEditarRegistro(state, p.responsavel_id) ? `
+                  ${podeEditarRegistro(state, p.responsavel_id, 'acoes', 'planos') ? `
                     <button class="icon-btn" data-editar="${p.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${p.id}" title="Excluir"><i class="ti ti-trash"></i></button>
                   ` : ''}
@@ -534,7 +534,7 @@ function imprimirListaPlanos(planos, origens, emailPorId) {
 
 function abrirFormulario(state, container, origens, membros, item = null) {
   const { supabase, empresaAtual, user } = state;
-  const travarResponsavelEmSiMesmo = !item && state.papelAtual === 'usuario' && state.nivelEdicao === 'proprio';
+  const travarResponsavelEmSiMesmo = !item && resolverNivel(state, 'acoes', 'planos') === 'proprio';
 
   const optionsOrigem = (origem) => {
     if (origem === 'objetivo') return origens.objetivos.map((o) => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join('');
@@ -842,7 +842,7 @@ export async function recalcularPercentualMacro(supabase, planoAcaoId) {
 // Gerencia as ações micro embutidas no próprio formulário do plano (sem modal separado).
 async function montarAcoesMicro(state, modal, plano, membros) {
   const { supabase } = state;
-  const podeEditar = podeEditarRegistro(state, plano.responsavel_id);
+  const podeEditar = podeEditarRegistro(state, plano.responsavel_id, 'acoes', 'planos');
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
 
   const { data: itensData, error } = await supabase

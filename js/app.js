@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { toast, abrirModal, fecharModal, escapeHtml } from './ui.js';
+import { toast, abrirModal, fecharModal, escapeHtml, resolverNivel } from './ui.js';
 import { aplicarTema, extrairCoresDoLogo, corTextoIdeal } from './tema.js';
 import * as dashboard from './modules/dashboard.js';
 import * as contexto from './modules/contexto.js';
@@ -14,6 +14,7 @@ import * as empresaUsuarios from './modules/empresaUsuarios.js';
 import * as permissoes from './modules/permissoes.js';
 import * as apuracoes from './modules/apuracoes.js';
 import * as auditorias from './modules/auditorias.js';
+import { MODULOS_SISTEMA } from './modulosConfig.js';
 
 export const state = {
   supabase,
@@ -32,25 +33,8 @@ let tabAtiva = 'dashboard';
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
 const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes, 'auditorias': auditorias };
 
-// Módulos do sistema — "planejamento-estrategico" e "riscos-oportunidades" já implementados;
-// os demais aparecem no menu como "em breve" para deixar a estrutura do SGI visível.
-export const MODULOS_SISTEMA = [
-  { id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true,
-    descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, riscos e oportunidades, indicadores e atas de reunião.' },
-  { id: 'acoes', nome: 'Gestão de Ações', icone: 'ti-list-check', disponivel: true,
-    descricao: 'Planos de ação e tarefas vinculados a objetivos, indicadores, riscos, não conformidades e atas de reunião.' },
-  { id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true,
-    descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.' },
-  { id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: true,
-    descricao: 'Controle de documentos e registros da qualidade: numeração automática, ciclo de aprovação com assinatura eletrônica, revisões e lista mestra.' },
-  { id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true,
-    descricao: 'Controle do fluxo de apurações e investigações corporativas (ISO 37301/37002/37001) — acesso restrito ao comitê de apuração. Não armazena evidências ou documentos.' },
-  { id: 'auditorias', nome: 'Gestão de Auditorias', icone: 'ti-clipboard-check', disponivel: true,
-    descricao: 'Auditorias internas e externas (ISO 9001/14001/45001): priorização por risco (IPA), planejamento inteligente, distribuição automática de horas e agenda, execução, resultados e aprovação, com geração automática de plano de ação a partir de não conformidades.' },
-  { id: 'treinamentos', nome: 'Treinamentos', icone: 'ti-school', disponivel: false,
-    descricao: 'Gestão de treinamentos e competências da equipe.',
-    teaser: 'Saiba exatamente quem já foi treinado — e quem ainda precisa.' },
-];
+// Módulos do sistema — ver js/modulosConfig.js (fonte central, espelha o catálogo no banco).
+export { MODULOS_SISTEMA };
 let moduloAtivo = 'planejamento-estrategico';
 let viewAtual = 'home'; // 'home' | 'modulo' | 'config'
 
@@ -291,29 +275,37 @@ async function carregarEmpresas() {
   selecionarEmpresa((encontrada || state.empresas[0]).id);
 }
 
-// Nível de permissão de edição do usuário nesta empresa (Fase 16 revisada): orbeex/admin sempre
-// 'total'; para papel 'usuario', busca em permissoes_edicao — prioridade para configuração pessoal,
-// depois a do departamento, e por padrão 'leitura' quando nada foi configurado. Usado por cada
-// módulo para decidir o que pode ser criado/editado/excluído (ver nivel_edicao_usuario no banco,
-// que reforça a mesma regra via RLS).
-async function carregarNivelEdicao(empresaId, departamentoId) {
-  if (state.papelAtual !== 'usuario') {
+// Permissões granulares por módulo/submódulo (redesign de permissões): em vez de calcular um nível
+// sob demanda a cada troca de aba, carrega de uma vez só todas as linhas de permissoes_edicao do
+// usuário + do seu departamento nesta empresa, e resolverNivel() replica em memória a mesma cascata
+// de fallback da função SQL nivel_edicao_usuario(empresa,modulo,submodulo) (ver migração 0065):
+// usuário específico (módulo+submódulo > módulo inteiro > coringa '*') > departamento (mesma
+// cascata) > default por papel (gestor: 'proprio', exceto PE = 'leitura'; usuario: 'leitura',
+// exceto PE = 'sem_acesso'). orbeex/admin sempre 'total', sem consultar linha nenhuma.
+async function carregarPermissoesEdicao(empresaId) {
+  if (state.papelAtual === 'orbeex' || state.papelAtual === 'admin') {
+    state.permissoesEdicao = [];
     state.nivelEdicao = 'total';
     return;
   }
-  const { data: doUsuario } = await supabase.from('permissoes_edicao').select('nivel').eq('empresa_id', empresaId).eq('usuario_id', state.user.id).maybeSingle();
-  if (doUsuario) {
-    state.nivelEdicao = doUsuario.nivel;
-    return;
+  const departamentoId = state.empresaAtual?.departamentoId;
+  let query = supabase.from('permissoes_edicao')
+    .select('usuario_id, departamento_id, modulo, submodulo, nivel')
+    .eq('empresa_id', empresaId);
+  query = departamentoId
+    ? query.or(`usuario_id.eq.${state.user.id},departamento_id.eq.${departamentoId}`)
+    : query.eq('usuario_id', state.user.id);
+  const { data, error } = await query;
+  if (error) {
+    toast('Erro ao carregar permissões: ' + error.message, 'erro');
+    state.permissoesEdicao = [];
+  } else {
+    state.permissoesEdicao = data || [];
   }
-  if (departamentoId) {
-    const { data: doDepto } = await supabase.from('permissoes_edicao').select('nivel').eq('departamento_id', departamentoId).maybeSingle();
-    if (doDepto) {
-      state.nivelEdicao = doDepto.nivel;
-      return;
-    }
-  }
-  state.nivelEdicao = 'leitura';
+  // Mantido por compatibilidade enquanto os módulos de conteúdo ainda não passam modulo/submodulo
+  // para podeEditarRegistro/resolverNivel (ver Fase 4d do redesign) — equivale ao nível "coringa"
+  // (modulo='*'), que é exatamente o que as linhas antigas de permissoes_edicao representam.
+  state.nivelEdicao = resolverNivel(state, '*', null);
 }
 
 // Gestão de Apurações é o único módulo com uma segunda trava de acesso além de "habilitado para
@@ -345,7 +337,7 @@ async function selecionarEmpresa(empresaId) {
   localStorage.setItem('pe_empresa_atual', emp.id);
   aplicarTema(emp);
   atualizarCabecalhoImpressao(emp);
-  await carregarNivelEdicao(emp.id, emp.departamentoId);
+  await carregarPermissoesEdicao(emp.id);
   await carregarAcessoApuracoes(emp.id);
   renderModuleRail();
   renderConteudoAtivo();
