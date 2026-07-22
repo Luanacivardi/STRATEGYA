@@ -1,7 +1,7 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'atas') === 'total';
 
   let atas, indicadores, membros, indicadoresPorAta, acoesPorAta;

@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao, confirmar, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, imprimirSecao, confirmar, resolverNivel, baixarCsv } from '../ui.js';
 import { abrirDetalhe } from './documentosDetalhe.js';
 
 export const STATUS = {
@@ -657,19 +657,12 @@ function renderListaMestra(corpo, state, { tipos, processos, documentos, usuario
 
 function exportarCsv(linhas, ehRegistros) {
   const cabecalho = ['Nº', 'Nome', 'Tipo', 'Revisão', 'Data', 'Status', 'Classificação'].concat(ehRegistros ? ['Retenção (meses)', 'Local de Arquivamento'] : []).concat(['Arquivo']);
-  const escaparCsv = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
-  const linhasCsv = linhas.map((d) => [
+  const linhasValores = linhas.map((d) => [
     d.numero, d.nome, d.tipos_documento.nome, String(d.revisao_atual).padStart(2, '0'),
     formatarData(d.data_publicacao || d.created_at), STATUS[d.status], CLASSIFICACAO[d.classificacao],
-  ].concat(ehRegistros ? [d.tempo_retencao_meses || '', d.local_armazenamento || ''] : []).concat([d.arquivo_nome || '']).map(escaparCsv).join(','));
-  const csv = [cabecalho.map(escaparCsv).join(','), ...linhasCsv].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'lista_mestra_' + (ehRegistros ? 'registros' : 'documentos') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  ].concat(ehRegistros ? [d.tempo_retencao_meses || '', d.local_armazenamento || ''] : []).concat([d.arquivo_nome || '']));
+  const nomeArquivo = 'lista_mestra_' + (ehRegistros ? 'registros' : 'documentos') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+  baixarCsv(nomeArquivo, cabecalho, linhasValores);
 }
 
 function imprimirListaMestra(linhas, ehRegistros) {

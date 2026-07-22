@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv } from '../ui.js';
 import { recalcularPercentualMacro } from './planosAcao.js';
 import { listarObjetivos } from './objetivos.js';
 
@@ -129,18 +129,10 @@ async function carregarLinhas(supabase, empresaAtual) {
 
 function exportarCsv(linhas) {
   const cabecalho = ['Origem', 'Descrição', 'Responsável', 'Indicador', 'Prazo', 'Status', 'Evolução'];
-  const escaparCsv = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
-  const linhasCsv = linhas.map((l) => [
+  const linhasValores = linhas.map((l) => [
     labelOrigem(l), l.descricao, l.responsavelNome, l.indicadorNome, l.prazo || '', STATUS_LABEL[l.statusKey], l.evolucao || '',
-  ].map(escaparCsv).join(','));
-  const csv = [cabecalho.map(escaparCsv).join(','), ...linhasCsv].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `tarefas_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  ]);
+  baixarCsv(`tarefas_${new Date().toISOString().slice(0, 10)}.csv`, cabecalho, linhasValores);
 }
 
 function aplicarFiltros(linhas, container) {
@@ -168,7 +160,7 @@ function aplicarFiltros(linhas, container) {
 }
 
 export async function renderCorpo(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'acoes', 'tarefas') === 'total';
   const podeCriar = podeEditar || resolverNivel(state, 'acoes', 'tarefas') === 'proprio';
 

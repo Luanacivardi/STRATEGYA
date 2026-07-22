@@ -219,18 +219,12 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 .module-item:hover:not(.disabled) { background: rgba(255,255,255,0.06); color: var(--navy-text); }
 .module-item.active { background: rgba(232,184,75,0.12); border-left-color: var(--gold); color: var(--gold); font-weight: 600; }
 .module-item.disabled { opacity: 0.4; cursor: not-allowed; }
-.module-item-badge {
-  margin-left: auto; font-size: 9px; background: rgba(255,255,255,0.12); color: color-mix(in srgb, var(--navy-text) 70%, transparent);
-  padding: 2px 6px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0;
-}
-
 @media (max-width: 860px) {
   .app-layout { flex-direction: column; }
   .module-rail { width: 100%; position: static; display: flex; overflow-x: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
   .module-rail-title { display: none; }
   .module-item { flex-direction: column; gap: 4px; border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; padding: 8px 14px; }
   .module-item.active { border-bottom-color: var(--gold); border-left-color: transparent; }
-  .module-item-badge { margin-left: 0; }
 }
 
 /* ===== HOME (grade de módulos) ===== */
@@ -251,11 +245,6 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 }
 .home-card-nome { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
 .home-card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
-.home-card-badge {
-  display: inline-block; margin-top: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
-  background: var(--surface-1); color: var(--text-secondary); padding: 3px 8px; border-radius: 8px;
-}
-
 .home-card.em-breve { cursor: not-allowed; border-left-color: var(--border); opacity: 0.65; }
 .home-card.em-breve:hover { box-shadow: none; transform: none; }
 .home-card.em-breve .home-card-icon { background: var(--surface-1); color: var(--text-secondary); }
@@ -302,11 +291,9 @@ input[type="file"]::file-selector-button:hover { background: var(--gold); border
 }
 .btn-primary { background: var(--gold); color: var(--navy); font-weight: 600; }
 .btn-primary:hover { background: var(--gold-dark); }
-.btn-success { background: var(--color-success); color: #fff; }
 .btn-danger { background: var(--color-danger); color: #fff; }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .btn-secondary { background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); }
-.btn-inline { width: auto; }
 .btn-block { width: 100%; justify-content: center; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-icon-only { padding: 6px 10px; justify-content: center; }
@@ -518,19 +505,14 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
 .bsc-card { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; min-width: 200px; max-width: 260px; border-left: 4px solid var(--gold); box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; transition: box-shadow 0.15s; }
 .bsc-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 .bsc-card-nome { font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-.bsc-card-resp { font-size: 11px; color: var(--text-secondary); }
 
 /* ===== INDICADORES ===== */
-.kpi-progress { background: var(--surface-1); border-radius: 6px; height: 8px; overflow: hidden; margin-top: 6px; }
-.kpi-progress-bar { height: 100%; border-radius: 6px; }
 .semaforo-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .semaforo-verde { background: var(--color-success); }
 .semaforo-amarelo { background: var(--gold); }
 .semaforo-vermelho { background: var(--color-danger); }
 
 /* ===== RISCOS - matriz ===== */
-.matriz-risco { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; max-width: 480px; margin: 0.5rem 0 1rem; }
-.matriz-cel { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--navy-text); }
 
 hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 
@@ -541,8 +523,8 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .checkbox-linha i { color: var(--text-secondary); font-size: 14px; }
 
 /* ===== MACROFLUXO ===== */
-.macro-secao-titulo, .macro-mapa-secao-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 1.2rem 0 8px; }
-.macro-secao-titulo:first-of-type, .macro-mapa-secao-titulo:first-of-type { margin-top: 0; }
+.macro-mapa-secao-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 1.2rem 0 8px; }
+.macro-mapa-secao-titulo:first-of-type { margin-top: 0; }
 
 /* Modelo clássico de mapa de macroprocessos (SIPOC): Direção no topo, Processos Principais
    emoldurados por Necessidades/Satisfação do Cliente, Apoio embaixo sustentando o fluxo. */

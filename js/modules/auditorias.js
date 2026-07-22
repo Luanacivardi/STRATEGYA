@@ -8,6 +8,12 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, impr
 // Ver comentário no topo da migration 0048_gestao_auditorias.sql para as decisões de design do
 // IPA (normalização 0-100 por critério) e da "pontuação do processo" usada na distribuição de horas.
 
+// Escrita neste módulo é sempre restrita a ORBEEX/Administrador — não usa nivel_edicao_usuario como
+// os demais módulos (ver js/modulosConfig.js, "auditorias" tem configuravel:false).
+function podeEditarAuditorias(papelAtual) {
+  return papelAtual === 'orbeex' || papelAtual === 'admin';
+}
+
 const TIPO_LABEL = {
   interna: 'Interna', externa: 'Externa', cliente: 'Cliente', fornecedor: 'Fornecedor',
   certificacao: 'Certificação', manutencao: 'Manutenção', recertificacao: 'Recertificação', extraordinaria: 'Extraordinária', outro: 'Outro',
@@ -234,7 +240,7 @@ async function carregarBaseCadastros(supabase, empresaId) {
 // ==================== TAB: TURNOS ====================
 async function renderTurnos(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = podeEditarAuditorias(papelAtual);
   container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div id="at-corpo" style="margin-top:1rem">Carregando...</div></div>`;
   wireFiltrosGrupo(container, state);
   const area = container.querySelector('#at-corpo');
@@ -324,7 +330,7 @@ async function renderTurnos(container, state) {
 // ==================== TAB: PROCESSOS AUDITÁVEIS ====================
 async function renderProcessos(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = podeEditarAuditorias(papelAtual);
   container.innerHTML = `
     <div class="card">
       ${renderFiltrosGrupo()}
@@ -491,7 +497,7 @@ function abrirFormularioProcesso(state, container, turnos, turnosPorProcesso, no
 // ==================== TAB: AUDITORES ====================
 async function renderAuditores(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = podeEditarAuditorias(papelAtual);
   container.innerHTML = `
     <div class="card">
       ${renderFiltrosGrupo()}
@@ -721,7 +727,7 @@ function abrirFormularioAuditor(state, container, item = null) {
 // ==================== TAB: AUDITORIAS (fluxo completo) ====================
 async function renderAuditorias(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  const podeEditar = papelAtual !== 'usuario';
+  const podeEditar = podeEditarAuditorias(papelAtual);
   container.innerHTML = `
     <div class="card">
       <div class="lista-toolbar">
@@ -1509,7 +1515,7 @@ let relatorioAuditoriaId = null; // auditoria selecionada na aba Relatórios, pe
 
 async function renderRelatorios(container, state) {
   const { supabase, empresaAtual, papelAtual } = state;
-  if (papelAtual === 'usuario') {
+  if (!podeEditarAuditorias(papelAtual)) {
     container.innerHTML = `<div class="card">${renderFiltrosGrupo()}<div class="empty-state" style="margin-top:1rem"><i class="ti ti-lock"></i>Apenas administradores e a equipe ORBEEX podem elaborar relatórios de auditoria.</div></div>`;
     wireFiltrosGrupo(container, state);
     return;

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../ui.js';
+import { escapeHtml, formatarDataHora } from '../ui.js';
 
 // Rótulos amigáveis para as tabelas rastreadas (trigger fn_log_alteracao, migração 0024).
 const TABELA_LABEL = {
@@ -22,10 +22,6 @@ const TABELA_LABEL = {
 
 const OPERACAO_LABEL = { insert: 'Criação', update: 'Edição', delete: 'Exclusão' };
 const OPERACAO_ICONE = { insert: 'ti-plus', update: 'ti-pencil', delete: 'ti-trash' };
-
-function formatarDataHora(iso) {
-  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
 
 function truncar(valor, tam = 80) {
   if (valor === null || valor === undefined) return '—';

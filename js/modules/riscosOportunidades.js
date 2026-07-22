@@ -12,7 +12,7 @@ function corPorScore(score) {
 let filtroTipo = 'todos';
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'riscos') === 'total';
 
   let itens, objetivos;

@@ -1,4 +1,4 @@
-import { abrirModal, toast, escapeHtml, formatarValor, formatarMesAno } from '../ui.js';
+import { abrirModal, toast, escapeHtml, formatarValor, formatarMesAno, formatarDataHora } from '../ui.js';
 import { PERSPECTIVAS, STATUS as STATUS_OBJETIVO } from './objetivos.js';
 
 // Rótulos locais (padrão já usado nos demais módulos: cada tela mantém sua própria cópia dos
@@ -16,10 +16,6 @@ const TIPO_RISCO_LABEL = { risco: 'Risco', oportunidade: 'Oportunidade' };
 function formatarData(d) {
   if (!d) return '—';
   return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
-}
-
-function formatarDataHora(iso) {
-  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function vazio(msg) {

@@ -65,7 +65,7 @@ function montarEstrutura({ processos, entradas, saidasManuais, atividadesPorProc
 }
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'contexto-sipoc') === 'total';
 
   let dados;

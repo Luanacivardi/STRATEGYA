@@ -285,7 +285,6 @@ async function carregarEmpresas() {
 async function carregarPermissoesEdicao(empresaId) {
   if (state.papelAtual === 'orbeex' || state.papelAtual === 'admin') {
     state.permissoesEdicao = [];
-    state.nivelEdicao = 'total';
     return;
   }
   const departamentoId = state.empresaAtual?.departamentoId;
@@ -302,10 +301,6 @@ async function carregarPermissoesEdicao(empresaId) {
   } else {
     state.permissoesEdicao = data || [];
   }
-  // Mantido por compatibilidade enquanto os módulos de conteúdo ainda não passam modulo/submodulo
-  // para podeEditarRegistro/resolverNivel (ver Fase 4d do redesign) — equivale ao nível "coringa"
-  // (modulo='*'), que é exatamente o que as linhas antigas de permissoes_edicao representam.
-  state.nivelEdicao = resolverNivel(state, '*', null);
 }
 
 // Gestão de Apurações é o único módulo com uma segunda trava de acesso além de "habilitado para
@@ -456,11 +451,23 @@ function abrirModalNovaEmpresa() {
 // mesmo que "habilitados" — mas o papel ORBEEX sempre tem acesso a tudo, em qualquer empresa,
 // independente do que foi habilitado: é a equipe que administra a plataforma e precisa enxergar
 // e acessar todos os módulos e todas as permissões sempre.
+// Além do flag por empresa, um módulo configurável (ver js/modulosConfig.js) só aparece pra quem
+// tem pelo menos um nível de acesso diferente de 'sem_acesso' — no módulo inteiro ou em algum dos
+// seus submódulos. É o que faz o Planejamento Estratégico ficar oculto do papel Usuário por padrão
+// (que não tem nenhum submódulo liberado), mas reaparecer assim que um submódulo específico for
+// liberado manualmente na matriz de permissões, mesmo que o restante continue sem acesso.
+function moduloTemAcessoDoUsuario(moduloId) {
+  const mod = MODULOS_SISTEMA.find((m) => m.id === moduloId);
+  if (!mod || mod.configuravel === false) return true;
+  if (resolverNivel(state, moduloId) !== 'sem_acesso') return true;
+  return (mod.submodulos || []).some((s) => resolverNivel(state, moduloId, s.id) !== 'sem_acesso');
+}
+
 function moduloHabilitadoParaEmpresa(moduloId) {
   if (state.papelAtual === 'orbeex') return true;
   const habilitado = (state.empresaAtual?.modulos_habilitados || []).includes(moduloId);
   if (moduloId === 'apuracoes') return habilitado && !!state.acessoApuracoes;
-  return habilitado;
+  return habilitado && moduloTemAcessoDoUsuario(moduloId);
 }
 
 // ---------- MÓDULOS (sidebar) ----------
@@ -542,6 +549,32 @@ btnPermissoes.addEventListener('click', () => {
 });
 
 // ---------- ABAS DO MÓDULO PLANEJAMENTO ESTRATÉGICO ----------
+// Cada aba é liberada por um ou mais submódulos (ver js/modulosConfig.js) — a aba só some se
+// TODOS os submódulos dela estiverem 'sem_acesso' para o usuário atual. Dashboard segue o mesmo
+// controle de Objetivos (é um resumo dele); Contexto agrega as 4 sub-áreas internas.
+const SUBMODULOS_POR_ABA = {
+  dashboard: ['objetivos'],
+  contexto: ['contexto-cenario', 'contexto-partes', 'contexto-macrofluxo', 'contexto-sipoc'],
+  objetivos: ['objetivos'],
+  riscos: ['riscos'],
+  indicadores: ['indicadores'],
+  atas: ['atas'],
+};
+
+function atualizarVisibilidadeAbasPE() {
+  let primeiraVisivel = null;
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    const aba = btn.dataset.tab;
+    const submodulos = SUBMODULOS_POR_ABA[aba] || [];
+    const visivel = submodulos.some((s) => resolverNivel(state, 'planejamento-estrategico', s) !== 'sem_acesso');
+    btn.style.display = visivel ? '' : 'none';
+    if (visivel && !primeiraVisivel) primeiraVisivel = aba;
+  });
+  if (primeiraVisivel && (SUBMODULOS_POR_ABA[tabAtiva] || []).every((s) => resolverNivel(state, 'planejamento-estrategico', s) === 'sem_acesso')) {
+    tabAtiva = primeiraVisivel;
+  }
+}
+
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     tabAtiva = btn.dataset.tab;
@@ -595,6 +628,7 @@ async function renderConteudoAtivo() {
 
   if (moduloAtivo === 'planejamento-estrategico') {
     areaModulo.style.display = 'block';
+    atualizarVisibilidadeAbasPE();
     document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabAtiva));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     const mod = TABS_PLANEJAMENTO[tabAtiva];

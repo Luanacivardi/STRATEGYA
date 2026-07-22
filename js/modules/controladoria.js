@@ -17,7 +17,7 @@ let filtroCategoria = 'todas';
 let filtroStatus = 'ativo';
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'controladoria') === 'total';
 
   let contas, departamentos, membros;
@@ -755,9 +755,7 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
         <div class="form-group">
           <label>Prioridade</label>
           <select id="pda-prioridade">
-            <option value="baixa">Baixa</option>
-            <option value="media" selected>Média</option>
-            <option value="alta">Alta</option>
+            ${Object.entries(PRIORIDADE_LABEL).map(([v, l]) => `<option value="${v}" ${v === 'media' ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">

@@ -66,6 +66,12 @@ export function formatarMesAno(periodo) {
   return `${MESES_ABREV[idx]}/${ano}`;
 }
 
+// Formata um timestamp ISO como "dd/mm/aaaa hh:mm" (pt-BR), usado na Auditoria de Dados e no
+// visualizador de ciclos fechados do Planejamento Estratégico.
+export function formatarDataHora(iso) {
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 // Formata um valor numérico com separador de milhar (padrão pt-BR: ponto), usado nos indicadores
 // em Reais (meta e resultados apurados). Para outras unidades, mantém o valor como veio.
 export function formatarValor(valor, unidade) {
@@ -74,6 +80,21 @@ export function formatarValor(valor, unidade) {
   if (Number.isNaN(num)) return valor;
   if (unidade !== 'R$') return valor;
   return num.toLocaleString('pt-BR');
+}
+
+// Gera e baixa um CSV a partir de cabeçalho + linhas já em array de valores brutos (sem escapar) —
+// usado por Documentos, Planos de Ação e Tarefas, que antes reimplementavam o mesmo escape/blob/
+// download cada um por conta própria.
+export function baixarCsv(nomeArquivo, cabecalho, linhasValores) {
+  const escaparCsv = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
+  const csv = [cabecalho, ...linhasValores].map((linha) => linha.map(escaparCsv).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // Abre o cliente de e-mail padrão do usuário com um resumo em texto do que seria impresso.

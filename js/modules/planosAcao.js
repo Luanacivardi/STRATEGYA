@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 import * as todo from './todo.js';
 
@@ -220,7 +220,7 @@ async function renderIndicadoresGrupo(container, state) {
 }
 
 async function renderPlanos(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'acoes', 'planos') === 'total';
   const podeCriar = podeEditar || resolverNivel(state, 'acoes', 'planos') === 'proprio';
 
@@ -441,21 +441,13 @@ async function renderPlanos(container, state) {
 
 function exportarCsvPlanos(planos, origens, emailPorId) {
   const cabecalho = ['Nº', 'Título', 'Categoria de origem', 'Tipo', 'Origem', 'Responsável', 'Quando', 'Status', '%'];
-  const escaparCsv = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
-  const linhasCsv = planos.map((p) => [
+  const linhasValores = planos.map((p) => [
     p.numero, p.titulo,
     p.origem_categoria ? ORIGEM_CATEGORIA_LABEL[p.origem_categoria] : '',
     p.tipo ? TIPO_LABEL[p.tipo] : '',
     nomeOrigem(p, origens), emailPorId.get(p.responsavel_id) || '—', p.quando || '', STATUS_LABEL[p.status], p.percentual_conclusao,
-  ].map(escaparCsv).join(','));
-  const csv = [cabecalho.map(escaparCsv).join(','), ...linhasCsv].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `planos_acao_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  ]);
+  baixarCsv(`planos_acao_${new Date().toISOString().slice(0, 10)}.csv`, cabecalho, linhasValores);
 }
 
 // Monta o documento de impressão de um único plano de ação (5W2H completo + tarefas micro),

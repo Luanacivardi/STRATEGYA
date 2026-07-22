@@ -4,7 +4,7 @@ const INFLUENCIA_BADGE = { baixo: 'badge-neutral', medio: 'badge-warning', alto:
 const INFLUENCIA_LABEL = { baixo: 'Baixo', medio: 'Médio', alto: 'Alto' };
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'contexto-partes') === 'total';
 
   const { data, error } = await supabase

@@ -31,7 +31,7 @@ export async function listarObjetivos(supabase, empresaId) {
 }
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'objetivos') === 'total';
   // Nível "próprio": não edita tudo, mas pode criar um objetivo novo (sempre com ela mesma como
   // responsável) e editar/excluir os objetivos em que já é a responsável.

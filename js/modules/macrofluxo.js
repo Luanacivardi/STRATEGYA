@@ -5,7 +5,7 @@ const TIPO_LABEL = { direcao: 'Direção', principal: 'Processo Principal', apoi
 let modoEdicao = false;
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   // Só entra em modo edição quem tem permissão de escrita; para quem só visualiza, nunca mostra os controles.
   const temPermissaoEdicao = resolverNivel(state, 'planejamento-estrategico', 'contexto-macrofluxo') === 'total';
   const podeEditar = temPermissaoEdicao && modoEdicao;

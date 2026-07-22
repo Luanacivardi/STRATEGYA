@@ -78,6 +78,3 @@ export const NIVEL_DESCRICAO = {
   sem_acesso: 'Módulo/submódulo fica oculto — nem aparece no menu nem pode ser acessado.',
 };
 
-export function moduloConfiguravel(moduloId) {
-  return MODULOS_SISTEMA.find((m) => m.id === moduloId)?.configuravel !== false;
-}

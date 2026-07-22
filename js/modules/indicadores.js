@@ -48,7 +48,7 @@ export function abrirIndicadorPorId(id) {
 }
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, papelAtual } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'planejamento-estrategico', 'indicadores') === 'total';
   const podeCriar = podeEditar || resolverNivel(state, 'planejamento-estrategico', 'indicadores') === 'proprio';
 

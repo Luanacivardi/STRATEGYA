@@ -4,7 +4,7 @@
 // empresaUsuarios.js tinha nível de edição configurável. Agora os dois reaproveitam exatamente o
 // mesmo código.
 import { toast, escapeHtml, confirmar, abrirModal, fecharModal, mensagemErroFuncao } from '../ui.js';
-import { MODULOS_SISTEMA, NIVEL_LABEL } from '../modulosConfig.js';
+import { MODULOS_SISTEMA, NIVEL_LABEL, NIVEL_DESCRICAO } from '../modulosConfig.js';
 
 const NIVEIS_SELECIONAVEIS = ['leitura', 'proprio', 'total', 'aprovacao', 'sem_acesso'];
 
@@ -107,9 +107,9 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
     <tr>
       <td${comIndentacao ? ' style="padding-left:2rem"' : ''}>${escapeHtml(nome)}</td>
       <td>
-        <select data-nivel-modulo="${modulo}" data-nivel-submodulo="${submodulo || ''}">
-          <option value="" ${!nivelDe(modulo, submodulo) ? 'selected' : ''}>Padrão do papel</option>
-          ${NIVEIS_SELECIONAVEIS.map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''}>${NIVEL_LABEL[n]}</option>`).join('')}
+        <select data-nivel-modulo="${modulo}" data-nivel-submodulo="${submodulo || ''}" title="Passe o mouse sobre uma opção para ver o que ela libera">
+          <option value="" ${!nivelDe(modulo, submodulo) ? 'selected' : ''} title="Segue o comportamento automático do papel da pessoa neste módulo/submódulo.">Padrão do papel</option>
+          ${NIVEIS_SELECIONAVEIS.map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''} title="${escapeHtml(NIVEL_DESCRICAO[n])}">${NIVEL_LABEL[n]}</option>`).join('')}
         </select>
       </td>
     </tr>`;
