@@ -543,6 +543,8 @@ function renderHomeHero() {
 
 // Missão/Visão/Valores/Política do SGI/SGQ — mesmos campos editados em Contexto > Empresa
 // (js/modules/contexto.js), aqui só em modo leitura, com atalho para quem tiver que editar.
+// Layout pedido: Visão em cima e Missão embaixo na coluna esquerda; Valores na coluna direita,
+// ocupando a altura das duas juntas (ver .home-institucional no CSS).
 async function renderHomeInstitucional() {
   const container = document.getElementById('home-institucional');
   if (!container || !state.empresaAtual) return;
@@ -553,15 +555,9 @@ async function renderHomeInstitucional() {
     .eq('id', state.empresaAtual.id)
     .single();
 
-  const campos = [
-    { chave: 'missao', label: 'Missão', icone: 'ti-flag-3' },
-    { chave: 'visao', label: 'Visão', icone: 'ti-telescope' },
-    { chave: 'valores', label: 'Valores', icone: 'ti-heart-handshake' },
-    { chave: 'politica_sgq', label: 'Política do SGI/SGQ', icone: 'ti-shield-check' },
-  ];
-  const preenchidos = empresa ? campos.filter((c) => (empresa[c.chave] || '').trim()) : [];
+  const tudoVazio = !empresa || ['missao', 'visao', 'valores', 'politica_sgq'].every((c) => !(empresa[c] || '').trim());
 
-  if (preenchidos.length === 0) {
+  if (tudoVazio) {
     container.innerHTML = `
       <div class="home-inst-vazio">
         <span><i class="ti ti-info-circle"></i> Missão, visão, valores e política ainda não foram preenchidos.</span>
@@ -574,46 +570,85 @@ async function renderHomeInstitucional() {
     return;
   }
 
-  container.innerHTML = preenchidos.map((c) => `
-    <div class="home-inst-card">
-      <div class="home-inst-card-titulo"><i class="ti ${c.icone}"></i> ${c.label}</div>
-      <div class="home-inst-card-texto">${escapeHtml(empresa[c.chave])}</div>
+  const textoOuVazio = (valor) => (valor || '').trim()
+    ? escapeHtml(valor)
+    : '<span class="home-inst-vazia">Ainda não preenchido.</span>';
+
+  const politicaHtml = (empresa.politica_sgq || '').trim() ? `
+    <div class="home-inst-card home-inst-politica">
+      <div class="home-inst-card-titulo"><i class="ti ti-shield-check"></i> Política do SGI/SGQ</div>
+      <div class="home-inst-card-texto">${escapeHtml(empresa.politica_sgq)}</div>
     </div>
-  `).join('');
-}
+  ` : '';
 
-async function renderHome() {
-  renderHomeHero();
-  await renderHomeInstitucional();
-
-  const disponiveis = MODULOS_SISTEMA.filter((m) => moduloHabilitadoParaEmpresa(m.id));
-  const emBreve = MODULOS_SISTEMA.filter((m) => !moduloHabilitadoParaEmpresa(m.id));
-
-  // Cards mostram só o ícone do módulo — nome e descrição aparecem num overlay ao passar o mouse.
-  const cardHtml = (m) => {
-    const disp = moduloHabilitadoParaEmpresa(m.id);
-    return `
-    <div class="home-card ${disp ? '' : 'em-breve'}" ${disp ? `data-modulo-home="${m.id}"` : ''} title="${escapeHtml(m.nome)}">
-      <div class="home-card-icon"><i class="ti ${m.icone}"></i></div>
-      <div class="home-card-overlay">
-        <div class="home-card-overlay-nome">${m.nome}</div>
-        <div class="home-card-overlay-desc">${disp ? m.descricao : (m.teaser || m.descricao)}</div>
+  container.innerHTML = `
+    <div class="home-institucional">
+      <div class="home-inst-card home-inst-visao">
+        <div class="home-inst-card-titulo"><i class="ti ti-telescope"></i> Visão</div>
+        <div class="home-inst-card-texto">${textoOuVazio(empresa.visao)}</div>
+      </div>
+      <div class="home-inst-card home-inst-missao">
+        <div class="home-inst-card-titulo"><i class="ti ti-flag-3"></i> Missão</div>
+        <div class="home-inst-card-texto">${textoOuVazio(empresa.missao)}</div>
+      </div>
+      <div class="home-inst-card home-inst-valores">
+        <div class="home-inst-card-titulo"><i class="ti ti-heart-handshake"></i> Valores</div>
+        <div class="home-inst-card-texto">${textoOuVazio(empresa.valores)}</div>
       </div>
     </div>
+    ${politicaHtml}
   `;
-  };
+}
 
-  document.getElementById('home-grid-disponiveis').innerHTML = disponiveis.map(cardHtml).join('');
-  document.getElementById('home-grid-embreve').innerHTML = emBreve.map(cardHtml).join('');
+// Rail vertical com só os "logos" dos módulos: cor normal se disponível pra empresa, cinza se não.
+// Clicar não navega direto — abre um modal com um resumo/chamada do módulo (abrirModalModulo).
+function renderHomeModulosRail() {
+  const rail = document.getElementById('home-modulos-rail');
+  if (!rail) return;
 
-  document.querySelectorAll('[data-modulo-home]').forEach((card) => {
-    card.addEventListener('click', () => {
-      moduloAtivo = card.dataset.moduloHome;
+  rail.innerHTML = MODULOS_SISTEMA.map((m) => {
+    const disp = moduloHabilitadoParaEmpresa(m.id);
+    return `<button type="button" class="home-modulo-logo ${disp ? '' : 'indisponivel'}" data-modulo-rail="${m.id}" title="${escapeHtml(m.nome)}">
+      <i class="ti ${m.icone}"></i>
+    </button>`;
+  }).join('');
+
+  rail.querySelectorAll('[data-modulo-rail]').forEach((btn) => {
+    btn.addEventListener('click', () => abrirModalModulo(btn.dataset.moduloRail));
+  });
+}
+
+function abrirModalModulo(moduloId) {
+  const m = MODULOS_SISTEMA.find((x) => x.id === moduloId);
+  if (!m) return;
+  const disp = moduloHabilitadoParaEmpresa(moduloId);
+
+  const modal = abrirModal(m.nome, `
+    <div style="text-align:center">
+      <div class="home-modal-icon"><i class="ti ${m.icone}"></i></div>
+      ${m.teaser ? `<p class="home-modal-teaser">${escapeHtml(m.teaser)}</p>` : ''}
+      <p class="home-modal-desc">${escapeHtml(m.descricao)}</p>
+      ${disp
+        ? '<button class="btn btn-primary" id="btn-home-modal-acessar" type="button"><i class="ti ti-arrow-right"></i> Acessar módulo</button>'
+        : '<span class="badge badge-neutral">Em breve</span>'}
+    </div>
+  `);
+
+  if (disp) {
+    modal.querySelector('#btn-home-modal-acessar').addEventListener('click', () => {
+      fecharModal();
+      moduloAtivo = moduloId;
       viewAtual = 'modulo';
       renderModuleRail();
       renderConteudoAtivo();
     });
-  });
+  }
+}
+
+async function renderHome() {
+  renderHomeModulosRail();
+  renderHomeHero();
+  await renderHomeInstitucional();
 }
 
 // ---------- CONFIGURAÇÕES (Empresa & Usuários) ----------

@@ -18,6 +18,7 @@ export const MODULOS_SISTEMA = [
   {
     id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true, configuravel: true,
     descricao: 'Contexto (SWOT, partes interessadas, missão/visão/valores, macrofluxo), mapa BSC, objetivos, riscos e oportunidades, indicadores e atas de reunião.',
+    teaser: 'Sua estratégia sai do papel: SWOT, missão, visão, indicadores e o mapa que conecta tudo isso aos resultados.',
     submodulos: [
       { id: 'contexto-cenario', nome: 'Contexto — Cenário (SWOT)' },
       { id: 'contexto-partes', nome: 'Contexto — Partes Interessadas' },
@@ -32,6 +33,7 @@ export const MODULOS_SISTEMA = [
   {
     id: 'acoes', nome: 'Gestão de Ações', icone: 'ti-list-check', disponivel: true, configuravel: true,
     descricao: 'Planos de ação e tarefas vinculados a objetivos, indicadores, riscos, não conformidades e atas de reunião.',
+    teaser: 'Quem faz o quê, até quando — e o que está atrasado. Tudo num só lugar.',
     submodulos: [
       { id: 'planos', nome: 'Planos de Ação' },
       { id: 'tarefas', nome: 'Tarefas' },
@@ -40,21 +42,25 @@ export const MODULOS_SISTEMA = [
   {
     id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true, configuravel: true,
     descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.',
+    teaser: 'Metas financeiras por área, mês a mês: veja quem está no azul antes que vire problema.',
     submodulos: [],
   },
   {
     id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: true, configuravel: true,
     descricao: 'Controle de documentos e registros da qualidade: numeração automática, ciclo de aprovação com assinatura eletrônica, revisões e lista mestra.',
+    teaser: 'Nunca mais aquela dúvida de qual é a versão certa do procedimento.',
     submodulos: [],
   },
   {
     id: 'apuracoes', nome: 'Gestão de Apurações', icone: 'ti-shield-lock', disponivel: true, configuravel: true,
     descricao: 'Controle do fluxo de apurações e investigações corporativas (ISO 37301/37002/37001) — acesso restrito ao comitê de apuração. Não armazena evidências ou documentos.',
+    teaser: 'Um canal seguro e restrito para apurar o que precisa ser apurado — com sigilo de verdade.',
     submodulos: [],
   },
   {
     id: 'auditorias', nome: 'Gestão de Auditorias', icone: 'ti-clipboard-check', disponivel: true, configuravel: true,
     descricao: 'Auditorias internas e externas (ISO 9001/14001/45001): priorização por risco (IPA), planejamento inteligente, distribuição automática de horas e agenda, execução, resultados e aprovação, com geração automática de plano de ação a partir de não conformidades.',
+    teaser: 'Auditorias priorizadas por risco, não por sorteio — saiba onde olhar primeiro.',
     submodulos: [
       { id: 'auditorias', nome: 'Auditorias' },
       { id: 'processos', nome: 'Processos Auditáveis' },
