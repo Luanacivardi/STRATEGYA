@@ -228,7 +228,36 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   .module-item.active { border-bottom-color: var(--gold); border-left-color: transparent; }
 }
 
-/* ===== HOME (página inicial: boas-vindas + missão/visão/valores + grade de módulos) ===== */
+/* ===== HOME (página inicial: rail de módulos + boas-vindas + missão/visão/valores) ===== */
+.home-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+.home-main { flex: 1; min-width: 0; }
+
+/* Rail vertical com só os "logos" (ícones) dos módulos — disponíveis na cor da marca,
+   indisponíveis em cinza. Clicar abre um modal com o resumo do módulo (js/app.js abrirModalModulo). */
+.home-modulos-rail {
+  display: flex; flex-direction: column; align-items: center; gap: 12px; flex-shrink: 0;
+  width: 68px; background: var(--navy-dark); border-radius: var(--radius); padding: 1rem 0;
+  position: sticky; top: 76px;
+}
+.home-modulo-logo {
+  width: 46px; height: 46px; border-radius: 12px; border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 21px; font-family: inherit;
+  background: var(--navy); color: var(--gold); transition: transform 0.15s, box-shadow 0.15s;
+}
+.home-modulo-logo:hover { transform: scale(1.08); box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+.home-modulo-logo.indisponivel { background: rgba(255,255,255,0.06); color: color-mix(in srgb, var(--navy-text) 32%, transparent); }
+@media (max-width: 860px) {
+  .home-layout { flex-direction: column; }
+  .home-modulos-rail { flex-direction: row; width: 100%; position: static; overflow-x: auto; padding: 10px; }
+}
+
+/* Modal de resumo do módulo (abrirModal padrão do sistema) */
+.home-modal-icon {
+  width: 62px; height: 62px; border-radius: 16px; background: var(--navy); color: var(--gold);
+  display: flex; align-items: center; justify-content: center; font-size: 27px; margin: 0 auto 14px;
+}
+.home-modal-teaser { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.5; margin-bottom: 10px; }
+.home-modal-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 18px; }
 
 /* Faixa de boas-vindas: logo da empresa, nome de quem entrou e a data — dá um ar "site
    institucional" ao invés de cair direto numa grade de botões. */
@@ -260,8 +289,17 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   .home-hero-data { margin: 0 auto; text-align: center; }
 }
 
-/* Missão/Visão/Valores/Política, lidos direto da aba Contexto (que continua sendo onde se edita) */
-.home-institucional { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+/* Missão/Visão/Valores/Política, lidos direto da aba Contexto (que continua sendo onde se edita).
+   Layout pedido: Visão em cima e Missão embaixo na coluna esquerda; Valores na coluna direita,
+   ocupando a altura das duas juntas (grid-template-areas) — preenchendo a largura toda da tela. */
+.home-institucional { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "visao valores" "missao valores"; gap: 1rem; margin-bottom: 1.25rem; }
+.home-inst-visao { grid-area: visao; }
+.home-inst-missao { grid-area: missao; }
+.home-inst-valores { grid-area: valores; display: flex; flex-direction: column; }
+.home-inst-valores .home-inst-card-texto { flex: 1; -webkit-line-clamp: 12; }
+@media (max-width: 720px) {
+  .home-institucional { grid-template-columns: 1fr; grid-template-areas: "visao" "missao" "valores"; }
+}
 .home-inst-card {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 1.3rem 1.4rem; border-top: 3px solid var(--gold);
@@ -275,45 +313,15 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   font-size: 13px; color: var(--text-primary); line-height: 1.6; white-space: pre-wrap;
   display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
 }
+.home-inst-card-texto.home-inst-vazia { color: var(--text-secondary); font-style: italic; -webkit-line-clamp: unset; }
+.home-inst-politica { margin-bottom: 2rem; }
 .home-inst-vazio {
-  grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   background: var(--surface-2); border: 1px dashed var(--border); border-radius: var(--radius);
-  padding: 1.1rem 1.4rem; flex-wrap: wrap;
+  padding: 1.1rem 1.4rem; flex-wrap: wrap; margin-bottom: 2rem;
 }
 .home-inst-vazio span { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
 .home-inst-vazio i { color: var(--gold-dark); font-size: 16px; }
-
-.home-section { margin-bottom: 2rem; }
-.home-section-title {
-  font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-secondary);
-  font-weight: 700; margin-bottom: 1rem; padding-bottom: 8px; border-bottom: 2px solid var(--gold);
-}
-.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; }
-
-/* Card de módulo: por padrão mostra só o ícone; nome e descrição sobem num overlay ao passar o mouse. */
-.home-card {
-  position: relative; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--radius); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
-  min-height: 128px; display: flex; align-items: center; justify-content: center; border-top: 4px solid var(--gold);
-}
-.home-card:hover { box-shadow: 0 10px 26px rgba(37,37,56,0.16); transform: translateY(-3px); }
-.home-card-icon {
-  width: 52px; height: 52px; border-radius: 12px; background: var(--navy); color: var(--gold);
-  display: flex; align-items: center; justify-content: center; font-size: 23px; transition: opacity 0.2s, transform 0.2s;
-}
-.home-card:hover .home-card-icon { opacity: 0; transform: scale(0.85); }
-.home-card-overlay {
-  position: absolute; inset: 0; background: linear-gradient(160deg, var(--navy) 0%, var(--navy-dark) 100%);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
-  padding: 1.1rem; opacity: 0; transform: translateY(8px); transition: opacity 0.22s, transform 0.22s; pointer-events: none;
-}
-.home-card:hover .home-card-overlay { opacity: 1; transform: translateY(0); }
-.home-card-overlay-nome { font-size: 13px; font-weight: 700; color: var(--gold); margin-bottom: 6px; }
-.home-card-overlay-desc { font-size: 11px; color: color-mix(in srgb, var(--navy-text) 82%, transparent); line-height: 1.5; }
-.home-card.em-breve { cursor: not-allowed; border-top-color: var(--border); opacity: 0.75; }
-.home-card.em-breve:hover { box-shadow: none; transform: none; }
-.home-card.em-breve .home-card-icon { background: var(--surface-1); color: var(--text-secondary); }
-.home-card.em-breve .home-card-overlay { background: linear-gradient(160deg, #55556e 0%, #3a3a4d 100%); }
 
 .form-group { margin-bottom: 1rem; }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
