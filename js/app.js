@@ -500,25 +500,105 @@ function renderModuleRail() {
 }
 
 // ---------- HOME ----------
-document.getElementById('topbar-home-link').addEventListener('click', (e) => {
-  e.preventDefault();
+// O logo/marca STRATEGYA na topbar e o logo do cliente no cabeçalho do conteúdo levam os dois
+// sempre de volta para a Home, de onde quer que o usuário esteja no sistema.
+function irParaHome() {
   if (!state.empresaAtual) return;
   viewAtual = 'home';
   renderModuleRail();
   renderConteudoAtivo();
+}
+document.getElementById('topbar-home-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  irParaHome();
 });
+document.getElementById('header-icon').addEventListener('click', irParaHome);
 
-function renderHome() {
+// Faixa de boas-vindas: logo grande da empresa, nome de quem entrou e a data de hoje.
+function renderHomeHero() {
+  const home = document.getElementById('home-hero');
+  const emp = state.empresaAtual;
+  if (!home || !emp) return;
+
+  const nomeExibicao = state.user?.user_metadata?.nome || state.user?.email || '';
+  const primeiroNome = nomeExibicao.split(/[\s@]+/)[0] || 'usuário';
+  const dataHoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
+  home.innerHTML = `
+    <div class="home-hero">
+      <div class="home-hero-logo">
+        ${emp.logo_url ? `<img src="${escapeHtml(emp.logo_url)}" alt="Logo">` : '<i class="ti ti-target-arrow"></i>'}
+      </div>
+      <div class="home-hero-texto">
+        <div class="home-hero-titulo">Olá, ${escapeHtml(primeiroNome)}</div>
+        <div class="home-hero-sub">Bem-vindo(a) ao painel de gestão estratégica de <strong>${escapeHtml(emp.nome)}</strong></div>
+      </div>
+      <div class="home-hero-data">
+        <div class="home-hero-data-label">Hoje</div>
+        <div class="home-hero-data-valor">${escapeHtml(dataHoje)}</div>
+      </div>
+    </div>
+  `;
+}
+
+// Missão/Visão/Valores/Política do SGI/SGQ — mesmos campos editados em Contexto > Empresa
+// (js/modules/contexto.js), aqui só em modo leitura, com atalho para quem tiver que editar.
+async function renderHomeInstitucional() {
+  const container = document.getElementById('home-institucional');
+  if (!container || !state.empresaAtual) return;
+
+  const { data: empresa } = await state.supabase
+    .from('empresas')
+    .select('missao, visao, valores, politica_sgq')
+    .eq('id', state.empresaAtual.id)
+    .single();
+
+  const campos = [
+    { chave: 'missao', label: 'Missão', icone: 'ti-flag-3' },
+    { chave: 'visao', label: 'Visão', icone: 'ti-telescope' },
+    { chave: 'valores', label: 'Valores', icone: 'ti-heart-handshake' },
+    { chave: 'politica_sgq', label: 'Política do SGI/SGQ', icone: 'ti-shield-check' },
+  ];
+  const preenchidos = empresa ? campos.filter((c) => (empresa[c.chave] || '').trim()) : [];
+
+  if (preenchidos.length === 0) {
+    container.innerHTML = `
+      <div class="home-inst-vazio">
+        <span><i class="ti ti-info-circle"></i> Missão, visão, valores e política ainda não foram preenchidos.</span>
+        <button class="btn btn-secondary btn-sm" id="btn-home-ir-contexto" type="button"><i class="ti ti-map-2"></i> Preencher em Contexto</button>
+      </div>
+    `;
+    document.getElementById('btn-home-ir-contexto')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'contexto', grupo: 'empresa' } }));
+    });
+    return;
+  }
+
+  container.innerHTML = preenchidos.map((c) => `
+    <div class="home-inst-card">
+      <div class="home-inst-card-titulo"><i class="ti ${c.icone}"></i> ${c.label}</div>
+      <div class="home-inst-card-texto">${escapeHtml(empresa[c.chave])}</div>
+    </div>
+  `).join('');
+}
+
+async function renderHome() {
+  renderHomeHero();
+  await renderHomeInstitucional();
+
   const disponiveis = MODULOS_SISTEMA.filter((m) => moduloHabilitadoParaEmpresa(m.id));
   const emBreve = MODULOS_SISTEMA.filter((m) => !moduloHabilitadoParaEmpresa(m.id));
 
+  // Cards mostram só o ícone do módulo — nome e descrição aparecem num overlay ao passar o mouse.
   const cardHtml = (m) => {
     const disp = moduloHabilitadoParaEmpresa(m.id);
     return `
-    <div class="home-card ${disp ? '' : 'em-breve'}" ${disp ? `data-modulo-home="${m.id}"` : ''}>
+    <div class="home-card ${disp ? '' : 'em-breve'}" ${disp ? `data-modulo-home="${m.id}"` : ''} title="${escapeHtml(m.nome)}">
       <div class="home-card-icon"><i class="ti ${m.icone}"></i></div>
-      <div class="home-card-nome">${m.nome}</div>
-      <div class="home-card-desc">${disp ? m.descricao : (m.teaser || m.descricao)}</div>
+      <div class="home-card-overlay">
+        <div class="home-card-overlay-nome">${m.nome}</div>
+        <div class="home-card-overlay-desc">${disp ? m.descricao : (m.teaser || m.descricao)}</div>
+      </div>
     </div>
   `;
   };
@@ -608,7 +688,7 @@ async function renderConteudoAtivo() {
   if (viewAtual === 'home') {
     areaHome.style.display = 'block';
     moduloNomeSubtitulo.textContent = 'Início';
-    renderHome();
+    await renderHome();
     return;
   }
 
