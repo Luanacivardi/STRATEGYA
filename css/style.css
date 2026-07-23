@@ -232,23 +232,25 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 .home-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
 .home-main { flex: 1; min-width: 0; }
 
-/* Rail vertical com só os "logos" (ícones) dos módulos — disponíveis na cor da marca,
-   indisponíveis em cinza. Clicar abre um modal com o resumo do módulo (js/app.js abrirModalModulo). */
+/* Rail vertical só com o ícone do módulo, sem caixa/fundo — disponível na cor da marca, indisponível
+   em cinza. Disponível clica e vai direto pro módulo; indisponível clica e abre um lembrete com o
+   resumo do módulo (js/app.js abrirModalModulo). Alinhado ao topo do conteúdo ao lado (sem sticky,
+   pra não desalinhar ao rolar a página). */
 .home-modulos-rail {
-  display: flex; flex-direction: column; align-items: center; gap: 12px; flex-shrink: 0;
-  width: 68px; background: var(--navy-dark); border-radius: var(--radius); padding: 1rem 0;
-  position: sticky; top: 76px;
+  display: flex; flex-direction: column; align-items: center; gap: 18px; flex-shrink: 0;
+  width: 56px; padding-top: 2px;
 }
 .home-modulo-logo {
-  width: 46px; height: 46px; border-radius: 12px; border: none; padding: 0; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; font-size: 21px; font-family: inherit;
-  background: var(--navy); color: var(--gold); transition: transform 0.15s, box-shadow 0.15s;
+  width: 44px; height: 44px; border-radius: 10px; border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 26px; font-family: inherit;
+  background: none; color: var(--navy); transition: background 0.15s, color 0.15s, transform 0.15s;
 }
-.home-modulo-logo:hover { transform: scale(1.08); box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
-.home-modulo-logo.indisponivel { background: rgba(255,255,255,0.06); color: color-mix(in srgb, var(--navy-text) 32%, transparent); }
+.home-modulo-logo:hover { background: rgba(37,37,56,0.07); color: var(--gold-dark); transform: translateY(-1px); }
+.home-modulo-logo.indisponivel { color: var(--border); }
+.home-modulo-logo.indisponivel:hover { background: rgba(37,37,56,0.04); color: var(--text-secondary); }
 @media (max-width: 860px) {
   .home-layout { flex-direction: column; }
-  .home-modulos-rail { flex-direction: row; width: 100%; position: static; overflow-x: auto; padding: 10px; }
+  .home-modulos-rail { flex-direction: row; width: 100%; padding: 4px 0; }
 }
 
 /* Modal de resumo do módulo (abrirModal padrão do sistema) */
@@ -290,15 +292,20 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 }
 
 /* Missão/Visão/Valores/Política, lidos direto da aba Contexto (que continua sendo onde se edita).
-   Layout pedido: Visão em cima e Missão embaixo na coluna esquerda; Valores na coluna direita,
-   ocupando a altura das duas juntas (grid-template-areas) — preenchendo a largura toda da tela. */
-.home-institucional { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "visao valores" "missao valores"; gap: 1rem; margin-bottom: 1.25rem; }
+   Layout pedido: Visão, Missão e Política empilhadas na coluna esquerda; Valores na coluna direita,
+   ocupando a altura das três juntas (grid-template-areas) — preenchendo a largura toda da tela. */
+.home-institucional {
+  display: grid; grid-template-columns: 1fr 1fr;
+  grid-template-areas: "visao valores" "missao valores" "politica valores";
+  gap: 1rem; margin-bottom: 2rem;
+}
 .home-inst-visao { grid-area: visao; }
 .home-inst-missao { grid-area: missao; }
+.home-inst-politica { grid-area: politica; }
 .home-inst-valores { grid-area: valores; display: flex; flex-direction: column; }
-.home-inst-valores .home-inst-card-texto { flex: 1; -webkit-line-clamp: 12; }
+.home-inst-valores .home-inst-card-texto { flex: 1; -webkit-line-clamp: 18; }
 @media (max-width: 720px) {
-  .home-institucional { grid-template-columns: 1fr; grid-template-areas: "visao" "missao" "valores"; }
+  .home-institucional { grid-template-columns: 1fr; grid-template-areas: "visao" "missao" "politica" "valores"; }
 }
 .home-inst-card {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
@@ -313,8 +320,7 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   font-size: 13px; color: var(--text-primary); line-height: 1.6; white-space: pre-wrap;
   display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
 }
-.home-inst-card-texto.home-inst-vazia { color: var(--text-secondary); font-style: italic; -webkit-line-clamp: unset; }
-.home-inst-politica { margin-bottom: 2rem; }
+.home-inst-vazia { color: var(--text-secondary); font-style: italic; }
 .home-inst-vazio {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   background: var(--surface-2); border: 1px dashed var(--border); border-radius: var(--radius);
