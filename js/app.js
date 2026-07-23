@@ -543,8 +543,8 @@ function renderHomeHero() {
 
 // Missão/Visão/Valores/Política do SGI/SGQ — mesmos campos editados em Contexto > Empresa
 // (js/modules/contexto.js), aqui só em modo leitura, com atalho para quem tiver que editar.
-// Layout pedido: Visão em cima e Missão embaixo na coluna esquerda; Valores na coluna direita,
-// ocupando a altura das duas juntas (ver .home-institucional no CSS).
+// Layout pedido: Visão, Missão e Política empilhadas na coluna esquerda; Valores na coluna direita,
+// ocupando a altura das três juntas (ver .home-institucional no CSS).
 async function renderHomeInstitucional() {
   const container = document.getElementById('home-institucional');
   if (!container || !state.empresaAtual) return;
@@ -574,13 +574,6 @@ async function renderHomeInstitucional() {
     ? escapeHtml(valor)
     : '<span class="home-inst-vazia">Ainda não preenchido.</span>';
 
-  const politicaHtml = (empresa.politica_sgq || '').trim() ? `
-    <div class="home-inst-card home-inst-politica">
-      <div class="home-inst-card-titulo"><i class="ti ti-shield-check"></i> Política do SGI/SGQ</div>
-      <div class="home-inst-card-texto">${escapeHtml(empresa.politica_sgq)}</div>
-    </div>
-  ` : '';
-
   container.innerHTML = `
     <div class="home-institucional">
       <div class="home-inst-card home-inst-visao">
@@ -591,17 +584,21 @@ async function renderHomeInstitucional() {
         <div class="home-inst-card-titulo"><i class="ti ti-flag-3"></i> Missão</div>
         <div class="home-inst-card-texto">${textoOuVazio(empresa.missao)}</div>
       </div>
+      <div class="home-inst-card home-inst-politica">
+        <div class="home-inst-card-titulo"><i class="ti ti-shield-check"></i> Política do SGI/SGQ</div>
+        <div class="home-inst-card-texto">${textoOuVazio(empresa.politica_sgq)}</div>
+      </div>
       <div class="home-inst-card home-inst-valores">
         <div class="home-inst-card-titulo"><i class="ti ti-heart-handshake"></i> Valores</div>
         <div class="home-inst-card-texto">${textoOuVazio(empresa.valores)}</div>
       </div>
     </div>
-    ${politicaHtml}
   `;
 }
 
-// Rail vertical com só os "logos" dos módulos: cor normal se disponível pra empresa, cinza se não.
-// Clicar não navega direto — abre um modal com um resumo/chamada do módulo (abrirModalModulo).
+// Rail vertical com só os ícones dos módulos: cor normal se disponível pra empresa, cinza se não.
+// Disponível clica e vai direto pro módulo; indisponível clica e abre um lembrete com o resumo
+// do módulo (abrirModalModulo), já que a pessoa ainda não tem acesso pra navegar até ele.
 function renderHomeModulosRail() {
   const rail = document.getElementById('home-modulos-rail');
   if (!rail) return;
@@ -614,35 +611,32 @@ function renderHomeModulosRail() {
   }).join('');
 
   rail.querySelectorAll('[data-modulo-rail]').forEach((btn) => {
-    btn.addEventListener('click', () => abrirModalModulo(btn.dataset.moduloRail));
+    btn.addEventListener('click', () => {
+      const moduloId = btn.dataset.moduloRail;
+      if (moduloHabilitadoParaEmpresa(moduloId)) {
+        moduloAtivo = moduloId;
+        viewAtual = 'modulo';
+        renderModuleRail();
+        renderConteudoAtivo();
+      } else {
+        abrirModalModulo(moduloId);
+      }
+    });
   });
 }
 
 function abrirModalModulo(moduloId) {
   const m = MODULOS_SISTEMA.find((x) => x.id === moduloId);
   if (!m) return;
-  const disp = moduloHabilitadoParaEmpresa(moduloId);
 
-  const modal = abrirModal(m.nome, `
+  abrirModal(m.nome, `
     <div style="text-align:center">
       <div class="home-modal-icon"><i class="ti ${m.icone}"></i></div>
       ${m.teaser ? `<p class="home-modal-teaser">${escapeHtml(m.teaser)}</p>` : ''}
       <p class="home-modal-desc">${escapeHtml(m.descricao)}</p>
-      ${disp
-        ? '<button class="btn btn-primary" id="btn-home-modal-acessar" type="button"><i class="ti ti-arrow-right"></i> Acessar módulo</button>'
-        : '<span class="badge badge-neutral">Em breve</span>'}
+      <span class="badge badge-neutral">Em breve</span>
     </div>
   `);
-
-  if (disp) {
-    modal.querySelector('#btn-home-modal-acessar').addEventListener('click', () => {
-      fecharModal();
-      moduloAtivo = moduloId;
-      viewAtual = 'modulo';
-      renderModuleRail();
-      renderConteudoAtivo();
-    });
-  }
 }
 
 async function renderHome() {
