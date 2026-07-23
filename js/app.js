@@ -483,7 +483,7 @@ function renderModuleRail() {
     return `
     <button class="module-item ${m.id === moduloAtivo && viewAtual === 'modulo' ? 'active' : ''} ${disp ? '' : 'disabled'}"
       data-modulo="${m.id}" ${disp ? '' : 'disabled'}>
-      <i class="ti ${m.icone}"></i>
+      <span class="module-item-icon"><i class="ti ${m.icone}"></i></span>
       <span>${m.nome}</span>
     </button>
   `;
