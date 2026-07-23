@@ -17,14 +17,31 @@ function ajustarCor(hex, amount) {
 
 const PADRAO = { cor_primaria: '#252538', cor_destaque: '#E8B84B', cor_texto: '#ffffff', logo_url: null };
 
-// Escolhe branco ou preto como cor de fonte ideal para o fundo dado, pela luminância relativa
-// (fórmula WCAG simplificada). Usado para sugerir automaticamente a cor da fonte quando a cor
-// primária muda (ex: ao extrair cores do logo) — o usuário ainda pode ajustar manualmente depois.
-export function corTextoIdeal(hexFundo) {
-  const [r, g, b] = hexParaRgb(hexFundo).map((c) => c / 255);
+// Luminância relativa (fórmula WCAG simplificada, 0 = preto, 1 = branco) — quanto menor, mais forte
+// o contraste da cor sobre um fundo claro/branco.
+function luminanciaRelativa(hex) {
+  const [r, g, b] = hexParaRgb(hex).map((c) => c / 255);
   const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const luminancia = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  return luminancia > 0.5 ? '#1a1a2e' : '#ffffff';
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+// Escolhe branco ou preto como cor de fonte ideal para o fundo dado, pela luminância relativa.
+// Usado para sugerir automaticamente a cor da fonte quando a cor primária muda (ex: ao extrair
+// cores do logo) — o usuário ainda pode ajustar manualmente depois.
+export function corTextoIdeal(hexFundo) {
+  return luminanciaRelativa(hexFundo) > 0.5 ? '#1a1a2e' : '#ffffff';
+}
+
+// Cor mais "forte" (mais contraste sobre fundo branco) entre a cor primária e a de destaque da
+// empresa — usada nos ícones do rail de módulos da Home, que ficam sobre fundo branco e não podem
+// depender só da cor primária: ela pode ser clara demais pra ler (ex: Tedesco, cuja cor_primaria é
+// um cinza claro mas a cor_destaque é o vermelho da marca — aqui a de destaque "ganha"). Se nem a
+// mais forte das duas tiver contraste suficiente, cai para um preto/navy fixo.
+export function corMaisForte(empresa) {
+  const primaria = empresa?.cor_primaria || PADRAO.cor_primaria;
+  const destaque = empresa?.cor_destaque || PADRAO.cor_destaque;
+  const escolhida = luminanciaRelativa(primaria) <= luminanciaRelativa(destaque) ? primaria : destaque;
+  return luminanciaRelativa(escolhida) > 0.55 ? '#1a1a2e' : escolhida;
 }
 
 // Lê a imagem de um logo e extrai as duas cores mais dominantes (ignorando fundo branco/preto puro)
@@ -98,6 +115,8 @@ export function aplicarTema(empresa) {
   // Títulos sobre fundo claro: se a cor primária da empresa for clara demais (ex: cinza claro),
   // usar preto para manter a leitura — senão, mantém a cor da marca.
   root.setProperty('--navy-titulo', corTextoIdeal(navy) === '#ffffff' ? navy : '#1a1a1a');
+  // Ícones do rail de módulos da Home (ver .home-modulo-logo) — sempre a cor mais forte da marca.
+  root.setProperty('--home-icone-cor', corMaisForte(empresa));
 
   const headerIcon = document.getElementById('header-icon');
   const headerLogoImg = document.getElementById('header-logo-img');
