@@ -21,6 +21,12 @@ export const STATUS = {
 // feita no formulário do objetivo (permite editar/remover a análise sem tocar em itens manuais).
 const CATEGORIA_ANALISE_OBJETIVO = 'Análise do objetivo';
 
+// Réplica do rótulo usado em sipoc.js/macrofluxo.js (não importado de lá pra evitar acoplamento
+// entre módulos por causa de uma função tão pequena).
+function rotuloProcesso(p) {
+  return p.numero ? `${p.numero} — ${p.nome}` : p.nome;
+}
+
 export async function listarObjetivos(supabase, empresaId) {
   const { data, error } = await supabase
     .from('objetivos_estrategicos')
@@ -37,13 +43,14 @@ export async function render(container, state) {
   // responsável) e editar/excluir os objetivos em que já é a responsável.
   const podeCriar = podeEditar || resolverNivel(state, 'planejamento-estrategico', 'objetivos') === 'proprio';
 
-  let itens, membros, planos, riscos;
+  let itens, membros, planos, riscos, processos;
   try {
-    [itens, membros, planos, riscos] = await Promise.all([
+    [itens, membros, planos, riscos, processos] = await Promise.all([
       listarObjetivos(supabase, empresaAtual.id),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
       supabase.from('planos_acao').select('id, origem_id').eq('empresa_id', empresaAtual.id).eq('origem', 'objetivo').then((r) => r.data || []),
       supabase.from('riscos_oportunidades').select('id, tipo, descricao, categoria, objetivo_id').eq('empresa_id', empresaAtual.id).not('objetivo_id', 'is', null).then((r) => r.data || []),
+      supabase.from('macrofluxo_processos').select('id, numero, nome, tipo').eq('empresa_id', empresaAtual.id).order('ordem').then((r) => r.data || []),
     ]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-warning">Erro ao carregar objetivos: ${escapeHtml(err.message)}</div>`;
@@ -51,6 +58,7 @@ export async function render(container, state) {
   }
 
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+  const processoPorId = new Map(processos.map((p) => [p.id, rotuloProcesso(p)]));
   const planosPorObjetivo = new Map();
   planos.forEach((p) => planosPorObjetivo.set(p.origem_id, (planosPorObjetivo.get(p.origem_id) || 0) + 1));
   const riscosPorObjetivo = new Map();
@@ -94,7 +102,7 @@ export async function render(container, state) {
               return `
               <tr>
                 <td><input type="checkbox" class="ob-checkbox" data-id="${o.id}" ${selecionados.has(o.id) ? 'checked' : ''}></td>
-                <td><strong>${escapeHtml(o.nome)}</strong><br><span class="text-muted">${escapeHtml(o.descricao || '')}</span></td>
+                <td><strong>${escapeHtml(o.nome)}</strong><br><span class="text-muted">${escapeHtml(o.descricao || '')}</span>${o.processo_id ? `<br><span class="badge badge-neutral">${escapeHtml(processoPorId.get(o.processo_id) || '—')}</span>` : ''}</td>
                 <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
                 <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
                 <td><span class="badge status-${o.status}">${STATUS[o.status]}</span></td>
@@ -146,7 +154,7 @@ export async function render(container, state) {
     area.querySelectorAll('[data-editar]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const item = itens.find((i) => i.id === btn.dataset.editar);
-        abrirFormulario(state, container, membros, item, riscosPorObjetivo.get(item.id) || []);
+        abrirFormulario(state, container, membros, processos, item, riscosPorObjetivo.get(item.id) || []);
       });
     });
 
@@ -182,9 +190,10 @@ export async function render(container, state) {
         <span><i class="ti ti-flag"></i> Objetivos Estratégicos</span>
         <div style="display:flex;gap:8px">
           <button class="btn btn-secondary btn-sm" id="btn-objetivos-pdf"><i class="ti ti-printer"></i> Imprimir</button>
-          ${podeCriar ? '<button class="btn btn-primary btn-sm" id="btn-add-objetivo"><i class="ti ti-plus"></i> Novo objetivo</button>' : ''}
+          ${podeCriar ? `<button class="btn btn-primary btn-sm" id="btn-add-objetivo" ${processos.length ? '' : 'disabled title="Cadastre ao menos um processo no Macrofluxo antes de criar um objetivo"'}><i class="ti ti-plus"></i> Novo objetivo</button>` : ''}
         </div>
       </div>
+      ${podeCriar && !processos.length ? '<div class="alert alert-warning"><i class="ti ti-alert-triangle"></i> Cadastre ao menos um processo na aba Macrofluxo antes de criar objetivos — todo objetivo precisa estar vinculado a um processo.</div>' : ''}
       ${itens.length ? `
         <div class="filters filters-compact">
           <select id="ob-filtro-responsavel" class="filter-select filter-select-sm">
@@ -211,7 +220,7 @@ export async function render(container, state) {
   }
 
   const btnAdd = container.querySelector('#btn-add-objetivo');
-  if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, membros));
+  if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, membros, processos));
 
   const btnImprimir = container.querySelector('#btn-objetivos-pdf');
   if (btnImprimir) {
@@ -242,7 +251,7 @@ function imprimirListaObjetivos(itens, emailPorId) {
   `);
 }
 
-function abrirFormulario(state, container, membros, item = null, riscosVinculados = []) {
+function abrirFormulario(state, container, membros, processos, item = null, riscosVinculados = []) {
   const { supabase, empresaAtual, user } = state;
   // Nível "próprio" só grava se responsavel_id for a própria pessoa (regra do banco) — trava o
   // campo já na tela em vez de deixar escolher outra pessoa e a gravação falhar depois.
@@ -273,6 +282,14 @@ function abrirFormulario(state, container, membros, item = null, riscosVinculado
             ${Object.entries(STATUS).map(([v, l]) => `<option value="${v}" ${item?.status === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
+      </div>
+      <div class="form-group">
+        <label>Processo</label>
+        <select id="ob-processo" required>
+          <option value="">Selecione...</option>
+          ${processos.map((p) => `<option value="${p.id}" ${item?.processo_id === p.id ? 'selected' : ''}>${escapeHtml(rotuloProcesso(p))}</option>`).join('')}
+        </select>
+        <p class="text-muted" style="font-size:12px;margin-top:4px">Todo objetivo estratégico precisa estar vinculado a um processo do Macrofluxo — usado na impressão do SIPOC.</p>
       </div>
       <div class="form-group">
         <label>Responsável</label>
@@ -306,6 +323,7 @@ function abrirFormulario(state, container, membros, item = null, riscosVinculado
       perspectiva_bsc: modal.querySelector('#ob-perspectiva').value,
       status: modal.querySelector('#ob-status').value,
       responsavel_id: modal.querySelector('#ob-responsavel').value || null,
+      processo_id: modal.querySelector('#ob-processo').value,
     };
     let objetivoId = item?.id;
     if (item) {

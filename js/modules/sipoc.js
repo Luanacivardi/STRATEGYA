@@ -16,29 +16,48 @@ function rotuloProcesso(p) {
 }
 
 async function carregarDados(supabase, empresaId) {
-  const [resProcessos, resEntradas, resSaidas, resAtividades] = await Promise.all([
+  const [resProcessos, resEntradas, resSaidas, resAtividades, resObjetivos, resIndicadores] = await Promise.all([
     supabase.from('macrofluxo_processos').select('*').eq('empresa_id', empresaId),
     supabase.from('sipoc_entradas').select('*').eq('empresa_id', empresaId),
     supabase.from('sipoc_saidas').select('*').eq('empresa_id', empresaId),
     supabase.from('sipoc').select('*').eq('empresa_id', empresaId),
+    supabase.from('objetivos_estrategicos').select('id, nome, processo_id').eq('empresa_id', empresaId).not('processo_id', 'is', null),
+    supabase.from('indicadores').select('id, nome, objetivo_id').eq('empresa_id', empresaId).not('objetivo_id', 'is', null),
   ]);
-  for (const r of [resProcessos, resEntradas, resSaidas, resAtividades]) if (r.error) throw r.error;
+  for (const r of [resProcessos, resEntradas, resSaidas, resAtividades, resObjetivos, resIndicadores]) if (r.error) throw r.error;
 
   // Mesma ordenação do Macrofluxo: Direção, depois principais, depois apoio.
   const ordemTipo = { direcao: 0, principal: 1, apoio: 2 };
   const processos = [...resProcessos.data].sort((a, b) =>
     ordemTipo[a.tipo] - ordemTipo[b.tipo] || a.ordem - b.ordem || a.created_at.localeCompare(b.created_at));
 
-  return { processos, entradas: resEntradas.data, saidasManuais: resSaidas.data, atividadesPorProcesso: new Map(resAtividades.data.map((a) => [a.processo_id, a.atividades])) };
+  // Indicadores agrupados por objetivo, pra montar depois "indicadores dos objetivos deste processo".
+  const indicadoresPorObjetivo = new Map();
+  for (const i of resIndicadores.data) {
+    if (!indicadoresPorObjetivo.has(i.objetivo_id)) indicadoresPorObjetivo.set(i.objetivo_id, []);
+    indicadoresPorObjetivo.get(i.objetivo_id).push(i);
+  }
+
+  return {
+    processos, entradas: resEntradas.data, saidasManuais: resSaidas.data,
+    atividadesPorProcesso: new Map(resAtividades.data.map((a) => [a.processo_id, a.atividades])),
+    objetivos: resObjetivos.data, indicadoresPorObjetivo,
+  };
 }
 
 // Monta, para cada processo, a lista de entradas recebidas e a lista de saídas geradas
 // (saídas automáticas — espelho das entradas que outros processos registraram tendo este como
 // fornecedor — mais as saídas manuais para destinos externos).
-function montarEstrutura({ processos, entradas, saidasManuais, atividadesPorProcesso }) {
+function montarEstrutura({ processos, entradas, saidasManuais, atividadesPorProcesso, objetivos, indicadoresPorObjetivo }) {
   const nomeProcesso = new Map(processos.map((p) => [p.id, rotuloProcesso(p)]));
   const entradasPorProcesso = new Map();
   const saidasAutoPorProcesso = new Map();
+
+  const objetivosPorProcesso = new Map();
+  for (const o of objetivos || []) {
+    if (!objetivosPorProcesso.has(o.processo_id)) objetivosPorProcesso.set(o.processo_id, []);
+    objetivosPorProcesso.get(o.processo_id).push(o);
+  }
 
   for (const e of entradas) {
     if (!entradasPorProcesso.has(e.processo_id)) entradasPorProcesso.set(e.processo_id, []);
@@ -55,13 +74,24 @@ function montarEstrutura({ processos, entradas, saidasManuais, atividadesPorProc
     saidasManuaisPorProcesso.get(s.processo_id).push(s);
   }
 
-  return processos.map((p) => ({
-    processo: p,
-    atividades: atividadesPorProcesso.get(p.id) || '',
-    entradas: (entradasPorProcesso.get(p.id) || []).sort((a, b) => a.ordem - b.ordem),
-    saidasAuto: saidasAutoPorProcesso.get(p.id) || [],
-    saidasManuais: (saidasManuaisPorProcesso.get(p.id) || []).sort((a, b) => a.ordem - b.ordem),
-  }));
+  return processos.map((p) => {
+    const objetivosDoProcesso = objetivosPorProcesso.get(p.id) || [];
+    // Junta os indicadores de todos os objetivos deste processo, sem duplicar (um indicador pode
+    // medir mais de um objetivo do mesmo processo).
+    const indicadoresDoProcesso = new Map();
+    for (const o of objetivosDoProcesso) {
+      for (const i of indicadoresPorObjetivo.get(o.id) || []) indicadoresDoProcesso.set(i.id, i);
+    }
+    return {
+      processo: p,
+      atividades: atividadesPorProcesso.get(p.id) || '',
+      entradas: (entradasPorProcesso.get(p.id) || []).sort((a, b) => a.ordem - b.ordem),
+      saidasAuto: saidasAutoPorProcesso.get(p.id) || [],
+      saidasManuais: (saidasManuaisPorProcesso.get(p.id) || []).sort((a, b) => a.ordem - b.ordem),
+      objetivos: objetivosDoProcesso,
+      indicadores: [...indicadoresDoProcesso.values()],
+    };
+  });
 }
 
 export async function render(container, state) {
@@ -174,6 +204,20 @@ function imprimirSipoc(linhas, processos, empresaNome) {
           </tr></thead>
           <tbody>${linhasTabela}</tbody>
         </table>
+        <div class="sipoc-print-caixas">
+          <div class="sipoc-print-caixa">
+            <h3><i class="ti ti-flag"></i> Objetivos Estratégicos deste processo</h3>
+            ${linha.objetivos.length
+              ? `<ul>${linha.objetivos.map((o) => `<li>${escapeHtml(o.nome)}</li>`).join('')}</ul>`
+              : '<p class="sipoc-print-caixa-vazia">Nenhum objetivo vinculado a este processo.</p>'}
+          </div>
+          <div class="sipoc-print-caixa">
+            <h3><i class="ti ti-chart-line"></i> Indicadores que medem esses objetivos</h3>
+            ${linha.indicadores.length
+              ? `<ul>${linha.indicadores.map((i) => `<li>${escapeHtml(i.nome)}</li>`).join('')}</ul>`
+              : '<p class="sipoc-print-caixa-vazia">Nenhum indicador vinculado.</p>'}
+          </div>
+        </div>
       </div>`;
   }).join('');
 
