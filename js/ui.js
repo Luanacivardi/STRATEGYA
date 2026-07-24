@@ -66,6 +66,12 @@ export function formatarMesAno(periodo) {
   return `${MESES_ABREV[idx]}/${ano}`;
 }
 
+// Formata "YYYY-MM-DD" (ou qualquer ISO) como "dd/mm/aaaa" (pt-BR).
+export function formatarData(iso) {
+  if (!iso) return iso;
+  return new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('pt-BR');
+}
+
 // Formata um timestamp ISO como "dd/mm/aaaa hh:mm" (pt-BR), usado na Auditoria de Dados e no
 // visualizador de ciclos fechados do Planejamento Estratégico.
 export function formatarDataHora(iso) {

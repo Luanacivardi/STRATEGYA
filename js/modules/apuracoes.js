@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, resolverNivel, formatarData } from '../ui.js';
 import { recarregarAcessoApuracoes } from '../app.js';
 
 // Módulo "Gestão de Apurações": controla apenas o FLUXO de apurações/investigações corporativas
@@ -255,7 +255,7 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
               <td>${NATUREZA_LABEL[a.natureza]}</td>
               <td><span class="badge ${CRITICIDADE_BADGE[a.criticidade]}">${CRITICIDADE_LABEL[a.criticidade]}</span></td>
               <td><span class="badge ${STATUS_BADGE[a.status]}">${STATUS_LABEL[a.status]}</span></td>
-              <td>${estaAtrasada(a) ? `<span class="badge badge-danger">Atrasada (${calcularDataLimite(a)})</span>` : (calcularDataLimite(a) || '—')}</td>
+              <td>${estaAtrasada(a) ? `<span class="badge badge-danger">Atrasada (${formatarData(calcularDataLimite(a))})</span>` : (formatarData(calcularDataLimite(a)) || '—')}</td>
               <td>${escapeHtml(nomePorId.get(a.relator_id) || '—')}</td>
               <td class="table-actions">
                 <button class="icon-btn" data-editar="${a.id}" title="${podeEditar ? 'Abrir' : 'Visualizar'}"><i class="ti ${podeEditar ? 'ti-pencil' : 'ti-eye'}"></i></button>
