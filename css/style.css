@@ -408,10 +408,10 @@ input[type="file"]::file-selector-button:hover { background: var(--gold); border
 .badge-danger { background: #fee2e2; color: #991b1b; }
 .badge-neutral { background: var(--surface-1); color: var(--text-secondary); }
 
-.status-nao_iniciado { background: var(--surface-1); color: var(--text-secondary); }
-.status-em_andamento { background: #dbeafe; color: #0c4a6e; }
+.status-nao_iniciado { background: #e2e8f0; color: #475569; }
+.status-em_andamento { background: #fef9c3; color: #854d0e; }
 .status-atingido, .status-concluido { background: var(--bg-success); color: var(--text-success); }
-.status-atrasado { background: #fee2e2; color: #991b1b; }
+.status-atrasado, .status-pendente { background: #fee2e2; color: #991b1b; }
 
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
 .dashboard-card {
