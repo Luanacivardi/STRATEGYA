@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 import * as todo from './todo.js';
 
@@ -288,7 +288,7 @@ async function renderPlanos(container, state) {
     const area = container.querySelector('#planos-tabela-area');
     area.innerHTML = filtrados.length ? `
         <table class="table">
-          <thead><tr><th><input type="checkbox" id="pa-selecionar-todas"></th><th>Nº</th><th>Título</th><th>Categoria / Tipo</th><th>Origem</th><th>Responsável</th><th>Quando</th><th>Status</th><th>%</th><th>Evidência</th><th></th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="pa-selecionar-todas"></th><th>Nº</th><th style="width:26%">Título</th><th>Categoria / Tipo</th><th>Origem</th><th>Responsável</th><th>Quando</th><th>Status</th><th>%</th><th></th></tr></thead>
           <tbody>
             ${filtrados.map((p) => `
               <tr>
@@ -298,10 +298,9 @@ async function renderPlanos(container, state) {
                 <td>${p.origem_categoria ? `<span class="badge badge-neutral">${ORIGEM_CATEGORIA_LABEL[p.origem_categoria]}</span><br>` : ''}${p.tipo ? escapeHtml(TIPO_LABEL[p.tipo]) : '—'}</td>
                 <td>${p.origem ? `<span class="badge badge-neutral">${ORIGEM_LABEL[p.origem]}</span><br>` : ''}${escapeHtml(nomeOrigem(p, origens))}</td>
                 <td>${escapeHtml(emailPorId.get(p.responsavel_id) || '—')}</td>
-                <td>${p.quando || '—'}</td>
+                <td>${formatarData(p.quando) || '—'}</td>
                 <td><span class="badge status-${p.status}">${STATUS_LABEL[p.status]}</span></td>
                 <td>${p.percentual_conclusao}%</td>
-                <td>${p.evidencia_nome ? `<button class="icon-btn" data-ver-evidencia="${p.id}" title="Ver evidência"><i class="ti ti-paperclip"></i></button>` : '—'}</td>
                 <td class="table-actions">
                   <button class="icon-btn" data-imprimir-plano="${p.id}" title="Imprimir plano de ação"><i class="ti ti-printer"></i></button>
                   ${podeEditarRegistro(state, p.responsavel_id, 'acoes', 'planos') ? `
@@ -357,15 +356,6 @@ async function renderPlanos(container, state) {
         if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
         toast('Plano de ação excluído.', 'sucesso');
         render(container, state);
-      });
-    });
-
-    area.querySelectorAll('[data-ver-evidencia]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const plano = planos.find((p) => p.id === btn.dataset.verEvidencia);
-        const { data, error } = await supabase.storage.from('evidencias-planos').createSignedUrl(plano.evidencia_url, 300);
-        if (error) return toast('Erro ao abrir evidência: ' + error.message, 'erro');
-        window.open(data.signedUrl, '_blank');
       });
     });
 
@@ -434,7 +424,7 @@ async function renderPlanos(container, state) {
   container.querySelector('#btn-planos-pdf').addEventListener('click', () => imprimirListaPlanos(planosAlvo(), origens, emailPorId));
   container.querySelector('#btn-planos-email').addEventListener('click', () => {
     const alvo = planosAlvo();
-    const corpo = alvo.map((p) => `${p.numero} — ${p.titulo}\nStatus: ${STATUS_LABEL[p.status]} (${p.percentual_conclusao}%)\nResponsável: ${emailPorId.get(p.responsavel_id) || '—'}\nQuando: ${p.quando || '—'}\n`).join('\n');
+    const corpo = alvo.map((p) => `${p.numero} — ${p.titulo}\nStatus: ${STATUS_LABEL[p.status]} (${p.percentual_conclusao}%)\nResponsável: ${emailPorId.get(p.responsavel_id) || '—'}\nQuando: ${formatarData(p.quando) || '—'}\n`).join('\n');
     enviarPorEmail('Planos de Ação', corpo || 'Nenhum plano encontrado.');
   });
 }
@@ -445,7 +435,7 @@ function exportarCsvPlanos(planos, origens, emailPorId) {
     p.numero, p.titulo,
     p.origem_categoria ? ORIGEM_CATEGORIA_LABEL[p.origem_categoria] : '',
     p.tipo ? TIPO_LABEL[p.tipo] : '',
-    nomeOrigem(p, origens), emailPorId.get(p.responsavel_id) || '—', p.quando || '', STATUS_LABEL[p.status], p.percentual_conclusao,
+    nomeOrigem(p, origens), emailPorId.get(p.responsavel_id) || '—', formatarData(p.quando) || '', STATUS_LABEL[p.status], p.percentual_conclusao,
   ]);
   baixarCsv(`planos_acao_${new Date().toISOString().slice(0, 10)}.csv`, cabecalho, linhasValores);
 }
@@ -474,7 +464,7 @@ async function imprimirPlano(state, plano, origens) {
         <tr><th>O quê</th><td>${escapeHtml(plano.o_que || '—')}</td></tr>
         <tr><th>Por quê</th><td>${escapeHtml(plano.por_que || '—')}</td></tr>
         <tr><th>Onde</th><td>${escapeHtml(plano.onde || '—')}</td></tr>
-        <tr><th>Quando</th><td>${plano.quando || '—'}</td></tr>
+        <tr><th>Quando</th><td>${formatarData(plano.quando) || '—'}</td></tr>
         <tr><th>Quem (responsável)</th><td>${escapeHtml(nomePorId.get(plano.responsavel_id) || '—')}</td></tr>
         <tr><th>Como</th><td>${escapeHtml(plano.como || '—')}</td></tr>
         <tr><th>Quanto custa</th><td>${plano.quanto_custa ?? '—'}</td></tr>
@@ -490,7 +480,7 @@ async function imprimirPlano(state, plano, origens) {
             <tr>
               <td>${escapeHtml(i.descricao)}</td>
               <td>${escapeHtml(nomePorId.get(i.responsavel_id) || '—')}</td>
-              <td>${i.prazo || '—'}</td>
+              <td>${formatarData(i.prazo) || '—'}</td>
               <td>${STATUS_LABEL[i.status]}</td>
               <td>${i.percentual_conclusao}%</td>
             </tr>`).join('')}
@@ -515,7 +505,7 @@ function imprimirListaPlanos(planos, origens, emailPorId) {
               <td>${escapeHtml(p.titulo)}</td>
               <td>${p.origem ? ORIGEM_LABEL[p.origem] + ' — ' : ''}${escapeHtml(nomeOrigem(p, origens))}</td>
               <td>${escapeHtml(emailPorId.get(p.responsavel_id) || '—')}</td>
-              <td>${p.quando || '—'}</td>
+              <td>${formatarData(p.quando) || '—'}</td>
               <td>${STATUS_LABEL[p.status]}</td>
               <td>${p.percentual_conclusao}%</td>
             </tr>`).join('')}
@@ -856,7 +846,7 @@ async function montarAcoesMicro(state, modal, plano, membros) {
             <tr>
               <td>${escapeHtml(i.descricao)}</td>
               <td>${escapeHtml(emailPorId.get(i.responsavel_id) || '—')}</td>
-              <td>${i.prazo || '—'}</td>
+              <td>${formatarData(i.prazo) || '—'}</td>
               <td><span class="badge status-${i.status}">${STATUS_LABEL[i.status]}</span></td>
               <td>${i.percentual_conclusao}%</td>
               ${podeEditar ? `<td class="table-actions">
