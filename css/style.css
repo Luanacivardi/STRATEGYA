@@ -817,4 +817,12 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
   .sipoc-print-tabela th, .sipoc-print-tabela td { border: 1px solid #999; padding: 6px 8px; text-align: left; vertical-align: top; word-wrap: break-word; }
   .sipoc-print-tabela thead th { background: #2f2f45; color: #fff; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.2px; }
   .sipoc-print-atividade { background: #f7f7f7; }
+
+  /* Caixas de Objetivos Estratégicos / Indicadores vinculados ao processo, abaixo da tabela SIPOC */
+  .sipoc-print-caixas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .sipoc-print-caixa { border: 1px solid #999; border-radius: 6px; padding: 10px 14px; }
+  .sipoc-print-caixa h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; margin: 0 0 8px; color: #333; display: flex; align-items: center; gap: 6px; }
+  .sipoc-print-caixa ul { margin: 0; padding-left: 18px; font-size: 12px; }
+  .sipoc-print-caixa li { margin-bottom: 4px; }
+  .sipoc-print-caixa-vazia { margin: 0; font-size: 11.5px; color: #777; font-style: italic; }
 }
