@@ -21,14 +21,14 @@ const CLASSIFICACAO = {
 
 function formatarData(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('pt-BR');
+  return new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('pt-BR');
 }
 
 function gerarCabecalhoDocumento(doc, emp) {
   const controlada = !!doc.copia_controlada;
   return (
     '<div class="doc-header">'
-    + '<div class="doc-header-logo">' + (emp && emp.logo_url ? ('<img src="' + emp.logo_url + '" alt="">') : ('<span>' + escapeHtml(emp ? emp.nome : '') + '</span>')) + '</div>'
+    + '<div class="doc-header-logo">' + (emp && emp.logo_url ? ('<img src="' + escapeHtml(emp.logo_url) + '" alt="">') : ('<span>' + escapeHtml(emp ? emp.nome : '') + '</span>')) + '</div>'
     + '<div class="doc-header-titulo">' + escapeHtml(doc.tipos_documento.nome.toUpperCase()) + ' — ' + escapeHtml(doc.nome.toUpperCase()) + '</div>'
     + '<div class="doc-header-codigo">'
     + '<div class="doc-header-numero">' + escapeHtml(doc.numero) + '</div>'

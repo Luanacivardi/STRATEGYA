@@ -139,7 +139,7 @@ export async function render(container, state) {
       abrirModalMatrizPermissoes(state, {
         sujeitoTipo: 'usuario', sujeitoId: usuarioId, empresaId,
         modulosHabilitados: pe?.empresa.modulos_habilitados, papel: membro?.papel,
-        titulo: `Permissões — ${btn.dataset.nomeUsuario}`,
+        titulo: `Permissões — ${escapeHtml(btn.dataset.nomeUsuario)}`,
       }, () => render(container, state));
     });
   });

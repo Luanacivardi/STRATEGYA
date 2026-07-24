@@ -1,4 +1,5 @@
 import { escapeHtml, formatarValor } from '../ui.js';
+import { metaDoPeriodo } from './indicadores.js';
 
 const PERSPECTIVAS = [
   { key: 'financeira', label: 'Financeira' },
@@ -59,14 +60,15 @@ export async function render(container, state) {
     if (!ultimoPorIndicador.has(r.indicador_id)) ultimoPorIndicador.set(r.indicador_id, r);
   }
 
-  // Metas variáveis indexadas por indicador+mês ('YYYY-MM').
-  const metaVariavelPorMes = new Map(metasVariaveis.map((m) => [`${m.indicador_id}|${m.periodo.slice(0, 7)}`, Number(m.meta)]));
-  const metaVigente = (ind, ultimo) => {
-    if (ind.tipo_meta !== 'variavel') return ind.meta;
-    if (!ultimo) return null;
-    const m = metaVariavelPorMes.get(`${ind.id}|${ultimo.periodo.slice(0, 7)}`);
-    return m === undefined ? null : m;
-  };
+  // Metas variáveis agrupadas por indicador (um Map "mês -> meta" para cada um), no formato que
+  // metaDoPeriodo() de indicadores.js espera — reaproveita a mesma regra do resto do sistema
+  // (inclusive o guard de classificacao !== 'com_meta') em vez de reimplementar localmente.
+  const metasPorIndicador = new Map();
+  for (const m of metasVariaveis) {
+    if (!metasPorIndicador.has(m.indicador_id)) metasPorIndicador.set(m.indicador_id, new Map());
+    metasPorIndicador.get(m.indicador_id).set(m.periodo.slice(0, 7), Number(m.meta));
+  }
+  const metaVigente = (ind, ultimo) => metaDoPeriodo(ind, metasPorIndicador.get(ind.id), ultimo?.periodo);
 
   const totalObjetivos = (objetivos || []).length;
   const objetivosAtingidos = (objetivos || []).filter((o) => o.status === 'atingido').length;

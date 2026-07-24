@@ -401,7 +401,7 @@ export async function render(container, state) {
       abrirModalMatrizPermissoes(state, {
         sujeitoTipo: 'departamento', sujeitoId: btn.dataset.nivelDepto, empresaId: empresaAtual.id,
         modulosHabilitados: empresaAtual.modulos_habilitados,
-        titulo: `Permissões — Departamento "${btn.dataset.nomeDepto}"`,
+        titulo: `Permissões — Departamento "${escapeHtml(btn.dataset.nomeDepto)}"`,
       }, () => render(container, state));
     });
   });
@@ -412,7 +412,7 @@ export async function render(container, state) {
       abrirModalMatrizPermissoes(state, {
         sujeitoTipo: 'usuario', sujeitoId: btn.dataset.nivelUsuario, empresaId: empresaAtual.id,
         modulosHabilitados: empresaAtual.modulos_habilitados, papel: membro?.papel,
-        titulo: `Permissões — ${btn.dataset.nomeUsuario}`,
+        titulo: `Permissões — ${escapeHtml(btn.dataset.nomeUsuario)}`,
       }, () => render(container, state));
     });
   });

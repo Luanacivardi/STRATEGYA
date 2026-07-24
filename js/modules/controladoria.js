@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, formatarDataHora } from '../ui.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
 const CATEGORIA_BADGE = { receita: 'badge-success', custo: 'badge-warning', despesa: 'badge-danger', investimento: 'badge-neutral' };
@@ -9,7 +9,9 @@ const EXT_PARA_TIPO = { pdf: 'pdf', xls: 'excel', xlsx: 'excel', png: 'png', jpg
 const PRIORIDADE_LABEL = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
 
 const fmtCompetencia = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' }) : '—';
-const fmtData = (iso) => iso ? new Date(iso).toLocaleString('pt-BR') : '—';
+// Reaproveita formatarDataHora() de ui.js (mesmo formato "dd/mm/aaaa hh:mm" usado no resto do
+// app) em vez de toLocaleString('pt-BR') sem opções, que também mostra segundos e vírgula.
+const fmtData = (iso) => iso ? formatarDataHora(iso) : '—';
 
 const fmtMoeda = (v) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 

@@ -736,7 +736,18 @@ function abrirFormulario(state, container, origens, membros, item = null) {
   toggleFerramenta('#btn-toggle-5porques', '#grupo-5porques');
   toggleFerramenta('#btn-toggle-ishikawa', '#grupo-ishikawa');
 
-  if (item) montarAcoesMicro(state, modal, item, membros);
+  if (item) {
+    montarAcoesMicro(state, modal, item, membros);
+    // montarAcoesMicro atualiza o % do plano (em memória e no banco) na hora ao adicionar/editar/
+    // excluir uma tarefa, mas isso só aparecia na tabela de planos por trás depois de um refresh
+    // manual — se a pessoa fechasse o modal pelo X ou clicando fora (sem clicar em "Salvar" no
+    // formulário do plano), a tabela ficava com o % desatualizado até a próxima navegação.
+    const atualizarTabelaAoFechar = () => render(container, state);
+    modal.querySelector('.modal-close').addEventListener('click', atualizarTabelaAoFechar, { once: true });
+    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'modal-overlay') atualizarTabelaAoFechar();
+    }, { once: true });
+  }
 
   modal.querySelector('#form-plano').addEventListener('submit', async (e) => {
     e.preventDefault();

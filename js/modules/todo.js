@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData } from '../ui.js';
 import { recalcularPercentualMacro } from './planosAcao.js';
 import { listarObjetivos } from './objetivos.js';
 
@@ -130,7 +130,7 @@ async function carregarLinhas(supabase, empresaAtual) {
 function exportarCsv(linhas) {
   const cabecalho = ['Origem', 'Descrição', 'Responsável', 'Indicador', 'Prazo', 'Status', 'Evolução'];
   const linhasValores = linhas.map((l) => [
-    labelOrigem(l), l.descricao, l.responsavelNome, l.indicadorNome, l.prazo || '', STATUS_LABEL[l.statusKey], l.evolucao || '',
+    labelOrigem(l), l.descricao, l.responsavelNome, l.indicadorNome, formatarData(l.prazo) || '', STATUS_LABEL[l.statusKey], l.evolucao || '',
   ]);
   baixarCsv(`tarefas_${new Date().toISOString().slice(0, 10)}.csv`, cabecalho, linhasValores);
 }
@@ -244,7 +244,7 @@ export async function renderCorpo(container, state) {
               <td>${escapeHtml(l.descricao)}${l.evolucao ? `<br><span class="text-muted"><i class="ti ti-notes"></i> ${escapeHtml(l.evolucao)}</span>` : ''}</td>
               <td>${escapeHtml(l.responsavelNome)}</td>
               <td>${escapeHtml(l.indicadorNome)}</td>
-              <td>${l.prazo || '—'}</td>
+              <td>${formatarData(l.prazo) || '—'}</td>
               <td><span class="badge ${l.statusKey === 'concluido' ? 'status-concluido' : 'status-nao_iniciado'}">${STATUS_LABEL[l.statusKey]}</span></td>
               <td class="table-actions">
                 <button class="icon-btn" data-imprimir-tarefa="${l.origem}:${l.id}" title="Imprimir esta tarefa"><i class="ti ti-printer"></i></button>
@@ -327,7 +327,7 @@ export async function renderCorpo(container, state) {
   container.querySelector('#btn-todo-pdf').addEventListener('click', () => imprimirTarefasEmLote(alvoAtual()));
   container.querySelector('#btn-todo-email').addEventListener('click', () => {
     const alvo = alvoAtual();
-    const corpo = alvo.map((l) => `${labelOrigem(l)} — ${l.descricao}\nResponsável: ${l.responsavelNome} | Prazo: ${l.prazo || '—'} | Status: ${STATUS_LABEL[l.statusKey]}\n`).join('\n');
+    const corpo = alvo.map((l) => `${labelOrigem(l)} — ${l.descricao}\nResponsável: ${l.responsavelNome} | Prazo: ${formatarData(l.prazo) || '—'} | Status: ${STATUS_LABEL[l.statusKey]}\n`).join('\n');
     enviarPorEmail('Tarefas', corpo || 'Nenhuma tarefa encontrada.');
   });
 
@@ -352,7 +352,7 @@ function imprimirTarefasEmLote(linhas) {
               <td>${escapeHtml(l.descricao)}</td>
               <td>${escapeHtml(l.responsavelNome)}</td>
               <td>${escapeHtml(l.indicadorNome)}</td>
-              <td>${l.prazo || '—'}</td>
+              <td>${formatarData(l.prazo) || '—'}</td>
               <td>${STATUS_LABEL[l.statusKey]}</td>
               <td>${l.evolucao ? escapeHtml(l.evolucao) : '—'}</td>
             </tr>`).join('')}
@@ -374,7 +374,7 @@ function imprimirTarefa(linha) {
         <tr><th>Descrição</th><td>${escapeHtml(linha.descricao)}</td></tr>
         <tr><th>Responsável</th><td>${escapeHtml(linha.responsavelNome)}</td></tr>
         <tr><th>Indicador</th><td>${escapeHtml(linha.indicadorNome)}</td></tr>
-        <tr><th>Prazo</th><td>${linha.prazo || '—'}</td></tr>
+        <tr><th>Prazo</th><td>${formatarData(linha.prazo) || '—'}</td></tr>
         <tr><th>Status</th><td>${STATUS_LABEL[linha.statusKey]}</td></tr>
         <tr><th>Evolução / ações realizadas</th><td>${linha.evolucao ? escapeHtml(linha.evolucao) : '—'}</td></tr>
       </tbody>
@@ -409,7 +409,10 @@ function abrirDetalheTarefa(state, container, membros, indicadores, linha = null
   const { supabase, empresaAtual, user } = state;
   const origem = linha?.origem || 'manual';
   const raw = linha?.raw;
-  const travarResponsavelEmSiMesmo = !linha && resolverNivel(state, 'acoes', 'tarefas') === 'proprio';
+  // Sem "!linha &&" de propósito: no nível "proprio" a trava vale também ao editar uma tarefa já
+  // existente (só é possível abrir a edição porque a pessoa já é a responsável — sem isso, ela
+  // conseguia reatribuir a tarefa pra outra pessoa mesmo sem ter Edição Total sobre Tarefas).
+  const travarResponsavelEmSiMesmo = resolverNivel(state, 'acoes', 'tarefas') === 'proprio';
 
   const mostraIndicador = origem === 'manual';
   const mostraStatusManual = origem === 'manual';

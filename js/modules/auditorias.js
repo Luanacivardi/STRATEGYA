@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao, enviarPorEmail, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao, enviarPorEmail, resolverNivel, formatarData } from '../ui.js';
 
 // Módulo "Gestão de Auditorias Corporativas" (ISO 9001/14001/45001): solicitação → priorização
 // (IPA) → planejamento inteligente → distribuição automática de horas → agenda automática →
@@ -1527,7 +1527,7 @@ let relatorioAuditoriaId = null; // auditoria selecionada na aba Relatórios, pe
 async function renderRelatorios(container, state) {
   const { supabase, empresaAtual } = state;
   if (!podeEditarAuditorias(state, 'relatorios')) {
-    container.innerHTML = `<div class="card">${renderFiltrosGrupo(state)}<div class="empty-state" style="margin-top:1rem"><i class="ti ti-lock"></i>Apenas administradores e a equipe ORBEEX podem elaborar relatórios de auditoria.</div></div>`;
+    container.innerHTML = `<div class="card">${renderFiltrosGrupo(state)}<div class="empty-state" style="margin-top:1rem"><i class="ti ti-lock"></i>Você não tem Edição Total em Relatórios de Auditoria — fale com um administrador para elaborar relatórios.</div></div>`;
     wireFiltrosGrupo(container, state);
     return;
   }
@@ -1605,7 +1605,7 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
           <tr><th>Título</th><td>${escapeHtml(auditoria.titulo)}</td></tr>
           <tr><th>Tipo</th><td>${TIPO_LABEL[auditoria.tipo] || '—'}${auditoria.tipo === 'outro' ? ' — ' + escapeHtml(auditoria.tipo_outro_descricao || '') : ''} (${MODALIDADE_LABEL[auditoria.modalidade] || '—'})</td></tr>
           <tr><th>Unidade</th><td>${escapeHtml(auditoria.unidade || '—')}</td></tr>
-          <tr><th>Data prevista</th><td>${auditoria.data_prevista || '—'}</td></tr>
+          <tr><th>Data prevista</th><td>${formatarData(auditoria.data_prevista) || '—'}</td></tr>
           <tr><th>Normas aplicáveis</th><td>${(auditoria.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td></tr>
           <tr><th>Objetivo</th><td>${escapeHtml(auditoria.objetivo || '—')}</td></tr>
           <tr><th>Escopo</th><td>${escapeHtml(auditoria.escopo || '—')}</td></tr>
@@ -1862,7 +1862,7 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
         <tr><th>Título</th><td>${escapeHtml(auditoria.titulo)}</td></tr>
         <tr><th>Tipo</th><td>${TIPO_LABEL[auditoria.tipo] || '—'}${auditoria.tipo === 'outro' ? ' — ' + escapeHtml(auditoria.tipo_outro_descricao || '') : ''} (${MODALIDADE_LABEL[auditoria.modalidade] || '—'})</td></tr>
         <tr><th>Unidade</th><td>${escapeHtml(auditoria.unidade || '—')}</td></tr>
-        <tr><th>Data prevista</th><td>${auditoria.data_prevista || '—'}</td></tr>
+        <tr><th>Data prevista</th><td>${formatarData(auditoria.data_prevista) || '—'}</td></tr>
         <tr><th>Normas aplicáveis</th><td>${(auditoria.normas || []).map((n) => NORMA_LABEL[n]).join(', ') || '—'}</td></tr>
         <tr><th>Objetivo</th><td>${escapeHtml(auditoria.objetivo || '—')}</td></tr>
         <tr><th>Escopo</th><td>${escapeHtml(auditoria.escopo || '—')}</td></tr>

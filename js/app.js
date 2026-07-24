@@ -256,7 +256,7 @@ async function carregarEmpresas() {
   btnPermissoes.style.display = state.ehOrbeex ? '' : 'none';
 
   empresaSelect.innerHTML = state.empresas
-    .map((emp) => `<option value="${emp.id}">${emp.nome}</option>`)
+    .map((emp) => `<option value="${emp.id}">${escapeHtml(emp.nome)}</option>`)
     .join('');
 
   if (state.empresas.length === 0) {
@@ -347,7 +347,7 @@ function atualizarCabecalhoImpressao(emp) {
   if (!el) return;
   if (!emp) { el.innerHTML = ''; return; }
   el.innerHTML = `
-    ${emp.logo_url ? `<img src="${emp.logo_url}" alt="Logo ${escapeHtml(emp.nome)}">` : ''}
+    ${emp.logo_url ? `<img src="${escapeHtml(emp.logo_url)}" alt="Logo ${escapeHtml(emp.nome)}">` : ''}
     <div>
       <div class="plt-empresa-nome">${escapeHtml(emp.nome)}</div>
       ${emp.cnpj ? `<div class="plt-sub">CNPJ: ${escapeHtml(emp.cnpj)}</div>` : ''}
@@ -674,9 +674,15 @@ const SUBMODULOS_POR_ABA = {
   atas: ['atas'],
 };
 
+// Escopado ao próprio nav (não a document) — a classe ".tab-btn" também é reaproveitada pela
+// sub-navegação interna de Contexto (SWOT/Partes/Empresa/Macrofluxo/SIPOC/Organograma, com
+// data-grupo em vez de data-tab). Uma busca em document pegaria os dois grupos de botões juntos
+// e escondia/desmarcava a sub-navegação de Contexto toda vez que essa função rodasse de novo.
+const tabsNav = document.getElementById('tabs');
+
 function atualizarVisibilidadeAbasPE() {
   let primeiraVisivel = null;
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
+  tabsNav.querySelectorAll('.tab-btn').forEach((btn) => {
     const aba = btn.dataset.tab;
     const submodulos = SUBMODULOS_POR_ABA[aba] || [];
     const visivel = submodulos.some((s) => resolverNivel(state, 'planejamento-estrategico', s) !== 'sem_acesso');
@@ -688,11 +694,11 @@ function atualizarVisibilidadeAbasPE() {
   }
 }
 
-document.querySelectorAll('.tab-btn').forEach((btn) => {
+tabsNav.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     tabAtiva = btn.dataset.tab;
     if (tabAtiva === 'indicadores') indicadores.filtrarPorObjetivo(null);
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    tabsNav.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     renderConteudoAtivo();
   });
@@ -742,7 +748,7 @@ async function renderConteudoAtivo() {
   if (moduloAtivo === 'planejamento-estrategico') {
     areaModulo.style.display = 'block';
     atualizarVisibilidadeAbasPE();
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabAtiva));
+    tabsNav.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabAtiva));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     const mod = TABS_PLANEJAMENTO[tabAtiva];
     const container = document.getElementById(`tab-${tabAtiva}`);

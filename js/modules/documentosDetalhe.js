@@ -5,7 +5,7 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar } from '../ui.js';
 import { imprimirDocumentoLegado, visualizarPdfDocumentoLegado } from './documentosImpressaoLegado.js';
 import {
-  render, STATUS, CLASSIFICACAO, ehRegistro, formatarData, formatarTamanho,
+  render, STATUS, ehRegistro, formatarData, formatarTamanho,
   uploadArquivoDocumento, uploadPdfDocumento, removerArquivosDocumento,
   abrirArquivoDocumento, abrirVisualizadorDocumento, abrirModalAprovar, arquivoEhPdf,
   BUCKET_ARQUIVOS, BUCKET_PDF, ACCEPT_ARQUIVO, ACCEPT_PDF,

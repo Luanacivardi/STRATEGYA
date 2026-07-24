@@ -182,9 +182,11 @@ export function abrirModalAprovar(state, container, doc, ctx = {}) {
   });
 }
 
+// Datas puras (YYYY-MM-DD, sem hora) precisam do "T00:00:00" — sem isso, o navegador interpreta
+// como meia-noite UTC e, em fuso Brasil (UTC-3), o dia exibido fica um a menos.
 export function formatarData(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('pt-BR');
+  return new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('pt-BR');
 }
 
 export function formatarTamanho(bytes) {
@@ -752,7 +754,8 @@ function renderMonitoramento(corpo, { documentos, revisoesObsoletas }, irPara) {
 
   const hoje = new Date();
   const calcularVencimento = (d) => {
-    const base = new Date(d.data_publicacao || d.created_at);
+    const dataBase = d.data_publicacao || d.created_at;
+    const base = new Date(dataBase.length === 10 ? dataBase + 'T00:00:00' : dataBase);
     const vencimento = new Date(base);
     vencimento.setMonth(vencimento.getMonth() + d.tempo_retencao_meses);
     return { base, vencimento, dias: Math.round((vencimento - hoje) / (1000 * 60 * 60 * 24)) };
