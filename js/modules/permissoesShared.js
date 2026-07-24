@@ -14,6 +14,15 @@ const NIVEIS_SELECIONAVEIS = ['leitura', 'proprio', 'total', 'aprovacao', 'sem_a
 const NIVEIS_POR_MODULO = { auditorias: ['leitura', 'total', 'sem_acesso'], apuracoes: ['leitura', 'total', 'sem_acesso'] };
 const niveisAplicaveis = (moduloId) => NIVEIS_POR_MODULO[moduloId] || NIVEIS_SELECIONAVEIS;
 
+// Mesmo fallback por papel do resolverNivel()/nivel_edicao_usuario() (ver js/ui.js) — usado só pra
+// MOSTRAR ao administrador o que vale hoje quando não há override ("Padrão do papel"), sem gravar
+// nada: a linha em permissoes_edicao só é criada de fato se o admin escolher um nível explícito.
+function nivelPadraoPapel(papel, moduloId) {
+  if (papel === 'orbeex' || papel === 'admin') return 'total';
+  if (papel === 'gestor') return moduloId === 'planejamento-estrategico' ? 'leitura' : 'proprio';
+  return moduloId === 'planejamento-estrategico' ? 'sem_acesso' : 'leitura';
+}
+
 // ---------- Editar colaborador (nome / papel / departamento) ----------
 // escopo 'empresa': mostra departamento (empresaUsuarios.js). escopo 'global': sem departamento,
 // mesma trava de papel ORBEEX (permissoes.js, tela cross-empresa).
@@ -95,7 +104,12 @@ export function abrirModalEditarUsuario(state, { escopo, empresaId, membro, depa
 }
 
 // ---------- Matriz de permissões (Módulo → Submódulo x Nível), por usuário ou por departamento ----------
-export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId, empresaId, titulo }, aoSalvar) {
+// `papel` (só faz sentido para sujeitoTipo 'usuario' — um departamento não tem papel único) permite
+// mostrar o nível padrão CONCRETO daquela pessoa em cada módulo, em vez do rótulo genérico
+// "Padrão do papel". `modulosHabilitados` filtra a matriz só para os módulos ligados nesta empresa
+// (Empresa > Módulos habilitados, em Configurações) — não faz sentido configurar permissão de um
+// módulo que a empresa nem tem acesso.
+export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId, empresaId, titulo, papel = null, modulosHabilitados = [] }, aoSalvar) {
   const { supabase } = state;
   const coluna = sujeitoTipo === 'usuario' ? 'usuario_id' : 'departamento_id';
 
@@ -109,18 +123,22 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
   const nivelDe = (modulo, submodulo) =>
     linhas.find((l) => l.modulo === modulo && (l.submodulo || null) === (submodulo || null))?.nivel || '';
 
-  const linhaHtml = (modulo, submodulo, nome, comIndentacao) => `
+  const linhaHtml = (modulo, submodulo, nome, comIndentacao) => {
+    const padrao = papel ? nivelPadraoPapel(papel, modulo) : null;
+    const rotuloPadrao = padrao ? `Padrão do papel (${NIVEL_LABEL[padrao]})` : 'Padrão do papel';
+    return `
     <tr>
       <td${comIndentacao ? ' style="padding-left:2rem"' : ''}>${escapeHtml(nome)}</td>
       <td>
         <select data-nivel-modulo="${modulo}" data-nivel-submodulo="${submodulo || ''}" title="Passe o mouse sobre uma opção para ver o que ela libera">
-          <option value="" ${!nivelDe(modulo, submodulo) ? 'selected' : ''} title="Segue o comportamento automático do papel da pessoa neste módulo/submódulo.">Padrão do papel</option>
+          <option value="" ${!nivelDe(modulo, submodulo) ? 'selected' : ''} title="Segue o comportamento automático do papel da pessoa neste módulo/submódulo.">${escapeHtml(rotuloPadrao)}</option>
           ${niveisAplicaveis(modulo).map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''} title="${escapeHtml(NIVEL_DESCRICAO[n])}">${NIVEL_LABEL[n]}</option>`).join('')}
         </select>
       </td>
     </tr>`;
+  };
 
-  const corpoHtml = MODULOS_SISTEMA.filter((m) => m.disponivel).map((m) => {
+  const corpoHtml = MODULOS_SISTEMA.filter((m) => m.disponivel && modulosHabilitados.includes(m.id)).map((m) => {
     const linhaModulo = linhaHtml(m.id, null, m.submodulos?.length ? `${m.nome} (todo o módulo)` : m.nome, false);
     const linhasSub = (m.submodulos || []).map((s) => linhaHtml(m.id, s.id, s.nome, true)).join('');
     return linhaModulo + linhasSub;
@@ -129,6 +147,7 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
   const modal = abrirModal(titulo, `
     <form id="form-matriz-permissoes">
       <p class="text-muted" style="margin-bottom:0.5rem;font-size:13px">"Padrão do papel" segue o nível automático do papel (ex: Gestor = Edição sob Responsabilidade, exceto Planejamento Estratégico = Visualização; Usuário = Visualização, exceto Planejamento Estratégico = Sem acesso). Escolha um nível específico só para sobrepor o padrão naquele módulo/submódulo.</p>
+      ${!corpoHtml ? '<div class="alert alert-info"><i class="ti ti-info-circle"></i> Esta empresa ainda não tem nenhum módulo habilitado (configure em Empresa e Usuários).</div>' : ''}
       <p class="text-muted" style="margin-bottom:1rem;font-size:13px">Em Gestão de Apurações, o nível só tem efeito para quem já é membro ativo do comitê de apuração (gerenciado na própria tela do módulo) — configurar um nível aqui para quem não é membro não dá acesso algum, é a proteção contra conflito de interesse que continua valendo acima de tudo. Em Gestão de Auditorias não existe nível "Edição sob Responsabilidade" (não há um responsável único por registro) — só Visualização e Edição Total se aplicam.</p>
       <table class="table">
         <thead><tr><th>Módulo / Submódulo</th><th>Nível</th></tr></thead>

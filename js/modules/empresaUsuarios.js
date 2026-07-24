@@ -178,7 +178,8 @@ export async function render(container, state) {
           </div>
           <div class="form-group">
             <label>Papel</label>
-            <select id="novo-papel">
+            <select id="novo-papel" required>
+              <option value="" disabled selected>Selecione...</option>
               <option value="usuario">Usuário</option>
               <option value="gestor">Gestor</option>
               <option value="admin">Administrador</option>
@@ -399,6 +400,7 @@ export async function render(container, state) {
     btn.addEventListener('click', () => {
       abrirModalMatrizPermissoes(state, {
         sujeitoTipo: 'departamento', sujeitoId: btn.dataset.nivelDepto, empresaId: empresaAtual.id,
+        modulosHabilitados: empresaAtual.modulos_habilitados,
         titulo: `Permissões — Departamento "${btn.dataset.nomeDepto}"`,
       }, () => render(container, state));
     });
@@ -406,8 +408,10 @@ export async function render(container, state) {
 
   container.querySelectorAll('[data-nivel-usuario]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const membro = membros.find((m) => m.usuario_id === btn.dataset.nivelUsuario);
       abrirModalMatrizPermissoes(state, {
         sujeitoTipo: 'usuario', sujeitoId: btn.dataset.nivelUsuario, empresaId: empresaAtual.id,
+        modulosHabilitados: empresaAtual.modulos_habilitados, papel: membro?.papel,
         titulo: `Permissões — ${btn.dataset.nomeUsuario}`,
       }, () => render(container, state));
     });

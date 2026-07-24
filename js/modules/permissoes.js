@@ -44,7 +44,8 @@ export async function render(container, state) {
           <div class="form-group"><label>Senha</label><input type="password" required minlength="6" data-novo-senha></div>
           <div class="form-group">
             <label>Papel</label>
-            <select data-novo-papel>
+            <select data-novo-papel required>
+              <option value="" disabled selected>Selecione...</option>
               <option value="usuario">Usuário</option>
               <option value="gestor">Gestor</option>
               <option value="admin">Administrador</option>
@@ -133,8 +134,11 @@ export async function render(container, state) {
   container.querySelectorAll('[data-nivel-usuario]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const [empresaId, usuarioId] = btn.dataset.nivelUsuario.split('|');
+      const pe = porEmpresa.find((x) => x.empresa.id === empresaId);
+      const membro = pe?.membros.find((m) => m.usuario_id === usuarioId);
       abrirModalMatrizPermissoes(state, {
         sujeitoTipo: 'usuario', sujeitoId: usuarioId, empresaId,
+        modulosHabilitados: pe?.empresa.modulos_habilitados, papel: membro?.papel,
         titulo: `Permissões — ${btn.dataset.nomeUsuario}`,
       }, () => render(container, state));
     });
