@@ -1,8 +1,19 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, resolverNivel } from '../ui.js';
 
 // Organograma da empresa: hierarquia de cargos/pessoas. Não é um editor de arrastar-e-soltar —
-// você cadastra o cargo e escolhe o superior imediato numa lista, e o desenho (árvore com caixas
-// e linhas de conexão) é montado automaticamente a partir da hierarquia informada.
+// você cadastra o cargo e escolhe o superior imediato numa lista, e o desenho é montado
+// automaticamente a partir da hierarquia informada.
+//
+// Tela: árvore recolhível (linhas indentadas, tipo explorador de arquivos) em vez de caixas
+// conectadas por linha horizontal — organogramas reais costumam ter dezenas de cargos e vários
+// níveis, e uma árvore de caixas lado a lado nesse tamanho fica enorme e cheia de rolagem
+// horizontal. A árvore indentada escala bem pra qualquer profundidade/largura sem isso.
+// Impressão continua em lista hierárquica completa (ignora o estado de expandir/recolher da tela).
+
+// ids dos cargos com o próprio "ramo" (filhos) visível — controla o recolher/expandir da árvore.
+// Recriado a cada troca de empresa/re-render vindo de fora; preservado entre re-renders internos
+// (expandir/recolher/editar) pra não fechar tudo de novo a cada ação.
+let expandidos = null;
 
 async function carregarCargos(supabase, empresaId) {
   const { data, error } = await supabase.from('organograma_cargos').select('*').eq('empresa_id', empresaId);
@@ -51,44 +62,81 @@ export async function render(container, state) {
 
   const raizes = montarArvore(cargos);
 
-  function renderNo(cargo) {
-    return `
-      <li>
-        <div class="org-box" data-id="${cargo.id}">
-          <div class="org-box-cargo">${escapeHtml(cargo.nome_cargo)}</div>
-          ${cargo.nome_pessoa ? `<div class="org-box-pessoa">${escapeHtml(cargo.nome_pessoa)}</div>` : ''}
-          ${podeEditar ? `
-            <div class="org-box-acoes">
-              <button type="button" class="icon-btn" data-add-subordinado="${cargo.id}" title="Adicionar subordinado"><i class="ti ti-plus"></i></button>
-              <button type="button" class="icon-btn" data-editar="${cargo.id}" title="Editar"><i class="ti ti-pencil"></i></button>
-              <button type="button" class="icon-btn" data-excluir="${cargo.id}" title="Excluir"><i class="ti ti-trash"></i></button>
-            </div>` : ''}
+  // Primeira carga (ou empresa trocou): abre só a raiz + o primeiro nível — o resto começa
+  // recolhido pra não jogar uma árvore de 50+ cargos inteira na tela de uma vez.
+  if (!expandidos) expandidos = new Set(raizes.map((r) => r.id));
+
+  const contarDescendentes = (cargo) => cargo.filhos.reduce((n, f) => n + 1 + contarDescendentes(f), 0);
+
+  function renderLinha(cargo, nivel) {
+    const temFilhos = cargo.filhos.length > 0;
+    const aberto = expandidos.has(cargo.id);
+    const linhaAtual = `
+      <div class="org-row" style="padding-left:${nivel * 22}px">
+        ${temFilhos
+          ? `<button type="button" class="org-toggle" data-toggle="${cargo.id}" title="${aberto ? 'Recolher' : 'Expandir'}"><i class="ti ${aberto ? 'ti-chevron-down' : 'ti-chevron-right'}"></i></button>`
+          : '<span class="org-toggle-espaco"></span>'}
+        <div class="org-row-info">
+          <span class="org-row-cargo">${escapeHtml(cargo.nome_cargo)}</span>
+          ${cargo.nome_pessoa ? `<span class="org-row-pessoa">${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
+          ${temFilhos ? `<span class="org-row-contagem">${contarDescendentes(cargo)} subordinado(s)</span>` : ''}
         </div>
-        ${cargo.filhos.length ? `<ul>${cargo.filhos.map(renderNo).join('')}</ul>` : ''}
-      </li>`;
+        ${podeEditar ? `
+          <div class="org-row-acoes">
+            <button type="button" class="icon-btn" data-add-subordinado="${cargo.id}" title="Adicionar subordinado"><i class="ti ti-plus"></i></button>
+            <button type="button" class="icon-btn" data-editar="${cargo.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+            <button type="button" class="icon-btn" data-excluir="${cargo.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+          </div>` : ''}
+      </div>`;
+    const filhosHtml = temFilhos && aberto ? cargo.filhos.map((f) => renderLinha(f, nivel + 1)).join('') : '';
+    return linhaAtual + filhosHtml;
   }
 
   container.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
       <span style="font-weight:700;font-size:13px;color:var(--navy-titulo)"><i class="ti ti-sitemap"></i> Organograma</span>
       <div style="display:flex;gap:8px">
+        ${raizes.length ? `
+          <button class="btn btn-secondary btn-sm" id="btn-organograma-expandir-tudo"><i class="ti ti-arrows-maximize"></i> Expandir tudo</button>
+          <button class="btn btn-secondary btn-sm" id="btn-organograma-recolher-tudo"><i class="ti ti-arrows-minimize"></i> Recolher tudo</button>
+        ` : ''}
         <button class="btn btn-secondary btn-sm" id="btn-imprimir-organograma"><i class="ti ti-printer"></i> Imprimir</button>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-cargo-topo"><i class="ti ti-plus"></i> Novo cargo</button>' : ''}
       </div>
     </div>
     ${raizes.length
-      ? `<div class="org-tree-wrap"><div class="org-tree"><ul>${raizes.map(renderNo).join('')}</ul></div></div>`
+      ? `<div class="org-arvore">${raizes.map((r) => renderLinha(r, 0)).join('')}</div>`
       : `<div class="empty-state"><i class="ti ti-sitemap"></i>Nenhum cargo cadastrado ainda.${podeEditar ? ' Clique em "Novo cargo" para começar.' : ''}</div>`}
   `;
 
   container.querySelector('#btn-imprimir-organograma')?.addEventListener('click', () => imprimirOrganograma(raizes, empresaAtual.nome));
+
+  container.querySelector('#btn-organograma-expandir-tudo')?.addEventListener('click', () => {
+    expandidos = new Set(cargos.filter((c) => cargos.some((f) => f.superior_id === c.id)).map((c) => c.id));
+    render(container, state);
+  });
+  container.querySelector('#btn-organograma-recolher-tudo')?.addEventListener('click', () => {
+    expandidos = new Set();
+    render(container, state);
+  });
+
+  container.querySelectorAll('[data-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.toggle;
+      if (expandidos.has(id)) expandidos.delete(id); else expandidos.add(id);
+      render(container, state);
+    });
+  });
 
   if (!podeEditar) return;
 
   container.querySelector('#btn-add-cargo-topo')?.addEventListener('click', () => abrirFormulario(state, container, cargos, raizes));
 
   container.querySelectorAll('[data-add-subordinado]').forEach((btn) => {
-    btn.addEventListener('click', () => abrirFormulario(state, container, cargos, raizes, null, btn.dataset.addSubordinado));
+    btn.addEventListener('click', () => {
+      expandidos.add(btn.dataset.addSubordinado); // já abre o ramo pra mostrar o novo subordinado
+      abrirFormulario(state, container, cargos, raizes, null, btn.dataset.addSubordinado);
+    });
   });
 
   container.querySelectorAll('[data-editar]').forEach((btn) => {
@@ -170,26 +218,27 @@ function buscarNaArvore(lista, id) {
   return null;
 }
 
-// Impressão em lista hierárquica indentada (mais confiável em páginas impressas do que a árvore
-// de caixas/linhas da tela, que não pagina bem quando é larga).
+// Impressão em lista hierárquica indentada, em folha A4 paisagem com margem pequena (ver
+// @page "organograma-print" no CSS) e em colunas — aproveita a largura da paisagem pra caber
+// tudo numa folha só, em vez de uma lista estreita e comprida que vira várias páginas em pé.
+// Cada ramo de topo (diretoria/departamento) é um bloco que não quebra entre colunas
+// (break-inside: avoid-column), pra não cortar uma hierarquia no meio.
 function imprimirOrganograma(raizes, empresaNome) {
-  const linhas = (lista, nivel) => lista.map((c) => `
-    <tr>
-      <td style="padding-left:${nivel * 24}px">${nivel > 0 ? '↳ ' : ''}${escapeHtml(c.nome_cargo)}</td>
-      <td>${escapeHtml(c.nome_pessoa || '—')}</td>
-    </tr>
-    ${linhas(c.filhos, nivel + 1)}
-  `).join('');
+  const linhasRamo = (cargo, nivel) => `
+    <div class="org-print-linha" style="padding-left:${nivel * 12}px">
+      <span class="org-print-cargo">${nivel > 0 ? '↳ ' : ''}${escapeHtml(cargo.nome_cargo)}</span>
+      ${cargo.nome_pessoa ? `<span class="org-print-pessoa"> — ${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
+    </div>
+    ${cargo.filhos.map((f) => linhasRamo(f, nivel + 1)).join('')}
+  `;
 
   imprimirSecao(`
-    <h2 style="margin-bottom:4px">Organograma</h2>
-    <p class="text-muted">${escapeHtml(empresaNome)}</p>
-    <hr class="sep">
-    ${raizes.length ? `
-      <table class="print-detalhe-tabela">
-        <thead><tr><th>Cargo</th><th>Pessoa</th></tr></thead>
-        <tbody>${linhas(raizes, 0)}</tbody>
-      </table>
-    ` : '<p>Nenhum cargo cadastrado.</p>'}
+    <div class="org-print-area">
+      <h2 style="margin-bottom:2px">Organograma</h2>
+      <p class="text-muted" style="margin-bottom:10px">${escapeHtml(empresaNome)}</p>
+      ${raizes.length
+        ? `<div class="org-print-colunas">${raizes.map((r) => `<div class="org-print-ramo">${linhasRamo(r, 0)}</div>`).join('')}</div>`
+        : '<p>Nenhum cargo cadastrado.</p>'}
+    </div>
   `);
 }
