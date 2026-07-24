@@ -24,6 +24,7 @@ export const MODULOS_SISTEMA = [
       { id: 'contexto-partes', nome: 'Contexto — Partes Interessadas' },
       { id: 'contexto-macrofluxo', nome: 'Contexto — Macrofluxo' },
       { id: 'contexto-sipoc', nome: 'Contexto — SIPOC' },
+      { id: 'contexto-organograma', nome: 'Contexto — Organograma' },
       { id: 'objetivos', nome: 'Objetivos e Mapa Estratégico' },
       { id: 'riscos', nome: 'Riscos e Oportunidades' },
       { id: 'indicadores', nome: 'Indicadores' },

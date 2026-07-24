@@ -2,6 +2,7 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, envi
 import * as macrofluxo from './macrofluxo.js';
 import * as partesInteressadas from './partesInteressadas.js';
 import * as sipoc from './sipoc.js';
+import * as organograma from './organograma.js';
 
 const SWOT_CATS = { forca: 'Forças', fraqueza: 'Fraquezas', oportunidade: 'Oportunidades', ameaca: 'Ameaças' };
 const SWOT_CLASSES = { forca: 'swot-forcas', fraqueza: 'swot-fraquezas', oportunidade: 'swot-oportunidades', ameaca: 'swot-ameacas' };
@@ -9,7 +10,7 @@ const SWOT_CLASSES = { forca: 'swot-forcas', fraqueza: 'swot-fraquezas', oportun
 // Fraquezas e ameaças alimentam Riscos e Oportunidades como "risco"; oportunidades, como "oportunidade"
 const SWOT_PARA_RISCO = { fraqueza: 'risco', ameaca: 'risco', oportunidade: 'oportunidade' };
 
-let grupoAtivo = 'cenario'; // 'cenario' (SWOT) | 'partes' | 'empresa' | 'macrofluxo' | 'sipoc'
+let grupoAtivo = 'cenario'; // 'cenario' (SWOT) | 'partes' | 'empresa' | 'macrofluxo' | 'sipoc' | 'organograma'
 
 // Permite navegar direto para um grupo (ex: atalho do Dashboard para o Macrofluxo)
 export function irParaGrupo(grupo) {
@@ -24,6 +25,7 @@ function renderFiltrosGrupo() {
       <button class="tab-btn ${grupoAtivo === 'empresa' ? 'active' : ''}" data-grupo="empresa">Informações da Empresa</button>
       <button class="tab-btn ${grupoAtivo === 'macrofluxo' ? 'active' : ''}" data-grupo="macrofluxo">Macrofluxo</button>
       <button class="tab-btn ${grupoAtivo === 'sipoc' ? 'active' : ''}" data-grupo="sipoc">SIPOC</button>
+      <button class="tab-btn ${grupoAtivo === 'organograma' ? 'active' : ''}" data-grupo="organograma">Organograma</button>
     </nav>`;
 }
 
@@ -37,6 +39,7 @@ export async function render(container, state) {
   if (grupoAtivo === 'empresa') return renderMissaoVisaoValores(container, state);
   if (grupoAtivo === 'macrofluxo') return renderMacrofluxo(container, state);
   if (grupoAtivo === 'sipoc') return renderSipoc(container, state);
+  if (grupoAtivo === 'organograma') return renderOrganograma(container, state);
   if (grupoAtivo === 'partes') return renderPartes(container, state);
   return renderCenario(container, state);
 }
@@ -154,6 +157,20 @@ async function renderMacrofluxo(container, state) {
   wireFiltrosGrupo(container, state);
 
   await macrofluxo.render(container.querySelector('#contexto-macrofluxo-corpo'), state);
+}
+
+async function renderOrganograma(container, state) {
+  container.innerHTML = `
+    <div class="card">
+      <div class="card-header"><span><i class="ti ti-map-2"></i> Contexto Organizacional</span></div>
+      ${renderFiltrosGrupo()}
+      <div id="contexto-organograma-corpo"></div>
+    </div>
+  `;
+
+  wireFiltrosGrupo(container, state);
+
+  await organograma.render(container.querySelector('#contexto-organograma-corpo'), state);
 }
 
 async function renderSipoc(container, state) {

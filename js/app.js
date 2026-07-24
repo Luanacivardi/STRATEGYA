@@ -667,7 +667,7 @@ btnPermissoes.addEventListener('click', () => {
 // controle de Objetivos (é um resumo dele); Contexto agrega as 4 sub-áreas internas.
 const SUBMODULOS_POR_ABA = {
   dashboard: ['objetivos'],
-  contexto: ['contexto-cenario', 'contexto-partes', 'contexto-macrofluxo', 'contexto-sipoc'],
+  contexto: ['contexto-cenario', 'contexto-partes', 'contexto-macrofluxo', 'contexto-sipoc', 'contexto-organograma'],
   objetivos: ['objetivos'],
   riscos: ['riscos'],
   indicadores: ['indicadores'],
