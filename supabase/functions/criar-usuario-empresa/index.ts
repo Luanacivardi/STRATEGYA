@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
     if (!empresaId || !email || !senha || !papel) {
       return resposta({ error: 'Preencha e-mail, senha, papel e empresa.' }, 400);
     }
-    if (!['orbeex', 'admin', 'usuario'].includes(papel)) {
+    if (!['orbeex', 'admin', 'gestor', 'usuario'].includes(papel)) {
       return resposta({ error: 'Papel inválido.' }, 400);
     }
     if (String(senha).length < 6) {
