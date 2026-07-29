@@ -4,12 +4,13 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, r
 // você cadastra o cargo e escolhe o superior imediato numa lista, e o desenho é montado
 // automaticamente a partir da hierarquia informada.
 //
-// Tela: árvore recolhível, cada cargo em uma caixinha (cartão), com os filhos recuados dentro
-// de um bloco com linha-guia à esquerda — em vez de caixas conectadas por linha horizontal lado
-// a lado, que não escala bem pra organogramas reais com dezenas de cargos e vários níveis (viraria
-// enorme e cheio de rolagem horizontal). A árvore indentada em caixas escala bem pra qualquer
-// profundidade/largura sem isso. Impressão segue o mesmo estilo em caixinhas (ver imprimirOrganograma),
-// mas sempre com a hierarquia completa (ignora o estado de expandir/recolher da tela).
+// Duas representações da mesma árvore:
+// 1) Tela de gestão (renderNodo/render): lista recolhível em cartões com linha-guia à esquerda —
+//    compacta e prática pra adicionar/editar/excluir cargos em organogramas com dezenas de cargos.
+// 2) Visualização/impressão (renderOrgChart/imprimirOrganograma): árvore conectada por linhas,
+//    caixas coloridas por ramo (estilo apresentação/organograma clássico), aberta em tela cheia
+//    pelo botão "Visualizar" e usada também na impressão. Sempre com a hierarquia completa
+//    (ignora o estado de expandir/recolher da lista de gestão).
 
 // ids dos cargos com o próprio "ramo" (filhos) visível — controla o recolher/expandir da árvore.
 // Recriado a cada troca de empresa/re-render vindo de fora; preservado entre re-renders internos
@@ -102,6 +103,7 @@ export async function render(container, state) {
           <button class="btn btn-secondary btn-sm" id="btn-organograma-expandir-tudo"><i class="ti ti-arrows-maximize"></i> Expandir tudo</button>
           <button class="btn btn-secondary btn-sm" id="btn-organograma-recolher-tudo"><i class="ti ti-arrows-minimize"></i> Recolher tudo</button>
         ` : ''}
+        <button class="btn btn-secondary btn-sm" id="btn-organograma-visualizar"><i class="ti ti-presentation"></i> Visualizar</button>
         <button class="btn btn-secondary btn-sm" id="btn-imprimir-organograma"><i class="ti ti-printer"></i> Imprimir</button>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-cargo-topo"><i class="ti ti-plus"></i> Novo cargo</button>' : ''}
       </div>
@@ -111,6 +113,9 @@ export async function render(container, state) {
       : `<div class="empty-state"><i class="ti ti-sitemap"></i>Nenhum cargo cadastrado ainda.${podeEditar ? ' Clique em "Novo cargo" para começar.' : ''}</div>`}
   `;
 
+  container.querySelector('#btn-organograma-visualizar')?.addEventListener('click', () => {
+    abrirModal('Organograma', `<div class="orgchart-scroll">${renderOrgChart(raizes)}</div>`, 'modal-fullscreen');
+  });
   container.querySelector('#btn-imprimir-organograma')?.addEventListener('click', () => imprimirOrganograma(raizes, empresaAtual.nome));
 
   container.querySelector('#btn-organograma-expandir-tudo')?.addEventListener('click', () => {
@@ -220,29 +225,72 @@ function buscarNaArvore(lista, id) {
   return null;
 }
 
-// Impressão em árvore de caixinhas (mesmo espírito da tela), em folha A4 paisagem com margem
-// pequena (ver @page "organograma-print" no CSS) e em colunas — aproveita a largura da paisagem
-// pra caber tudo numa folha só, em vez de uma lista estreita e comprida que vira várias páginas
-// em pé. Cada ramo de topo (diretoria/departamento) é um bloco que não quebra entre colunas
-// (break-inside: avoid-column), pra não cortar uma hierarquia no meio.
-function imprimirOrganograma(raizes, empresaNome) {
-  const noPrint = (cargo) => `
-    <div class="org-print-nodo">
-      <div class="org-print-caixa">
-        <span class="org-print-cargo">${escapeHtml(cargo.nome_cargo)}</span>
-        ${cargo.nome_pessoa ? `<span class="org-print-pessoa">${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
-      </div>
-      ${cargo.filhos.length ? `<div class="org-print-filhos">${cargo.filhos.map(noPrint).join('')}</div>` : ''}
-    </div>
-  `;
+// Paleta de cores por ramo (filhos diretos da raiz) — cicla se houver mais ramos que cores.
+const PALETA_RAMOS = ['#2e7d63', '#d17a1f', '#2f5fa8', '#8a4fae', '#b8425a', '#3f8f8f', '#6b7a2e', '#a05a2c'];
 
+// Clareia uma cor hex misturando com branco na proporção `fator` (0 = cor original, 1 = branco) —
+// usado pra deixar os níveis mais profundos de um ramo progressivamente mais claros que o topo.
+function corMaisClara(hex, fator) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) + (255 - ((n >> 16) & 255)) * fator);
+  const g = Math.round(((n >> 8) & 255) + (255 - ((n >> 8) & 255)) * fator);
+  const b = Math.round((n & 255) + (255 - (n & 255)) * fator);
+  return `rgb(${r},${g},${b})`;
+}
+
+// Monta recursivamente a árvore de caixinhas conectadas por linha (truque de CSS puro em
+// .orgchart-* no style.css: cada geração é um <ul> de <li>s, e as linhas são bordas em
+// pseudo-elementos). `corRamo` é a cor herdada do ramo (null só na raiz absoluta, que usa o
+// estilo fixo .orgchart-raiz) e `profundidadeNoRamo` conta níveis dentro do ramo pra clarear
+// a cor a cada geração.
+function nodoOrgChart(cargo, corRamo, profundidadeNoRamo) {
+  const estilo = corRamo ? ` style="background:${corMaisClara(corRamo, Math.min(profundidadeNoRamo * 0.16, 0.62))}"` : '';
+  const classe = corRamo ? '' : ' orgchart-raiz';
+  const filhosHtml = cargo.filhos.length
+    ? `<ul>${cargo.filhos.map((f, i) => {
+        // Só a raiz absoluta distribui uma cor nova por ramo; dentro de um ramo, a cor do pai
+        // é repassada aos filhos (só a profundidade aumenta, pra clarear).
+        const proximaCor = corRamo || PALETA_RAMOS[i % PALETA_RAMOS.length];
+        const proximaProfundidade = corRamo ? profundidadeNoRamo + 1 : 0;
+        return nodoOrgChart(f, proximaCor, proximaProfundidade);
+      }).join('')}</ul>`
+    : '';
+  return `
+    <li>
+      <div class="orgchart-caixa${classe}"${estilo}>
+        <span>${escapeHtml(cargo.nome_cargo)}</span>
+        ${cargo.nome_pessoa ? `<span class="orgchart-pessoa">${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
+      </div>
+      ${filhosHtml}
+    </li>`;
+}
+
+// HTML da árvore conectada completa — usado tanto no botão "Visualizar" (dentro de um modal em
+// tela cheia) quanto na impressão. Cada raiz (normalmente só uma) vira sua própria <ul class="orgchart-tree">.
+function renderOrgChart(raizes) {
+  if (!raizes.length) return '<p style="padding:20px">Nenhum cargo cadastrado.</p>';
+  return `<div class="orgchart-multi">${raizes.map((r) => `<ul class="orgchart-tree">${nodoOrgChart(r, null, 0)}</ul>`).join('')}</div>`;
+}
+
+// Impressão da árvore conectada, em folha A4 paisagem (ver @page "organograma-print" no CSS).
+// Organogramas largos (muitas caixas na última geração) não cabem numa folha em tamanho normal —
+// em vez de cortar o conteúdo, mede a largura já renderizada e aplica um transform:scale() pra
+// caber na largura útil da página numa impressão só (a medição só é possível com o conteúdo já
+// inserido no DOM, por isso o hook `aoInserir` de imprimirSecao em vez de calcular antes).
+function imprimirOrganograma(raizes, empresaNome) {
+  const LARGURA_UTIL_PAGINA_PX = 1050; // aproximação da área útil de uma A4 paisagem com margem 8mm a 96dpi
   imprimirSecao(`
     <div class="org-print-area">
       <h2 style="margin-bottom:2px">Organograma</h2>
       <p class="text-muted" style="margin-bottom:10px">${escapeHtml(empresaNome)}</p>
-      ${raizes.length
-        ? `<div class="org-print-colunas">${raizes.map((r) => `<div class="org-print-ramo">${noPrint(r)}</div>`).join('')}</div>`
-        : '<p>Nenhum cargo cadastrado.</p>'}
+      <div class="orgchart-scroll"><div class="orgchart-print-escala">${renderOrgChart(raizes)}</div></div>
     </div>
-  `);
+  `, (area) => {
+    const escalaEl = area.querySelector('.orgchart-print-escala');
+    if (!escalaEl) return;
+    const largura = escalaEl.scrollWidth;
+    if (largura > LARGURA_UTIL_PAGINA_PX) {
+      escalaEl.style.transform = `scale(${(LARGURA_UTIL_PAGINA_PX / largura).toFixed(3)})`;
+    }
+  });
 }

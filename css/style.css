@@ -490,6 +490,10 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
 .modal-overlay.open { display: flex; }
 .modal { background: var(--surface-2); border-radius: var(--radius); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
 .modal-xl { max-width: 1100px; }
+/* Visualização em tela cheia estilo apresentação (ex: árvore do Organograma) — ocupa o viewport
+   inteiro em vez do card centralizado padrão. */
+.modal-fullscreen { max-width: 100vw; width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; display: flex; flex-direction: column; }
+.modal-fullscreen .modal-body { flex: 1; overflow: auto; padding: 0; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.4rem; border-bottom: 2px solid var(--gold); }
 .modal-header h3 { font-size: 15px; color: var(--text-primary); }
 .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); line-height: 1; }
@@ -619,11 +623,11 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .checkbox-linha input[type="checkbox"] { width: auto; accent-color: var(--gold-dark); cursor: pointer; }
 .checkbox-linha i { color: var(--text-secondary); font-size: 14px; }
 
-/* ===== ORGANOGRAMA (árvore recolhível, montada a partir do superior_id de cada cargo) =====
-   Cada cargo em uma caixinha (cartão), com os filhos recuados num bloco com linha-guia à
-   esquerda — em vez de caixas ligadas por linha horizontal lado a lado, que não escala pra
-   organogramas reais com dezenas de cargos e vários níveis (viraria uma faixa larga cheia de
-   rolagem horizontal). */
+/* ===== ORGANOGRAMA — lista de gestão (adicionar/editar/excluir cargos) =====
+   Árvore recolhível, montada a partir do superior_id de cada cargo. Cada cargo em uma caixinha
+   (cartão), com os filhos recuados num bloco com linha-guia à esquerda — layout compacto e prático
+   pra editar dezenas de cargos. A visualização "bonita" (apresentação) é a árvore conectada
+   .orgchart-* logo abaixo, usada no botão Visualizar (tela cheia) e na impressão. */
 .org-arvore { display: flex; flex-direction: column; gap: 8px; }
 .org-nodo { display: flex; flex-direction: column; }
 /* Bloco de filhos recuado com linha-guia tracejada à esquerda — indica a hierarquia sem precisar
@@ -648,6 +652,60 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .org-row-acoes { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.12s; }
 .org-row:hover .org-row-acoes { opacity: 1; }
 .org-row-acoes .icon-btn { font-size: 14px; padding: 4px; }
+
+/* ===== ORGANOGRAMA — árvore conectada estilo apresentação (Visualizar em tela cheia + impressão) =====
+   Truque clássico de "árvore em CSS puro": cada geração é um <ul> de <li>s lado a lado, e as
+   linhas de conexão (horizontal entre irmãos + vertical até o pai) são desenhadas com bordas em
+   pseudo-elementos ::before/::after, sem nenhuma biblioteca de diagrama. Cores: a raiz tem um
+   estilo fixo (vermelho/bordô); cada filho direto da raiz recebe uma cor da paleta (ciclando se
+   houver mais ramos que cores) e todos os descendentes daquele ramo herdam a mesma cor, cada vez
+   mais clara por nível — feito via inline style calculado em JS (organograma.js), não aqui. */
+.orgchart-scroll { overflow: auto; padding: 30px 24px; min-height: 100%; }
+/* Caso raro de mais de um cargo sem superior (raízes desconectadas) — cada uma vira sua própria
+   árvore independente, empilhada, em vez de aparentar ligação entre elas. */
+.orgchart-multi { display: flex; flex-direction: column; align-items: center; gap: 40px; }
+.orgchart-tree, .orgchart-tree ul { list-style: none; margin: 0; padding: 0; }
+.orgchart-tree { display: inline-flex; gap: 40px; }
+.orgchart-tree li { display: flex; flex-direction: column; align-items: center; padding: 0 14px; position: relative; }
+.orgchart-tree ul { display: flex; padding-top: 30px; position: relative; margin-top: 30px; }
+.orgchart-tree li::before, .orgchart-tree li::after {
+  content: ''; position: absolute; top: 0; right: 50%; width: 50%; height: 30px; border-top: 2px solid var(--border);
+}
+.orgchart-tree li::after { left: 50%; right: auto; border-left: 2px solid var(--border); }
+.orgchart-tree li:only-child::before, .orgchart-tree li:only-child::after { display: none; }
+.orgchart-tree li:only-child { padding-top: 0; }
+.orgchart-tree li:first-child::before, .orgchart-tree li:last-child::after { border: none; }
+.orgchart-tree li:last-child::before { border-right: 2px solid var(--border); border-radius: 0 6px 0 0; }
+.orgchart-tree li:first-child::after { border-radius: 6px 0 0 0; }
+.orgchart-tree > li { padding-top: 0; }
+.orgchart-tree > li::before, .orgchart-tree > li::after { display: none; }
+.orgchart-tree ul::before {
+  content: ''; position: absolute; top: -30px; left: 50%; border-left: 2px solid var(--border); width: 0; height: 30px;
+}
+.orgchart-caixa {
+  display: inline-block; padding: 10px 18px; border-radius: 999px; background: var(--navy);
+  border: 2px solid transparent; font-size: 12.5px; font-weight: 700; color: #fff; text-align: center;
+  min-width: 130px; box-shadow: 0 2px 6px rgba(0,0,0,0.18); position: relative; z-index: 1; line-height: 1.3;
+}
+.orgchart-caixa.orgchart-raiz { background: linear-gradient(135deg, #c0304a, #8a2038); font-size: 13.5px; padding: 12px 26px; }
+.orgchart-pessoa { display: block; font-size: 10.5px; font-weight: 500; opacity: 0.85; margin-top: 2px; }
+
+@media print {
+  /* Impressão: mesma árvore conectada, mas compacta (sem exigir rolagem) e em folha A4 paisagem —
+     content muito largo (organogramas com muitos cargos na base) recebe um transform:scale(...)
+     calculado em JS (ver imprimirOrganograma) pra caber na largura da página numa única folha. */
+  @page organograma-print { size: landscape; margin: 8mm; }
+  .org-print-area { page: organograma-print; }
+  .orgchart-scroll { overflow: visible; padding: 0; }
+  .orgchart-print-escala { transform-origin: top left; }
+  .orgchart-tree li { padding: 0 8px; }
+  .orgchart-tree ul { padding-top: 18px; margin-top: 18px; }
+  .orgchart-tree li::before, .orgchart-tree li::after { height: 18px; }
+  .orgchart-tree ul::before { top: -18px; height: 18px; }
+  .orgchart-caixa { padding: 5px 10px; font-size: 9.5px; min-width: 90px; box-shadow: none; border: 1px solid rgba(0,0,0,0.15); }
+  .orgchart-caixa.orgchart-raiz { padding: 6px 14px; font-size: 10.5px; }
+  .orgchart-pessoa { font-size: 8px; }
+}
 
 /* ===== MACROFLUXO ===== */
 .macro-mapa-secao-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin: 1.2rem 0 8px; }
@@ -852,22 +910,4 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
   .sipoc-print-caixa ul { margin: 0; padding-left: 18px; font-size: 12px; }
   .sipoc-print-caixa li { margin-bottom: 4px; }
   .sipoc-print-caixa-vazia { margin: 0; font-size: 11.5px; color: #777; font-style: italic; }
-
-  /* Organograma: folha A4 paisagem com margem pequena (página nomeada, só afeta esta impressão —
-     as demais continuam retrato no tamanho padrão) e em colunas, pra caber tudo numa folha só
-     mesmo com dezenas de cargos. Cada ramo de topo não quebra entre colunas. Cada cargo em uma
-     caixinha, mesmo espírito da tela (org-row/org-filhos), com linha-guia à esquerda pros filhos. */
-  @page organograma-print { size: landscape; margin: 8mm; }
-  .org-print-area { page: organograma-print; }
-  .org-print-colunas { column-count: 2; column-gap: 20px; column-rule: 1px solid #ddd; }
-  .org-print-ramo { break-inside: avoid-column; margin-bottom: 6px; }
-  .org-print-nodo { font-size: 9.5px; line-height: 1.4; }
-  .org-print-caixa {
-    display: inline-block; border: 1px solid #999; border-radius: 5px; background: #fafafa;
-    padding: 2px 8px; margin-bottom: 3px;
-  }
-  .org-print-cargo { font-weight: 700; color: #000; }
-  .org-print-pessoa { color: #555; margin-left: 6px; }
-  .org-print-pessoa::before { content: '— '; }
-  .org-print-filhos { margin: 0 0 4px 14px; padding-left: 8px; border-left: 1px dashed #bbb; }
 }

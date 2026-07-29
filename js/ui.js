@@ -15,11 +15,13 @@ export function toast(msg, tipo = 'info') {
   }, 3200);
 }
 
-export function abrirModal(titulo, conteudoHtml) {
+// classeExtra: modificador opcional no elemento .modal (ex: "modal-xl", "modal-fullscreen" para
+// telas de visualização em tela cheia, como a apresentação do organograma).
+export function abrirModal(titulo, conteudoHtml, classeExtra = '') {
   const overlay = document.getElementById('modal-overlay');
   overlay.innerHTML = '';
   const modal = el(`
-    <div class="modal">
+    <div class="modal ${classeExtra}">
       <div class="modal-header">
         <h3>${titulo}</h3>
         <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
@@ -118,11 +120,15 @@ export function enviarPorEmail(assunto, corpoTexto) {
 // imprimir do sistema, para nunca gerar um "print de tela" cheio de menus/filtros/botões.
 // Sem rodapé de marca: a marca STRATEGYA by ORBEEX já aparece uma única vez no timbre
 // (print-letterhead, canto superior direito) — repeti-la num rodapé era duplicação visual.
-export function imprimirSecao(htmlConteudo) {
+// aoInserir(area): hook opcional chamado logo depois do HTML entrar no DOM (antes de imprimir) —
+// usado pelo Organograma pra medir a largura da árvore renderizada e aplicar um scale() que
+// caiba na folha, o que só dá pra calcular com o conteúdo já inserido.
+export function imprimirSecao(htmlConteudo, aoInserir) {
   const area = document.getElementById('print-secao');
   if (!area) return;
   area.innerHTML = htmlConteudo;
   document.body.classList.add('imprimindo-secao');
+  if (aoInserir) aoInserir(area);
 
   const limpar = () => { document.body.classList.remove('imprimindo-secao'); area.innerHTML = ''; };
 
