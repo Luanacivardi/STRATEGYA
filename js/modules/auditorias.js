@@ -1859,7 +1859,6 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
     <h4 style="margin-top:16px">Solicitação</h4>
     <table class="print-detalhe-tabela">
       <tbody>
-        <tr><th>Título</th><td>${escapeHtml(auditoria.titulo)}</td></tr>
         <tr><th>Tipo</th><td>${TIPO_LABEL[auditoria.tipo] || '—'}${auditoria.tipo === 'outro' ? ' — ' + escapeHtml(auditoria.tipo_outro_descricao || '') : ''} (${MODALIDADE_LABEL[auditoria.modalidade] || '—'})</td></tr>
         <tr><th>Unidade</th><td>${escapeHtml(auditoria.unidade || '—')}</td></tr>
         <tr><th>Data prevista</th><td>${formatarData(auditoria.data_prevista) || '—'}</td></tr>
