@@ -73,6 +73,7 @@ export async function render(container, state) {
   const totalObjetivos = (objetivos || []).length;
   const objetivosAtingidos = (objetivos || []).filter((o) => o.status === 'atingido').length;
   const pctObjetivos = totalObjetivos ? Math.round((objetivosAtingidos / totalObjetivos) * 100) : 0;
+  const totalIndicadores = (indicadores || []).length;
 
   let verde = 0, amarelo = 0, vermelho = 0, semDados = 0;
   const linhasIndicadores = (indicadores || []).map((ind) => {
@@ -126,6 +127,10 @@ export async function render(container, state) {
       <div class="dashboard-card" data-atalho="objetivos">
         <div class="dashboard-card-label">% Objetivos Atingidos</div>
         <div class="dashboard-card-value">${pctObjetivos}%</div>
+      </div>
+      <div class="dashboard-card" data-atalho="indicadores">
+        <div class="dashboard-card-label">Indicadores Cadastrados</div>
+        <div class="dashboard-card-value">${totalIndicadores}</div>
       </div>
       <div class="dashboard-card" data-atalho="indicadores">
         <div class="dashboard-card-label">Indicadores no Verde</div>

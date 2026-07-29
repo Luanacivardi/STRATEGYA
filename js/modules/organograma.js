@@ -4,16 +4,66 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, r
 // você cadastra o cargo e escolhe o superior imediato numa lista, e o desenho é montado
 // automaticamente a partir da hierarquia informada.
 //
-// Tela: árvore recolhível (linhas indentadas, tipo explorador de arquivos) em vez de caixas
-// conectadas por linha horizontal — organogramas reais costumam ter dezenas de cargos e vários
-// níveis, e uma árvore de caixas lado a lado nesse tamanho fica enorme e cheia de rolagem
-// horizontal. A árvore indentada escala bem pra qualquer profundidade/largura sem isso.
-// Impressão continua em lista hierárquica completa (ignora o estado de expandir/recolher da tela).
+// Tela e impressão: caixas conectadas por linha (organograma clássico), coloridas por ramo —
+// cada filho direto da raiz recebe uma cor da paleta da empresa e os descendentes dele herdam
+// tons progressivamente mais claros da mesma cor. Continua expansível/recolhível por cargo (ver
+// `expandidos`) porque organogramas reais podem ter dezenas de cargos e vários níveis — só assim
+// isso continua navegável numa tela comum (a rolagem horizontal própria cobre o resto).
 
-// ids dos cargos com o próprio "ramo" (filhos) visível — controla o recolher/expandir da árvore.
+// ids dos cargos com o próprio "ramo" (filhos) visível — controla o recolher/expandir do organograma.
 // Recriado a cada troca de empresa/re-render vindo de fora; preservado entre re-renders internos
 // (expandir/recolher/editar) pra não fechar tudo de novo a cada ação.
 let expandidos = null;
+
+// ---------- Cores dos ramos: paleta dinâmica da empresa (--navy/--gold, definidas por empresa em
+// tema.js) combinada com os acentos fixos do sistema, pra ter variedade mesmo com muitos ramos. ----------
+function hexParaRgb(hex) {
+  const v = hex.replace('#', '');
+  return [parseInt(v.substring(0, 2), 16), parseInt(v.substring(2, 4), 16), parseInt(v.substring(4, 6), 16)];
+}
+function rgbParaHex(r, g, b) {
+  return '#' + [r, g, b].map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('');
+}
+// Sempre entra e sai em hex — mistura no meio do caminho, sem trocar de formato entre chamadas.
+function misturarCores(hexA, hexB, pesoA) {
+  const [r1, g1, b1] = hexParaRgb(hexA);
+  const [r2, g2, b2] = hexParaRgb(hexB);
+  const canal = (a, b) => a * pesoA + b * (1 - pesoA);
+  return rgbParaHex(canal(r1, r2), canal(g1, g2), canal(b1, b2));
+}
+function luminanciaRgb(r, g, b) {
+  const lin = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+function corTextoParaFundo(hex) {
+  const [r, g, b] = hexParaRgb(hex);
+  return luminanciaRgb(r, g, b) > 0.6 ? '#1a1a2e' : '#ffffff';
+}
+
+function paletaRamos() {
+  const raizCss = document.documentElement;
+  const navy = getComputedStyle(raizCss).getPropertyValue('--navy').trim() || '#252538';
+  const goldDark = getComputedStyle(raizCss).getPropertyValue('--gold-dark').trim() || '#c99d38';
+  const navyMid = getComputedStyle(raizCss).getPropertyValue('--navy-mid').trim() || '#2e2e48';
+  const sucesso = '#10b981'; // var(--color-success), fixo (não muda por empresa)
+  const perigo = '#ef4444'; // var(--color-danger), fixo (não muda por empresa)
+  return [
+    navy,
+    goldDark,
+    misturarCores(navy, goldDark, 0.5),
+    misturarCores(navy, sucesso, 0.55),
+    misturarCores(navy, perigo, 0.55),
+    navyMid,
+    misturarCores(goldDark, navy, 0.7),
+    misturarCores(navy, goldDark, 0.2),
+  ];
+}
+
+// Tom de um nó dentro do ramo: mais claro quanto mais fundo, com piso pra não lavar demais a cor.
+function corDoNo(corRamo, profundidade) {
+  const peso = Math.max(0.4, 1 - profundidade * 0.16);
+  return peso >= 0.999 ? corRamo : misturarCores(corRamo, '#ffffff', peso);
+}
 
 async function carregarCargos(supabase, empresaId) {
   const { data, error } = await supabase.from('organograma_cargos').select('*').eq('empresa_id', empresaId);
@@ -67,29 +117,38 @@ export async function render(container, state) {
   if (!expandidos) expandidos = new Set(raizes.map((r) => r.id));
 
   const contarDescendentes = (cargo) => cargo.filhos.reduce((n, f) => n + 1 + contarDescendentes(f), 0);
+  const paleta = paletaRamos();
 
-  function renderLinha(cargo, nivel) {
+  // corRamo null = este cargo é raiz (sem superior): caixa sempre navy, e cada filho direto dele
+  // inicia um ramo novo com uma cor da paleta. Dentro de um ramo, a cor se mantém e só clareia
+  // conforme a profundidade (profundidadeNoRamo).
+  function renderNo(cargo, corRamo, profundidadeNoRamo, ehRaiz) {
     const temFilhos = cargo.filhos.length > 0;
     const aberto = expandidos.has(cargo.id);
-    const linhaAtual = `
-      <div class="org-row" style="padding-left:${nivel * 22}px">
-        ${temFilhos
-          ? `<button type="button" class="org-toggle" data-toggle="${cargo.id}" title="${aberto ? 'Recolher' : 'Expandir'}"><i class="ti ${aberto ? 'ti-chevron-down' : 'ti-chevron-right'}"></i></button>`
-          : '<span class="org-toggle-espaco"></span>'}
-        <div class="org-row-info">
-          <span class="org-row-cargo">${escapeHtml(cargo.nome_cargo)}</span>
-          ${cargo.nome_pessoa ? `<span class="org-row-pessoa">${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
-          ${temFilhos ? `<span class="org-row-contagem">${contarDescendentes(cargo)} subordinado(s)</span>` : ''}
+    const cor = corRamo ? corDoNo(corRamo, profundidadeNoRamo) : null;
+    const corTexto = corRamo ? corTextoParaFundo(cor) : null;
+    const estiloCor = corRamo ? `--org-cor:${cor};--org-cor-texto:${corTexto}` : '';
+
+    const box = `
+      <div class="org-node ${corRamo ? '' : 'org-node-raiz'}" style="${estiloCor}">
+        <div class="org-node-box">
+          <div class="org-node-cargo">${escapeHtml(cargo.nome_cargo)}</div>
+          ${cargo.nome_pessoa ? `<div class="org-node-pessoa">${escapeHtml(cargo.nome_pessoa)}</div>` : ''}
         </div>
         ${podeEditar ? `
-          <div class="org-row-acoes">
+          <div class="org-node-acoes">
             <button type="button" class="icon-btn" data-add-subordinado="${cargo.id}" title="Adicionar subordinado"><i class="ti ti-plus"></i></button>
             <button type="button" class="icon-btn" data-editar="${cargo.id}" title="Editar"><i class="ti ti-pencil"></i></button>
             <button type="button" class="icon-btn" data-excluir="${cargo.id}" title="Excluir"><i class="ti ti-trash"></i></button>
           </div>` : ''}
+        ${temFilhos ? `<button type="button" class="org-node-toggle" data-toggle="${cargo.id}" title="${aberto ? 'Recolher' : `Expandir (${contarDescendentes(cargo)} subordinado(s))`}"><i class="ti ${aberto ? 'ti-minus' : 'ti-plus'}"></i></button>` : ''}
       </div>`;
-    const filhosHtml = temFilhos && aberto ? cargo.filhos.map((f) => renderLinha(f, nivel + 1)).join('') : '';
-    return linhaAtual + filhosHtml;
+
+    const filhosHtml = temFilhos && aberto
+      ? `<div class="org-chart-filhos">${cargo.filhos.map((f, i) => renderNo(f, corRamo || paleta[i % paleta.length], corRamo ? profundidadeNoRamo + 1 : 0, false)).join('')}</div>`
+      : '';
+
+    return `<div class="org-chart-galho${ehRaiz ? ' org-chart-galho--topo' : ''}">${box}${filhosHtml}</div>`;
   }
 
   container.innerHTML = `
@@ -105,7 +164,7 @@ export async function render(container, state) {
       </div>
     </div>
     ${raizes.length
-      ? `<div class="org-arvore">${raizes.map((r) => renderLinha(r, 0)).join('')}</div>`
+      ? `<div class="org-chart-scroll"><div class="org-chart-raiz-linha">${raizes.map((r) => renderNo(r, null, 0, true)).join('')}</div></div>`
       : `<div class="empty-state"><i class="ti ti-sitemap"></i>Nenhum cargo cadastrado ainda.${podeEditar ? ' Clique em "Novo cargo" para começar.' : ''}</div>`}
   `;
 
@@ -220,24 +279,33 @@ function buscarNaArvore(lista, id) {
 
 // Impressão em lista hierárquica indentada, em folha A4 paisagem com margem pequena (ver
 // @page "organograma-print" no CSS) e em colunas — aproveita a largura da paisagem pra caber
-// tudo numa folha só, em vez de uma lista estreita e comprida que vira várias páginas em pé.
+// tudo numa folha só, em vez de uma lista estreita e comprida que vira várias páginas em pé
+// (um organograma em caixas conectadas como o da tela, com dezenas de cargos, não caberia numa
+// folha impressa). Cada cargo vira uma pílula colorida com a mesma cor de ramo usada na tela.
 // Cada ramo de topo (diretoria/departamento) é um bloco que não quebra entre colunas
 // (break-inside: avoid-column), pra não cortar uma hierarquia no meio.
 function imprimirOrganograma(raizes, empresaNome) {
-  const linhasRamo = (cargo, nivel) => `
+  const paleta = paletaRamos();
+
+  const navyImpressao = getComputedStyle(document.documentElement).getPropertyValue('--navy').trim() || '#252538';
+  const linhasRamo = (cargo, nivel, corRamo, profundidadeNoRamo) => {
+    const cor = corRamo ? corDoNo(corRamo, profundidadeNoRamo) : navyImpressao;
+    const corTexto = corTextoParaFundo(cor);
+    return `
     <div class="org-print-linha" style="padding-left:${nivel * 12}px">
-      <span class="org-print-cargo">${nivel > 0 ? '↳ ' : ''}${escapeHtml(cargo.nome_cargo)}</span>
-      ${cargo.nome_pessoa ? `<span class="org-print-pessoa"> — ${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
+      <span class="org-print-chip" style="--org-print-cor:${cor};--org-print-cor-texto:${corTexto}">${escapeHtml(cargo.nome_cargo)}</span>
+      ${cargo.nome_pessoa ? `<span class="org-print-pessoa">${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
     </div>
-    ${cargo.filhos.map((f) => linhasRamo(f, nivel + 1)).join('')}
+    ${cargo.filhos.map((f, i) => linhasRamo(f, nivel + 1, corRamo || paleta[i % paleta.length], corRamo ? profundidadeNoRamo + 1 : 0)).join('')}
   `;
+  };
 
   imprimirSecao(`
     <div class="org-print-area">
       <h2 style="margin-bottom:2px">Organograma</h2>
       <p class="text-muted" style="margin-bottom:10px">${escapeHtml(empresaNome)}</p>
       ${raizes.length
-        ? `<div class="org-print-colunas">${raizes.map((r) => `<div class="org-print-ramo">${linhasRamo(r, 0)}</div>`).join('')}</div>`
+        ? `<div class="org-print-colunas">${raizes.map((r) => `<div class="org-print-ramo">${linhasRamo(r, 0, null, 0)}</div>`).join('')}</div>`
         : '<p>Nenhum cargo cadastrado.</p>'}
     </div>
   `);
