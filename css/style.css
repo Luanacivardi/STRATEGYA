@@ -595,8 +595,11 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
 /* ===== MAPA ESTRATÉGICO (BSC) ===== */
 .bsc-lane { margin-bottom: 1rem; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .bsc-lane-title { padding: 8px 14px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--navy-text); background: var(--navy); }
-.bsc-lane-cards { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; background: var(--surface-1); min-height: 60px; }
-.bsc-card { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; min-width: 200px; max-width: 260px; border-left: 4px solid var(--gold); box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; transition: box-shadow 0.15s; }
+/* Grid em vez de flex-wrap: as caixas se ajustam à largura disponível em colunas simétricas
+   (mesma largura entre si), ao invés de flutuarem soltas com tamanho fixo e deixarem espaço
+   desigual na última linha. */
+.bsc-lane-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; padding: 12px; background: var(--surface-1); min-height: 60px; }
+.bsc-card { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; border-left: 4px solid var(--gold); box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; transition: box-shadow 0.15s; }
 .bsc-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 .bsc-card-nome { font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
 
@@ -617,16 +620,21 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .checkbox-linha i { color: var(--text-secondary); font-size: 14px; }
 
 /* ===== ORGANOGRAMA (árvore recolhível, montada a partir do superior_id de cada cargo) =====
-   Lista indentada (tipo explorador de arquivos) em vez de caixas ligadas por linha horizontal —
-   escala bem pra organogramas reais com dezenas de cargos e vários níveis, sem virar uma faixa
-   larga cheia de rolagem horizontal. */
-.org-arvore { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+   Cada cargo em uma caixinha (cartão), com os filhos recuados num bloco com linha-guia à
+   esquerda — em vez de caixas ligadas por linha horizontal lado a lado, que não escala pra
+   organogramas reais com dezenas de cargos e vários níveis (viraria uma faixa larga cheia de
+   rolagem horizontal). */
+.org-arvore { display: flex; flex-direction: column; gap: 8px; }
+.org-nodo { display: flex; flex-direction: column; }
+/* Bloco de filhos recuado com linha-guia tracejada à esquerda — indica a hierarquia sem precisar
+   de caixas conectadas lado a lado (não escala pra organogramas com dezenas de cargos). */
+.org-filhos { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0 22px; padding-left: 12px; border-left: 2px dashed var(--border); }
 .org-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border);
-  transition: background 0.12s;
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: box-shadow 0.12s, border-color 0.12s;
 }
-.org-arvore .org-row:last-child { border-bottom: none; }
-.org-row:hover { background: var(--surface-1); }
+.org-row:hover { border-color: var(--gold); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
 .org-toggle {
   width: 22px; height: 22px; border: none; background: none; cursor: pointer; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; color: var(--text-secondary); border-radius: 5px;
@@ -740,12 +748,6 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .print-detalhe-tabela tr:nth-child(even) { background: #fafafa; }
 .print-detalhe-tabela th { width: 200px; background: #f4f4f4; color: #333; font-weight: 700; }
 
-/* Rodapé de marca em todo relatório impresso do sistema (ver imprimirSecao em ui.js). */
-.print-footer-strategya {
-  margin-top: 28px; padding-top: 10px; border-top: 1px solid #ddd; text-align: center;
-  font-size: 10px; color: #999;
-}
-
 /* Grade 2x2 da Análise SWOT na impressão (Contexto Organizacional) */
 .print-swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
 .print-swot-quad { border: 1px solid #ccc; border-radius: 6px; padding: 12px 14px; }
@@ -853,12 +855,19 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 
   /* Organograma: folha A4 paisagem com margem pequena (página nomeada, só afeta esta impressão —
      as demais continuam retrato no tamanho padrão) e em colunas, pra caber tudo numa folha só
-     mesmo com dezenas de cargos. Cada ramo de topo não quebra entre colunas. */
+     mesmo com dezenas de cargos. Cada ramo de topo não quebra entre colunas. Cada cargo em uma
+     caixinha, mesmo espírito da tela (org-row/org-filhos), com linha-guia à esquerda pros filhos. */
   @page organograma-print { size: landscape; margin: 8mm; }
   .org-print-area { page: organograma-print; }
   .org-print-colunas { column-count: 2; column-gap: 20px; column-rule: 1px solid #ddd; }
-  .org-print-ramo { break-inside: avoid-column; margin-bottom: 10px; }
-  .org-print-linha { font-size: 9.5px; line-height: 1.55; }
+  .org-print-ramo { break-inside: avoid-column; margin-bottom: 6px; }
+  .org-print-nodo { font-size: 9.5px; line-height: 1.4; }
+  .org-print-caixa {
+    display: inline-block; border: 1px solid #999; border-radius: 5px; background: #fafafa;
+    padding: 2px 8px; margin-bottom: 3px;
+  }
   .org-print-cargo { font-weight: 700; color: #000; }
-  .org-print-pessoa { color: #555; }
+  .org-print-pessoa { color: #555; margin-left: 6px; }
+  .org-print-pessoa::before { content: '— '; }
+  .org-print-filhos { margin: 0 0 4px 14px; padding-left: 8px; border-left: 1px dashed #bbb; }
 }
