@@ -116,14 +116,12 @@ export function enviarPorEmail(assunto, corpoTexto) {
 // #print-secao pelo HTML dado, mostra só o timbre + esse conteúdo durante a impressão
 // (classe "imprimindo-secao" no body) e limpa tudo depois — usado por todos os botões de
 // imprimir do sistema, para nunca gerar um "print de tela" cheio de menus/filtros/botões.
+// Sem rodapé de marca: a marca STRATEGYA by ORBEEX já aparece uma única vez no timbre
+// (print-letterhead, canto superior direito) — repeti-la num rodapé era duplicação visual.
 export function imprimirSecao(htmlConteudo) {
   const area = document.getElementById('print-secao');
   if (!area) return;
-  // Documentos (procedimento/IT/registro) tem cabeçalho/rodapé próprios de controle de qualidade
-  // (código, revisão, classificação) — não duplica com o rodapé genérico de marca abaixo.
-  const rodapeGenerico = document.body.classList.contains('imprimindo-documento') ? '' : `
-    <div class="print-footer-strategya">Sistema STRATEGYA · by ORBEEX — Todos os direitos reservados.</div>`;
-  area.innerHTML = htmlConteudo + rodapeGenerico;
+  area.innerHTML = htmlConteudo;
   document.body.classList.add('imprimindo-secao');
 
   const limpar = () => { document.body.classList.remove('imprimindo-secao'); area.innerHTML = ''; };

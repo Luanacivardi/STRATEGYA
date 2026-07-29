@@ -128,6 +128,10 @@ export async function render(container, state) {
         <div class="dashboard-card-value">${pctObjetivos}%</div>
       </div>
       <div class="dashboard-card" data-atalho="indicadores">
+        <div class="dashboard-card-label">Indicadores Definidos</div>
+        <div class="dashboard-card-value">${(indicadores || []).length}</div>
+      </div>
+      <div class="dashboard-card" data-atalho="indicadores">
         <div class="dashboard-card-label">Indicadores no Verde</div>
         <div class="dashboard-card-value">${verde}</div>
       </div>

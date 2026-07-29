@@ -4,11 +4,12 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, r
 // você cadastra o cargo e escolhe o superior imediato numa lista, e o desenho é montado
 // automaticamente a partir da hierarquia informada.
 //
-// Tela: árvore recolhível (linhas indentadas, tipo explorador de arquivos) em vez de caixas
-// conectadas por linha horizontal — organogramas reais costumam ter dezenas de cargos e vários
-// níveis, e uma árvore de caixas lado a lado nesse tamanho fica enorme e cheia de rolagem
-// horizontal. A árvore indentada escala bem pra qualquer profundidade/largura sem isso.
-// Impressão continua em lista hierárquica completa (ignora o estado de expandir/recolher da tela).
+// Tela: árvore recolhível, cada cargo em uma caixinha (cartão), com os filhos recuados dentro
+// de um bloco com linha-guia à esquerda — em vez de caixas conectadas por linha horizontal lado
+// a lado, que não escala bem pra organogramas reais com dezenas de cargos e vários níveis (viraria
+// enorme e cheio de rolagem horizontal). A árvore indentada em caixas escala bem pra qualquer
+// profundidade/largura sem isso. Impressão segue o mesmo estilo em caixinhas (ver imprimirOrganograma),
+// mas sempre com a hierarquia completa (ignora o estado de expandir/recolher da tela).
 
 // ids dos cargos com o próprio "ramo" (filhos) visível — controla o recolher/expandir da árvore.
 // Recriado a cada troca de empresa/re-render vindo de fora; preservado entre re-renders internos
@@ -68,11 +69,11 @@ export async function render(container, state) {
 
   const contarDescendentes = (cargo) => cargo.filhos.reduce((n, f) => n + 1 + contarDescendentes(f), 0);
 
-  function renderLinha(cargo, nivel) {
+  function renderNodo(cargo) {
     const temFilhos = cargo.filhos.length > 0;
     const aberto = expandidos.has(cargo.id);
-    const linhaAtual = `
-      <div class="org-row" style="padding-left:${nivel * 22}px">
+    const caixa = `
+      <div class="org-row">
         ${temFilhos
           ? `<button type="button" class="org-toggle" data-toggle="${cargo.id}" title="${aberto ? 'Recolher' : 'Expandir'}"><i class="ti ${aberto ? 'ti-chevron-down' : 'ti-chevron-right'}"></i></button>`
           : '<span class="org-toggle-espaco"></span>'}
@@ -88,8 +89,9 @@ export async function render(container, state) {
             <button type="button" class="icon-btn" data-excluir="${cargo.id}" title="Excluir"><i class="ti ti-trash"></i></button>
           </div>` : ''}
       </div>`;
-    const filhosHtml = temFilhos && aberto ? cargo.filhos.map((f) => renderLinha(f, nivel + 1)).join('') : '';
-    return linhaAtual + filhosHtml;
+    const filhosHtml = temFilhos && aberto
+      ? `<div class="org-filhos">${cargo.filhos.map((f) => renderNodo(f)).join('')}</div>` : '';
+    return `<div class="org-nodo">${caixa}${filhosHtml}</div>`;
   }
 
   container.innerHTML = `
@@ -105,7 +107,7 @@ export async function render(container, state) {
       </div>
     </div>
     ${raizes.length
-      ? `<div class="org-arvore">${raizes.map((r) => renderLinha(r, 0)).join('')}</div>`
+      ? `<div class="org-arvore">${raizes.map((r) => renderNodo(r)).join('')}</div>`
       : `<div class="empty-state"><i class="ti ti-sitemap"></i>Nenhum cargo cadastrado ainda.${podeEditar ? ' Clique em "Novo cargo" para começar.' : ''}</div>`}
   `;
 
@@ -218,18 +220,20 @@ function buscarNaArvore(lista, id) {
   return null;
 }
 
-// Impressão em lista hierárquica indentada, em folha A4 paisagem com margem pequena (ver
-// @page "organograma-print" no CSS) e em colunas — aproveita a largura da paisagem pra caber
-// tudo numa folha só, em vez de uma lista estreita e comprida que vira várias páginas em pé.
-// Cada ramo de topo (diretoria/departamento) é um bloco que não quebra entre colunas
+// Impressão em árvore de caixinhas (mesmo espírito da tela), em folha A4 paisagem com margem
+// pequena (ver @page "organograma-print" no CSS) e em colunas — aproveita a largura da paisagem
+// pra caber tudo numa folha só, em vez de uma lista estreita e comprida que vira várias páginas
+// em pé. Cada ramo de topo (diretoria/departamento) é um bloco que não quebra entre colunas
 // (break-inside: avoid-column), pra não cortar uma hierarquia no meio.
 function imprimirOrganograma(raizes, empresaNome) {
-  const linhasRamo = (cargo, nivel) => `
-    <div class="org-print-linha" style="padding-left:${nivel * 12}px">
-      <span class="org-print-cargo">${nivel > 0 ? '↳ ' : ''}${escapeHtml(cargo.nome_cargo)}</span>
-      ${cargo.nome_pessoa ? `<span class="org-print-pessoa"> — ${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
+  const noPrint = (cargo) => `
+    <div class="org-print-nodo">
+      <div class="org-print-caixa">
+        <span class="org-print-cargo">${escapeHtml(cargo.nome_cargo)}</span>
+        ${cargo.nome_pessoa ? `<span class="org-print-pessoa">${escapeHtml(cargo.nome_pessoa)}</span>` : ''}
+      </div>
+      ${cargo.filhos.length ? `<div class="org-print-filhos">${cargo.filhos.map(noPrint).join('')}</div>` : ''}
     </div>
-    ${cargo.filhos.map((f) => linhasRamo(f, nivel + 1)).join('')}
   `;
 
   imprimirSecao(`
@@ -237,7 +241,7 @@ function imprimirOrganograma(raizes, empresaNome) {
       <h2 style="margin-bottom:2px">Organograma</h2>
       <p class="text-muted" style="margin-bottom:10px">${escapeHtml(empresaNome)}</p>
       ${raizes.length
-        ? `<div class="org-print-colunas">${raizes.map((r) => `<div class="org-print-ramo">${linhasRamo(r, 0)}</div>`).join('')}</div>`
+        ? `<div class="org-print-colunas">${raizes.map((r) => `<div class="org-print-ramo">${noPrint(r)}</div>`).join('')}</div>`
         : '<p>Nenhum cargo cadastrado.</p>'}
     </div>
   `);
