@@ -246,8 +246,14 @@ function corMaisClara(hex, fator) {
 function nodoOrgChart(cargo, corRamo, profundidadeNoRamo) {
   const estilo = corRamo ? ` style="background:${corMaisClara(corRamo, Math.min(profundidadeNoRamo * 0.16, 0.62))}"` : '';
   const classe = corRamo ? '' : ' orgchart-raiz';
+  // Quando todos os filhos são folhas (não têm ninguém abaixo deles), agrupa numa grade que
+  // quebra linha (orgchart-filhos-wrap) em vez de esticar numa fileira só — um cargo com vários
+  // subordinados diretos sem equipe própria (ex: vários cargos ligados direto ao presidente) não
+  // precisa da largura de uma geração inteira, então cabem melhor em bloco logo abaixo do chefe.
+  const todosFolha = cargo.filhos.length > 3 && cargo.filhos.every((f) => f.filhos.length === 0);
+  const classeUl = todosFolha ? ' class="orgchart-filhos-wrap"' : '';
   const filhosHtml = cargo.filhos.length
-    ? `<ul>${cargo.filhos.map((f, i) => {
+    ? `<ul${classeUl}>${cargo.filhos.map((f, i) => {
         // Só a raiz absoluta distribui uma cor nova por ramo; dentro de um ramo, a cor do pai
         // é repassada aos filhos (só a profundidade aumenta, pra clarear).
         const proximaCor = corRamo || PALETA_RAMOS[i % PALETA_RAMOS.length];
