@@ -1071,6 +1071,10 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
       </div>
       <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-plus"></i> Registrar análise</button>
     </form>
+    <div class="table-actions" style="margin-bottom:1.25rem">
+      <button class="btn btn-secondary btn-sm" id="btn-criar-plano-direto"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
+      <button class="btn btn-secondary btn-sm" id="btn-criar-tarefa-direto"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
+    </div>
     ` : '<p class="text-muted" style="margin-bottom:1rem"><i class="ti ti-lock"></i> Apenas o responsável pela análise desta conta (ou a Qualidade/administração) pode registrar novas análises.</p>'}
 
     ${analises.length ? analises.map((a) => `
@@ -1130,6 +1134,16 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
       const analise = analises.find((a) => a.id === btn.dataset.criarTarefa);
       abrirFormularioTarefaDaAnalise(state, conta, analise, membros);
     });
+  });
+
+  // Criar plano de ação/tarefa direto da conta, sem precisar ter uma análise registrada ainda.
+  const btnCriarPlanoDireto = areaAba.querySelector('#btn-criar-plano-direto');
+  if (btnCriarPlanoDireto) btnCriarPlanoDireto.addEventListener('click', () => {
+    abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, null, membros);
+  });
+  const btnCriarTarefaDireto = areaAba.querySelector('#btn-criar-tarefa-direto');
+  if (btnCriarTarefaDireto) btnCriarTarefaDireto.addEventListener('click', () => {
+    abrirFormularioTarefaDaAnalise(state, conta, null, membros);
   });
 
   areaAba.querySelectorAll('[data-excluir-analise]').forEach((btn) => {
@@ -1404,11 +1418,11 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
     <form id="form-plano-da-analise">
       <div class="form-group">
         <label>Problema identificado</label>
-        <textarea id="pda-problema" required placeholder="Ex: Custo com frete acima da meta mensal há 3 meses consecutivos">${escapeHtml(analise.texto_analise)}</textarea>
+        <textarea id="pda-problema" required placeholder="Ex: Custo com frete acima da meta mensal há 3 meses consecutivos">${escapeHtml(analise?.texto_analise || '')}</textarea>
       </div>
       <div class="form-group">
         <label>Causa</label>
-        <textarea id="pda-causa" placeholder="${analise.justificativa_desvio ? '' : 'Causa raiz do desvio'}">${escapeHtml(analise.justificativa_desvio || '')}</textarea>
+        <textarea id="pda-causa" placeholder="${analise?.justificativa_desvio ? '' : 'Causa raiz do desvio'}">${escapeHtml(analise?.justificativa_desvio || '')}</textarea>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -1454,7 +1468,7 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
       quanto_custa: moedaParaNumero(modal.querySelector('#pda-impacto').value),
       origem: 'conta_gerencial',
       origem_id: conta.id,
-      analise_origem_id: analise.id,
+      analise_origem_id: analise?.id || null,
     };
     const { error } = await supabase.from('planos_acao').insert(payload);
     if (error) return toast('Erro ao criar plano de ação: ' + error.message, 'erro');
@@ -1503,8 +1517,8 @@ function abrirFormularioTarefaDaAnalise(state, conta, analise, membros) {
       responsavel_id: modal.querySelector('#td-responsavel').value || null,
       prazo: modal.querySelector('#td-prazo').value || null,
       conta_id: conta.id,
-      competencia: analise.competencia,
-      analise_id: analise.id,
+      competencia: analise?.competencia || null,
+      analise_id: analise?.id || null,
     };
     const { error } = await supabase.from('todo_itens').insert(payload);
     if (error) return toast('Erro ao criar tarefa: ' + error.message, 'erro');
