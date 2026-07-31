@@ -7,6 +7,7 @@ const TIPO_ARQUIVO_LABEL = { pdf: 'PDF', excel: 'Excel', png: 'PNG', jpg: 'JPG',
 const TIPO_ARQUIVO_ICONE = { pdf: 'ti-file-type-pdf', excel: 'ti-file-type-xls', png: 'ti-photo', jpg: 'ti-photo', powerpoint: 'ti-file-type-ppt' };
 const EXT_PARA_TIPO = { pdf: 'pdf', xls: 'excel', xlsx: 'excel', png: 'png', jpg: 'jpg', jpeg: 'jpg', ppt: 'powerpoint', pptx: 'powerpoint' };
 const PRIORIDADE_LABEL = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
+const STATUS_PLANO_LABEL = { nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', concluido: 'Concluído', atrasado: 'Atrasado' };
 
 const fmtCompetencia = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' }) : '—';
 // Reaproveita formatarDataHora() de ui.js (mesmo formato "dd/mm/aaaa hh:mm" usado no resto do
@@ -14,20 +15,66 @@ const fmtCompetencia = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateSt
 const fmtData = (iso) => iso ? formatarDataHora(iso) : '—';
 
 const fmtMoeda = (v) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtPercent = (v) => v == null ? '—' : `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
+
+// Variação = quanto o Realizado desviou do Orçado. Positivo = gastou mais que o planejado.
+function calcVariacao(orcado, realizado) {
+  if (orcado == null || realizado == null) return { valor: null, pct: null };
+  const valor = realizado - orcado;
+  const pct = orcado ? valor / orcado : null;
+  return { valor, pct };
+}
+
+function badgeVariacao(pct) {
+  if (pct == null) return '<span class="text-muted">—</span>';
+  const cls = pct > 0 ? 'badge-danger' : pct < 0 ? 'badge-success' : 'badge-neutral';
+  const sinal = pct > 0 ? '+' : '';
+  return `<span class="badge ${cls}">${sinal}${fmtPercent(pct)}</span>`;
+}
+
+// Mini gráfico (SVG puro, sem Chart.js) do andamento orçado x realizado dos últimos meses lançados,
+// pra dar visibilidade da evolução da conta direto na lista, sem precisar abrir o detalhe.
+function sparklineAndamento(lancamentosConta) {
+  const pontos = [...(lancamentosConta || [])].sort((a, b) => a.competencia.localeCompare(b.competencia)).slice(-6);
+  if (pontos.length < 2) return '<span class="text-muted" style="font-size:11px">sem histórico</span>';
+
+  const w = 92, h = 30, pad = 3;
+  const valores = pontos.flatMap((p) => [Number(p.valor_orcado) || 0, Number(p.valor_realizado) || 0]);
+  const max = Math.max(1, ...valores);
+  const stepX = (w - pad * 2) / (pontos.length - 1);
+  const coord = (v, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - ((Number(v) || 0) / max) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  const orcadoPts = pontos.map((p, i) => coord(p.valor_orcado, i)).join(' ');
+  const realizadoPts = pontos.map((p, i) => coord(p.valor_realizado, i)).join(' ');
+  const titulo = `Últimos ${pontos.length} meses: orçado (tracejado) x realizado (sólido)`;
+
+  return `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block" role="img" aria-label="${titulo}">
+      <title>${titulo}</title>
+      <polyline points="${orcadoPts}" fill="none" stroke="#9a9ab0" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <polyline points="${realizadoPts}" fill="none" stroke="#E8B84B" stroke-width="2"/>
+    </svg>
+  `;
+}
 
 let filtroCategoria = 'todas';
 let filtroStatus = 'ativo';
+let competenciaAtiva = null; // 'YYYY-MM', escolhida pelo usuário no painel de Resumo Consolidado
 
 export async function render(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, user } = state;
   const podeEditar = resolverNivel(state, 'controladoria') === 'total';
 
-  let contas, departamentos, membros;
+  let contas, departamentos, membros, lancamentos;
   try {
-    [contas, departamentos, membros] = await Promise.all([
+    [contas, departamentos, membros, lancamentos] = await Promise.all([
       supabase.from('contas_gerenciais').select('*').eq('empresa_id', empresaAtual.id),
       supabase.from('departamentos').select('*').eq('empresa_id', empresaAtual.id).order('nome').then((r) => { if (r.error) throw r.error; return r.data || []; }),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => { if (r.error) throw r.error; return r.data || []; }),
+      supabase.from('contas_lancamentos_mensais').select('*').eq('empresa_id', empresaAtual.id).then((r) => { if (r.error) throw r.error; return r.data || []; }),
     ]);
     if (contas.error) throw contas.error;
     contas = [...contas.data].sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true }));
@@ -38,6 +85,13 @@ export async function render(container, state) {
 
   const nomeDeptoPorId = new Map(departamentos.map((d) => [d.id, d.nome]));
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+  const categoriaPorContaId = new Map(contas.map((c) => [c.id, c.categoria]));
+
+  const lancamentosPorConta = new Map();
+  lancamentos.forEach((l) => {
+    if (!lancamentosPorConta.has(l.conta_id)) lancamentosPorConta.set(l.conta_id, []);
+    lancamentosPorConta.get(l.conta_id).push(l);
+  });
 
   const contasFiltradas = contas.filter((c) => {
     if (filtroCategoria !== 'todas' && c.categoria !== filtroCategoria) return false;
@@ -51,6 +105,28 @@ export async function render(container, state) {
     const metaMensal = doCat.reduce((s, c) => s + (Number(c.meta_mensal) || 0), 0);
     return { cat, qtd: doCat.length, metaMensal };
   });
+
+  // ---------- Resumo Consolidado (equivalente à aba "Resumo" da planilha de controladoria) ----------
+  const competenciasComDado = [...new Set(lancamentos.map((l) => l.competencia.slice(0, 7)))].sort();
+  if (!competenciaAtiva) competenciaAtiva = competenciasComDado[competenciasComDado.length - 1] || new Date().toISOString().slice(0, 7);
+  const anoResumo = competenciaAtiva.slice(0, 4);
+
+  const doMes = lancamentos.filter((l) => l.competencia.slice(0, 7) === competenciaAtiva);
+  const totalOrcadoMes = doMes.reduce((s, l) => s + (Number(l.valor_orcado) || 0), 0);
+  const totalRealizadoMes = doMes.reduce((s, l) => s + (Number(l.valor_realizado) || 0), 0);
+  const variacaoMes = calcVariacao(totalOrcadoMes, totalRealizadoMes);
+
+  const doAnoAteMes = lancamentos.filter((l) => l.competencia.slice(0, 4) === anoResumo && l.competencia.slice(0, 7) <= competenciaAtiva);
+  const totalOrcadoAno = doAnoAteMes.reduce((s, l) => s + (Number(l.valor_orcado) || 0), 0);
+  const totalRealizadoAno = doAnoAteMes.reduce((s, l) => s + (Number(l.valor_realizado) || 0), 0);
+  const variacaoAno = calcVariacao(totalOrcadoAno, totalRealizadoAno);
+
+  const resumoPorCategoria = ['receita', 'custo', 'despesa', 'investimento'].map((cat) => {
+    const doCat = doMes.filter((l) => categoriaPorContaId.get(l.conta_id) === cat);
+    const orcado = doCat.reduce((s, l) => s + (Number(l.valor_orcado) || 0), 0);
+    const realizado = doCat.reduce((s, l) => s + (Number(l.valor_realizado) || 0), 0);
+    return { cat, orcado, realizado, variacao: calcVariacao(orcado, realizado) };
+  }).filter((r) => r.orcado || r.realizado);
 
   container.innerHTML = `
     <div class="card">
@@ -68,9 +144,53 @@ export async function render(container, state) {
 
     <div class="card">
       <div class="card-header">
+        <span><i class="ti ti-chart-bar"></i> Resumo Consolidado</span>
+        <input type="month" id="competencia-ativa" value="${competenciaAtiva}">
+      </div>
+      ${doMes.length ? `
+        <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:1rem">
+          <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+            <div class="text-muted" style="font-size:12px">Orçado no mês</div>
+            <div style="font-size:18px;font-weight:700">${fmtMoeda(totalOrcadoMes)}</div>
+          </div>
+          <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+            <div class="text-muted" style="font-size:12px">Realizado no mês</div>
+            <div style="font-size:18px;font-weight:700">${fmtMoeda(totalRealizadoMes)}</div>
+          </div>
+          <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+            <div class="text-muted" style="font-size:12px">Variação no mês</div>
+            <div style="font-size:18px;font-weight:700">${fmtMoeda(variacaoMes.valor)} ${badgeVariacao(variacaoMes.pct)}</div>
+          </div>
+          <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+            <div class="text-muted" style="font-size:12px">Acumulado em ${anoResumo} (até o mês)</div>
+            <div style="font-size:18px;font-weight:700">${fmtMoeda(totalRealizadoAno)} <span class="text-muted" style="font-size:12px;font-weight:400">de ${fmtMoeda(totalOrcadoAno)}</span> ${badgeVariacao(variacaoAno.pct)}</div>
+          </div>
+        </div>
+        ${resumoPorCategoria.length ? `
+        <table class="table">
+          <thead><tr><th>Categoria</th><th>Orçado</th><th>Realizado</th><th>Variação</th></tr></thead>
+          <tbody>
+            ${resumoPorCategoria.map((r) => `
+              <tr>
+                <td><span class="badge ${CATEGORIA_BADGE[r.cat]}">${CATEGORIA_LABEL[r.cat]}</span></td>
+                <td>${fmtMoeda(r.orcado)}</td>
+                <td>${fmtMoeda(r.realizado)}</td>
+                <td>${fmtMoeda(r.variacao.valor)} ${badgeVariacao(r.variacao.pct)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>` : ''}
+      ` : '<div class="empty-state"><i class="ti ti-chart-bar"></i>Nenhum lançamento de orçado/realizado nesta competência ainda. Lance os valores no detalhe de cada conta.</div>'}
+    </div>
+
+    <div class="card">
+      <div class="card-header">
         <span><i class="ti ti-list-details"></i> Contas Gerenciais</span>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-conta"><i class="ti ti-plus"></i> Nova conta</button>' : ''}
       </div>
+      <p class="text-muted" style="font-size:12px;margin:-0.75rem 0 1rem">
+        As colunas Orçado/Realizado abaixo são de <strong>${fmtCompetencia(competenciaAtiva + '-01')}</strong> — lance direto aqui e clique em <i class="ti ti-device-floppy"></i>, ou mude o mês no seletor do Resumo Consolidado acima.
+      </p>
       <div class="filters">
         <button class="filter-btn ${filtroCategoria === 'todas' ? 'active' : ''}" data-filtro-cat="todas">Todas</button>
         <button class="filter-btn ${filtroCategoria === 'receita' ? 'active' : ''}" data-filtro-cat="receita">Receita</button>
@@ -87,31 +207,39 @@ export async function render(container, state) {
         <table class="table">
           <thead>
             <tr>
-              <th>Código</th><th>Nome da conta</th><th>Categoria</th><th>Área responsável</th>
-              <th>Responsável pela análise</th><th>Meta mensal</th><th>Meta anual</th><th>Status</th><th></th>
+              <th>Código</th><th>Nome da conta</th><th>Categoria</th><th>Responsável</th>
+              <th>Andamento</th><th>Orçado (mês)</th><th>Realizado (mês)</th><th>Variação</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody>
-            ${contasFiltradas.map((c) => `
+            ${contasFiltradas.map((c) => {
+              const lancsConta = lancamentosPorConta.get(c.id) || [];
+              const lancMes = lancsConta.find((l) => l.competencia.slice(0, 7) === competenciaAtiva);
+              const podeGerenciarConta = podeEditarRegistro(state, c.responsavel_analise_id, 'controladoria');
+              const variacaoMesConta = lancMes ? calcVariacao(lancMes.valor_orcado == null ? null : Number(lancMes.valor_orcado), lancMes.valor_realizado == null ? null : Number(lancMes.valor_realizado)) : { valor: null, pct: null };
+              return `
               <tr>
                 <td><strong>${escapeHtml(c.codigo)}</strong></td>
                 <td>${escapeHtml(c.nome)}</td>
                 <td><span class="badge ${CATEGORIA_BADGE[c.categoria]}">${CATEGORIA_LABEL[c.categoria]}</span></td>
-                <td>${escapeHtml(nomeDeptoPorId.get(c.departamento_id) || '—')}</td>
                 <td>${escapeHtml(nomeMembroPorId.get(c.responsavel_analise_id) || '—')}</td>
-                <td>${fmtMoeda(c.meta_mensal)}</td>
-                <td>${fmtMoeda(c.meta_anual)}</td>
+                <td>${sparklineAndamento(lancsConta)}</td>
+                <td><input type="number" step="0.01" class="lm-rapido-input" data-conta-id="${c.id}" data-campo="orcado" value="${lancMes?.valor_orcado ?? ''}" ${podeGerenciarConta ? '' : 'disabled'} style="width:110px" placeholder="—"></td>
+                <td><input type="number" step="0.01" class="lm-rapido-input" data-conta-id="${c.id}" data-campo="realizado" value="${lancMes?.valor_realizado ?? ''}" ${podeGerenciarConta ? '' : 'disabled'} style="width:110px" placeholder="—"></td>
+                <td>${badgeVariacao(variacaoMesConta.pct)}</td>
                 <td><span class="badge ${c.ativo ? 'badge-success' : 'badge-danger'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 <td class="table-actions">
-                  <button class="icon-btn" data-detalhes="${c.id}" title="Análises e anexos"><i class="ti ti-folder-open"></i></button>
-                  <button class="icon-btn" data-imprimir-conta="${c.id}" title="Imprimir (último gráfico + análises)"><i class="ti ti-printer"></i></button>
+                  ${podeGerenciarConta ? `<button class="icon-btn" data-salvar-rapido="${c.id}" title="Salvar orçado/realizado de ${fmtCompetencia(competenciaAtiva + '-01')}"><i class="ti ti-device-floppy"></i></button>` : ''}
+                  <button class="icon-btn" data-detalhes="${c.id}" title="Orçado x Realizado, análises e anexos"><i class="ti ti-folder-open"></i></button>
+                  <button class="icon-btn" data-imprimir-conta="${c.id}" title="Imprimir (orçado x realizado + análises)"><i class="ti ti-printer"></i></button>
                   ${podeEditar ? `
                     <button class="icon-btn" data-editar="${c.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${c.id}" title="Excluir"><i class="ti ti-trash"></i></button>
                   ` : ''}
                 </td>
               </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>` : '<div class="empty-state"><i class="ti ti-report-money"></i>Nenhuma conta gerencial cadastrada.</div>'}
     </div>
@@ -122,6 +250,34 @@ export async function render(container, state) {
   });
   container.querySelectorAll('[data-filtro-status]').forEach((btn) => {
     btn.addEventListener('click', () => { filtroStatus = btn.dataset.filtroStatus; render(container, state); });
+  });
+
+  const inputResumoCompetencia = container.querySelector('#competencia-ativa');
+  if (inputResumoCompetencia) inputResumoCompetencia.addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    competenciaAtiva = e.target.value;
+    render(container, state);
+  });
+
+  container.querySelectorAll('[data-salvar-rapido]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const contaId = btn.dataset.salvarRapido;
+      const linha = btn.closest('tr');
+      const orcadoVal = linha.querySelector('[data-campo="orcado"]').value;
+      const realizadoVal = linha.querySelector('[data-campo="realizado"]').value;
+      const payload = {
+        empresa_id: empresaAtual.id,
+        conta_id: contaId,
+        competencia: competenciaAtiva + '-01',
+        valor_orcado: orcadoVal === '' ? null : Number(orcadoVal),
+        valor_realizado: realizadoVal === '' ? null : Number(realizadoVal),
+        usuario_id: user.id,
+      };
+      const { error } = await supabase.from('contas_lancamentos_mensais').upsert(payload, { onConflict: 'conta_id,competencia' });
+      if (error) return toast('Erro ao salvar lançamento: ' + error.message, 'erro');
+      toast('Lançamento salvo.', 'sucesso');
+      render(container, state);
+    });
   });
 
   const btnAdd = container.querySelector('#btn-add-conta');
@@ -264,24 +420,30 @@ async function baixarComoDataUrl(supabase, caminho) {
   });
 }
 
-// ---------- Imprimir conta: dados gerais + último gráfico/relatório enviado + análises de todos os meses ----------
+// ---------- Imprimir conta: orçado x realizado mensal + último gráfico/relatório + análises + planos de ação ----------
 async function imprimirConta(state, conta) {
   const { supabase, empresaAtual } = state;
 
-  let departamento, membros, analises, anexos;
+  let departamento, membros, analises, anexos, lancamentos, planos;
   try {
-    const [resDepto, membrosData, resAnalises, resAnexos] = await Promise.all([
+    const [resDepto, membrosData, resAnalises, resAnexos, resLancamentos, resPlanos] = await Promise.all([
       conta.departamento_id ? supabase.from('departamentos').select('nome').eq('id', conta.departamento_id).single() : Promise.resolve({ data: null }),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
       supabase.from('contas_analises').select('*').eq('conta_id', conta.id).order('competencia', { ascending: true }),
       supabase.from('contas_anexos').select('*').eq('conta_id', conta.id).order('created_at', { ascending: false }),
+      supabase.from('contas_lancamentos_mensais').select('*').eq('conta_id', conta.id).order('competencia', { ascending: true }),
+      supabase.from('planos_acao').select('*').eq('origem', 'conta_gerencial').eq('origem_id', conta.id).order('created_at', { ascending: false }),
     ]);
     departamento = resDepto.data;
     membros = membrosData;
     if (resAnalises.error) throw resAnalises.error;
     if (resAnexos.error) throw resAnexos.error;
+    if (resLancamentos.error) throw resLancamentos.error;
+    if (resPlanos.error) throw resPlanos.error;
     analises = resAnalises.data || [];
     anexos = resAnexos.data || [];
+    lancamentos = resLancamentos.data || [];
+    planos = resPlanos.data || [];
   } catch (err) {
     return toast('Erro ao preparar impressão: ' + err.message, 'erro');
   }
@@ -318,6 +480,24 @@ async function imprimirConta(state, conta) {
       </tbody>
     </table>
 
+    <h4 style="margin-top:16px">Orçado x Realizado (todos os meses lançados)</h4>
+    ${lancamentos.length ? `
+      <table class="table">
+        <thead><tr><th>Competência</th><th>Orçado</th><th>Realizado</th><th>Variação</th></tr></thead>
+        <tbody>
+          ${lancamentos.map((l) => {
+            const v = calcVariacao(Number(l.valor_orcado), Number(l.valor_realizado));
+            return `
+            <tr>
+              <td>${fmtCompetencia(l.competencia)}</td>
+              <td>${fmtMoeda(l.valor_orcado)}</td>
+              <td>${fmtMoeda(l.valor_realizado)}</td>
+              <td>${fmtMoeda(v.valor)} ${v.pct != null ? `(${fmtPercent(v.pct)})` : ''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : '<p class="text-muted">Nenhum lançamento mensal registrado ainda.</p>'}
+
     <h4 style="margin-top:16px">Último relatório/gráfico enviado</h4>
     ${ultimoAnexoHtml}
 
@@ -337,13 +517,30 @@ async function imprimirConta(state, conta) {
           `).join('')}
         </tbody>
       </table>` : '<p class="text-muted">Nenhuma análise registrada ainda.</p>'}
+
+    <h4 style="margin-top:16px">Planos de Ação vinculados</h4>
+    ${planos.length ? `
+      <table class="table">
+        <thead><tr><th>Ação</th><th>Responsável</th><th>Prazo</th><th>Situação</th></tr></thead>
+        <tbody>
+          ${planos.map((p) => `
+            <tr>
+              <td>${escapeHtml(p.titulo)}</td>
+              <td>${escapeHtml(nomeMembroPorId.get(p.responsavel_id) || '—')}</td>
+              <td>${p.quando ? new Date(p.quando + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+              <td>${STATUS_PLANO_LABEL[p.status] || p.status}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>` : '<p class="text-muted">Nenhum plano de ação vinculado a esta conta ainda.</p>'}
   `);
 }
 
-// ---------- DETALHE DA CONTA: análises periódicas + anexos (relatórios/gráficos) ----------
-let abaDetalheAtiva = 'analises';
+// ---------- DETALHE DA CONTA: orçado x realizado + análises periódicas + anexos + planos de ação ----------
+let abaDetalheAtiva = 'valores';
+let chartInstanceValores = null;
 
-async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'analises') {
+async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'valores') {
   abaDetalheAtiva = abaInicial;
   const modal = abrirModal(`${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}`, '<div id="detalhe-conta-corpo">Carregando...</div>');
   modal.classList.add('modal-xl');
@@ -374,8 +571,10 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   corpo.innerHTML = `
     <div class="filters" style="margin-bottom:1rem;justify-content:space-between;display:flex;flex-wrap:wrap;gap:8px">
       <div class="filters" style="margin-bottom:0">
+        <button class="filter-btn ${abaDetalheAtiva === 'valores' ? 'active' : ''}" data-aba-detalhe="valores"><i class="ti ti-chart-bar"></i> Orçado x Realizado</button>
         <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises periódicas</button>
         <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos</button>
+        <button class="filter-btn ${abaDetalheAtiva === 'planos' ? 'active' : ''}" data-aba-detalhe="planos"><i class="ti ti-clipboard-list"></i> Planos de Ação</button>
       </div>
       <button class="btn btn-secondary btn-sm" id="btn-imprimir-conta-detalhe"><i class="ti ti-printer"></i> Imprimir</button>
     </div>
@@ -390,11 +589,168 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   });
 
   const areaAba = corpo.querySelector('#detalhe-conta-aba');
-  if (abaDetalheAtiva === 'analises') {
+  if (abaDetalheAtiva === 'valores') {
+    await renderAbaValores(state, modal, conta, areaAba);
+  } else if (abaDetalheAtiva === 'analises') {
     renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba);
-  } else {
+  } else if (abaDetalheAtiva === 'anexos') {
     renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba);
+  } else {
+    await renderAbaPlanos(state, conta, nomeMembroPorId, areaAba);
   }
+}
+
+// ---------- ABA "Orçado x Realizado": lançamento mensal + tabela + gráfico ----------
+async function renderAbaValores(state, modal, conta, areaAba) {
+  const { supabase, empresaAtual, user } = state;
+  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
+
+  let lancamentos;
+  try {
+    const { data, error } = await supabase.from('contas_lancamentos_mensais').select('*').eq('conta_id', conta.id).order('competencia', { ascending: false });
+    if (error) throw error;
+    lancamentos = data || [];
+  } catch (err) {
+    areaAba.innerHTML = `<div class="alert alert-warning">Erro ao carregar lançamentos: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  areaAba.innerHTML = `
+    ${podeGerenciar ? `
+    <form id="form-lancamento-mensal" style="margin-bottom:1.25rem">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Competência</label>
+          <input type="month" id="lm-competencia" required value="${new Date().toISOString().slice(0, 7)}">
+        </div>
+        <div class="form-group">
+          <label>Valor orçado (R$)</label>
+          <input type="number" id="lm-orcado" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Valor realizado (R$)</label>
+          <input type="number" id="lm-realizado" step="0.01">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-device-floppy"></i> Salvar lançamento</button>
+      <span class="text-muted" style="font-size:12px;margin-left:8px">Lançar numa competência que já existe atualiza o valor.</span>
+    </form>
+    ` : '<p class="text-muted" style="margin-bottom:1rem"><i class="ti ti-lock"></i> Apenas o responsável pela análise desta conta (ou a Qualidade/administração) pode lançar valores.</p>'}
+
+    <canvas id="grafico-conta-valores" height="110"></canvas>
+
+    ${lancamentos.length ? `
+      <table class="table" style="margin-top:1rem">
+        <thead><tr><th>Competência</th><th>Orçado</th><th>Realizado</th><th>Variação</th>${podeGerenciar ? '<th></th>' : ''}</tr></thead>
+        <tbody>
+          ${lancamentos.map((l) => {
+            const v = calcVariacao(l.valor_orcado == null ? null : Number(l.valor_orcado), l.valor_realizado == null ? null : Number(l.valor_realizado));
+            return `
+            <tr>
+              <td>${fmtCompetencia(l.competencia)}</td>
+              <td>${fmtMoeda(l.valor_orcado)}</td>
+              <td>${fmtMoeda(l.valor_realizado)}</td>
+              <td>${fmtMoeda(v.valor)} ${badgeVariacao(v.pct)}</td>
+              ${podeGerenciar ? `
+              <td class="table-actions">
+                <button class="icon-btn" data-editar-lancamento="${l.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn" data-excluir-lancamento="${l.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+              </td>` : ''}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : '<div class="empty-state" style="margin-top:1rem"><i class="ti ti-chart-bar"></i>Nenhum lançamento mensal registrado ainda.</div>'}
+  `;
+
+  const cronologico = [...lancamentos].sort((a, b) => a.competencia.localeCompare(b.competencia));
+  if (chartInstanceValores) { chartInstanceValores.destroy(); chartInstanceValores = null; }
+  const canvas = areaAba.querySelector('#grafico-conta-valores');
+  if (canvas && window.Chart) {
+    chartInstanceValores = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: cronologico.map((l) => fmtCompetencia(l.competencia)),
+        datasets: [
+          { label: 'Orçado', data: cronologico.map((l) => l.valor_orcado), backgroundColor: 'rgba(37,37,56,0.25)', borderColor: '#252538', borderWidth: 1 },
+          { label: 'Realizado', data: cronologico.map((l) => l.valor_realizado), backgroundColor: 'rgba(232,184,75,0.65)', borderColor: '#E8B84B', borderWidth: 1 },
+        ],
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
+    });
+  }
+
+  if (!podeGerenciar) return;
+
+  areaAba.querySelector('#form-lancamento-mensal').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const orcado = areaAba.querySelector('#lm-orcado').value;
+    const realizado = areaAba.querySelector('#lm-realizado').value;
+    const payload = {
+      empresa_id: empresaAtual.id,
+      conta_id: conta.id,
+      competencia: areaAba.querySelector('#lm-competencia').value + '-01',
+      valor_orcado: orcado === '' ? null : Number(orcado),
+      valor_realizado: realizado === '' ? null : Number(realizado),
+      usuario_id: user.id,
+    };
+    const { error } = await supabase.from('contas_lancamentos_mensais').upsert(payload, { onConflict: 'conta_id,competencia' });
+    if (error) return toast('Erro ao salvar lançamento: ' + error.message, 'erro');
+    toast('Lançamento salvo.', 'sucesso');
+    renderAbaValores(state, modal, conta, areaAba);
+  });
+
+  areaAba.querySelectorAll('[data-editar-lancamento]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const l = lancamentos.find((x) => x.id === btn.dataset.editarLancamento);
+      areaAba.querySelector('#lm-competencia').value = l.competencia.slice(0, 7);
+      areaAba.querySelector('#lm-orcado').value = l.valor_orcado ?? '';
+      areaAba.querySelector('#lm-realizado').value = l.valor_realizado ?? '';
+      areaAba.querySelector('#lm-competencia').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  areaAba.querySelectorAll('[data-excluir-lancamento]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmar('Excluir este lançamento?'))) return;
+      const { error } = await supabase.from('contas_lancamentos_mensais').delete().eq('id', btn.dataset.excluirLancamento);
+      if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+      toast('Lançamento excluído.', 'sucesso');
+      renderAbaValores(state, modal, conta, areaAba);
+    });
+  });
+}
+
+// ---------- ABA "Planos de Ação": lista os planos criados a partir de análises desta conta ----------
+async function renderAbaPlanos(state, conta, nomeMembroPorId, areaAba) {
+  const { supabase } = state;
+  let planos;
+  try {
+    const { data, error } = await supabase.from('planos_acao').select('*').eq('origem', 'conta_gerencial').eq('origem_id', conta.id).order('created_at', { ascending: false });
+    if (error) throw error;
+    planos = data || [];
+  } catch (err) {
+    areaAba.innerHTML = `<div class="alert alert-warning">Erro ao carregar planos de ação: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  areaAba.innerHTML = `
+    <p class="text-muted" style="font-size:12px;margin-bottom:0.75rem">Planos de ação criados a partir de análises desta conta. Para editar, use o módulo Ações.</p>
+    ${planos.length ? `
+      <table class="table">
+        <thead><tr><th>Ação</th><th>Responsável</th><th>Prazo</th><th>Prioridade</th><th>Situação</th></tr></thead>
+        <tbody>
+          ${planos.map((p) => `
+            <tr>
+              <td>${escapeHtml(p.titulo)}</td>
+              <td>${escapeHtml(nomeMembroPorId.get(p.responsavel_id) || '—')}</td>
+              <td>${p.quando ? new Date(p.quando + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+              <td>${p.prioridade ? PRIORIDADE_LABEL[p.prioridade] : '—'}</td>
+              <td><span class="badge status-${p.status}">${STATUS_PLANO_LABEL[p.status] || p.status}</span> ${p.percentual_conclusao ? `<span class="text-muted" style="font-size:12px">(${p.percentual_conclusao}%)</span>` : ''}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>` : '<div class="empty-state"><i class="ti ti-clipboard-list"></i>Nenhum plano de ação vinculado a esta conta ainda. Crie um a partir de uma análise.</div>'}
+  `;
 }
 
 function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba) {
@@ -412,7 +768,7 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
       </div>
       <div class="form-group">
         <label>Análise</label>
-        <textarea id="an-texto" required placeholder="O que os dados do Power BI mostraram para esta conta neste período?"></textarea>
+        <textarea id="an-texto" required placeholder="O que os dados de orçado x realizado mostraram para esta conta neste período?"></textarea>
       </div>
       <label class="checkbox-linha" style="display:flex;align-items:center;gap:8px;margin-bottom:0.75rem">
         <input type="checkbox" id="an-houve-desvio">
@@ -441,6 +797,7 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
         <div class="table-actions" style="margin-top:8px">
           <button class="btn btn-secondary btn-sm" data-criar-plano="${a.id}"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
           <button class="btn btn-secondary btn-sm" data-criar-tarefa="${a.id}"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
+          <button class="icon-btn" data-excluir-analise="${a.id}" title="Excluir análise"><i class="ti ti-trash"></i></button>
         </div>` : ''}
       </div>
     `).join('') : '<div class="empty-state"><i class="ti ti-notes"></i>Nenhuma análise registrada ainda.</div>'}
@@ -481,6 +838,16 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
     btn.addEventListener('click', () => {
       const analise = analises.find((a) => a.id === btn.dataset.criarTarefa);
       abrirFormularioTarefaDaAnalise(state, conta, analise, membros);
+    });
+  });
+
+  areaAba.querySelectorAll('[data-excluir-analise]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmar('Excluir esta análise?'))) return;
+      const { error } = await supabase.from('contas_analises').delete().eq('id', btn.dataset.excluirAnalise);
+      if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+      toast('Análise excluída.', 'sucesso');
+      renderDetalheConta(state, containerPai, modal, conta, membros);
     });
   });
 }
@@ -541,7 +908,7 @@ function renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba) 
     btnSubmit.disabled = true;
 
     const nomeSanitizado = arquivo.name
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .normalize('NFD').replace(new RegExp(String.fromCharCode(0x5b) + '\\u0300-\\u036f' + String.fromCharCode(0x5d), 'g'), '') // remove acentos
       .replace(/[^a-zA-Z0-9._-]/g, '_'); // troca espaços e demais caracteres especiais por "_"
     const caminho = `${empresaAtual.id}/${conta.id}/${Date.now()}_${nomeSanitizado}`;
     const { error: errUpload } = await supabase.storage.from('contas-anexos').upload(caminho, arquivo);
@@ -679,6 +1046,17 @@ async function abrirVisualizacaoAnexo(state, conta, anexo, membros) {
         abrirFormularioTarefaDaAnalise(state, conta, analise, membros);
       });
     });
+    overlay.querySelectorAll('[data-excluir-analise-anexo]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir esta análise?'))) return;
+        const { error } = await supabase.from('contas_analises').delete().eq('id', btn.dataset.excluirAnaliseAnexo);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        toast('Análise excluída.', 'sucesso');
+        analises = analises.filter((a) => a.id !== btn.dataset.excluirAnaliseAnexo);
+        overlay.querySelector('#av-lista-analises').innerHTML = renderListaAnalisesAnexo(analises, nomeMembroPorId, podeGerenciar);
+        wireAcoesAnalise();
+      });
+    });
   };
   wireAcoesAnalise();
 
@@ -722,6 +1100,7 @@ function renderListaAnalisesAnexo(analises, nomeMembroPorId, podeGerenciar = tru
       <div class="table-actions" style="margin-top:8px">
         <button class="btn btn-secondary btn-sm" data-criar-plano-anexo="${a.id}"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
         <button class="btn btn-secondary btn-sm" data-criar-tarefa-anexo="${a.id}"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
+        <button class="icon-btn" data-excluir-analise-anexo="${a.id}" title="Excluir análise"><i class="ti ti-trash"></i></button>
       </div>` : ''}
     </div>
   `).join('');
