@@ -781,10 +781,24 @@ async function imprimirConta(state, conta) {
 let abaDetalheAtiva = 'analises';
 let chartInstancesConta = [];
 
+// Mesmo padrão visual da Apresentação de Indicador (tela cheia, título grande, cartões de
+// destaque, gráfico) — usa apresentacao-overlay diretamente em vez do sistema de modal.
 async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'analises') {
   abaDetalheAtiva = abaInicial;
-  const modal = abrirModal(`${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}`, '<div id="detalhe-conta-corpo">Carregando...</div>', 'modal-fullscreen');
-  await renderDetalheConta(state, containerPai, modal, conta, membros);
+  const overlay = document.createElement('div');
+  overlay.className = 'apresentacao-overlay';
+  overlay.innerHTML = `
+    <button class="apresentacao-fechar" id="detalhe-conta-fechar" title="Fechar"><i class="ti ti-x"></i></button>
+    <div class="apresentacao-conteudo" id="detalhe-conta-corpo">Carregando...</div>
+  `;
+  document.body.appendChild(overlay);
+
+  const fechar = () => { overlay.remove(); document.removeEventListener('keydown', onEsc); };
+  overlay.querySelector('#detalhe-conta-fechar').addEventListener('click', fechar);
+  const onEsc = (e) => { if (e.key === 'Escape') fechar(); };
+  document.addEventListener('keydown', onEsc);
+
+  await renderDetalheConta(state, containerPai, overlay, conta, membros);
 }
 
 async function renderDetalheConta(state, containerPai, modal, conta, membros) {
@@ -816,11 +830,46 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   }
 
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
+  const anoAtual = new Date().getFullYear();
+
+  const cronologico = [...lancamentosConta].sort((a, b) => b.competencia.localeCompare(a.competencia));
+  const ultimoLancamento = cronologico[0] || null;
+
+  const dadosGraficos = construirDadosGraficosConta(conta, lancamentosConta, rolMensal, rolHistorico);
+  const temHistorico = dadosGraficos.historico.orcado.some((v) => v != null) || dadosGraficos.historico.realizado.some((v) => v != null);
+  const temMensal = dadosGraficos.mensal.orcado.some((v) => v != null) || dadosGraficos.mensal.realizado.some((v) => v != null);
+  const temRol = dadosGraficos.rol.labels.length > 0;
 
   corpo.innerHTML = `
+    <h1>${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}</h1>
+    <p class="apresentacao-subtitulo">${CATEGORIA_LABEL[conta.categoria]} · ${conta.ativo ? 'Ativo' : 'Inativo'} · Responsável: ${escapeHtml(nomeMembroPorId.get(conta.responsavel_analise_id) || '—')}</p>
+
+    <div class="apresentacao-meta-row">
+      <div class="apresentacao-meta-item"><span>Orçado</span><strong>${fmtMoeda(ultimoLancamento?.valor_orcado)}</strong></div>
+      <div class="apresentacao-meta-item"><span>Realizado</span><strong>${fmtMoeda(ultimoLancamento?.valor_realizado)}</strong></div>
+      <div class="apresentacao-meta-item"><span>Período</span><strong>${ultimoLancamento ? fmtCompetencia(ultimoLancamento.competencia) : '—'}</strong></div>
+    </div>
+
+    <div class="apresentacao-grafico-box">
+      <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+        <div>
+          <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
+          ${temHistorico ? '<canvas id="grafico-historico-anual" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
+        </div>
+        <div>
+          <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
+          ${temMensal ? '<canvas id="grafico-mensal" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="apresentacao-grafico-box">
+      <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
+      ${temRol ? '<canvas id="grafico-rol" height="90"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta para ver este gráfico.</div>'}
+    </div>
+
     <div class="filters" style="margin-bottom:1rem;justify-content:space-between;display:flex;flex-wrap:wrap;gap:8px">
       <div class="filters" style="margin-bottom:0">
-        <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises e gráficos</button>
+        <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises</button>
         <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos enviados</button>
         <button class="filter-btn ${abaDetalheAtiva === 'planos' ? 'active' : ''}" data-aba-detalhe="planos"><i class="ti ti-clipboard-list"></i> Planos de Ação</button>
       </div>
@@ -828,6 +877,8 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
     </div>
     <div id="detalhe-conta-aba"></div>
   `;
+
+  desenharGraficosConta(corpo, dadosGraficos);
 
   const btnImprimir = corpo.querySelector('#btn-imprimir-conta-detalhe');
   if (btnImprimir) btnImprimir.addEventListener('click', () => imprimirConta(state, conta));
@@ -838,7 +889,7 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
 
   const areaAba = corpo.querySelector('#detalhe-conta-aba');
   if (abaDetalheAtiva === 'analises') {
-    renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba, lancamentosConta, rolMensal, rolHistorico);
+    renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba);
   } else if (abaDetalheAtiva === 'anexos') {
     renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba);
   } else {
@@ -989,33 +1040,11 @@ async function renderAbaPlanos(state, conta, nomeMembroPorId, areaAba) {
   `;
 }
 
-function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba, lancamentosConta, rolMensal, rolHistorico) {
+function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba) {
   const { supabase, empresaAtual, user } = state;
   const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
-  const anoAtual = new Date().getFullYear();
-
-  const dadosGraficos = construirDadosGraficosConta(conta, lancamentosConta, rolMensal, rolHistorico);
-  const temHistorico = dadosGraficos.historico.orcado.some((v) => v != null) || dadosGraficos.historico.realizado.some((v) => v != null);
-  const temMensal = dadosGraficos.mensal.orcado.some((v) => v != null) || dadosGraficos.mensal.realizado.some((v) => v != null);
-  const temRol = dadosGraficos.rol.labels.length > 0;
 
   areaAba.innerHTML = `
-    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:1.5rem">
-      <div>
-        <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
-        ${temHistorico ? '<canvas id="grafico-historico-anual" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
-      </div>
-      <div>
-        <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
-        ${temMensal ? '<canvas id="grafico-mensal" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
-      </div>
-    </div>
-    <div style="margin-bottom:1.5rem">
-      <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
-      ${temRol ? '<canvas id="grafico-rol" height="90"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta para ver este gráfico.</div>'}
-    </div>
-    <hr class="sep" style="margin-bottom:1.5rem">
-
     ${podeGerenciar ? `
     <form id="form-nova-analise" style="margin-bottom:1.25rem">
       <div class="form-row">
@@ -1060,8 +1089,6 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
       </div>
     `).join('') : '<div class="empty-state"><i class="ti ti-notes"></i>Nenhuma análise registrada ainda.</div>'}
   `;
-
-  desenharGraficosConta(areaAba, dadosGraficos);
 
   if (!podeGerenciar) return;
 
