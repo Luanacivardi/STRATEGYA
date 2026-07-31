@@ -4,9 +4,31 @@ import { listarObjetivos } from './objetivos.js';
 
 const STATUS_LABEL = { pendente: 'Pendente', concluido: 'Concluído' };
 const ORIGEM_LABEL = { manual: 'Manual', plano: 'Plano de Ação', ata: 'Ata de Reunião' };
+const ORIGEM_TAG_CLASS = { manual: 'kanban-tag-manual', plano: 'kanban-tag-plano', ata: 'kanban-tag-ata' };
 
 let modoVisualizacao = 'lista'; // 'lista' | 'kanban'
 let filtroMinhasTarefas = false;
+
+// Cor do avatar é determinística por nome (mesma pessoa sempre com a mesma cor nos cartões).
+const AVATAR_PALETTE = [
+  { bg: '#E8B84B', fg: '#252538' },
+  { bg: '#7f77dd', fg: '#ffffff' },
+  { bg: '#d4537e', fg: '#ffffff' },
+  { bg: '#378add', fg: '#ffffff' },
+  { bg: '#3b8f6d', fg: '#ffffff' },
+  { bg: '#d85a30', fg: '#ffffff' },
+];
+function iniciaisResponsavel(nome) {
+  const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}
+function corAvatar(nome) {
+  let hash = 0;
+  for (let i = 0; i < (nome || '').length; i++) hash = (hash * 31 + nome.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
 
 // Tarefas manuais criadas a partir de uma análise da Controladoria (têm conta_id) mostram a tag
 // "Controladoria" em vez de "Manual", mas continuam sendo tratadas como 'manual' internamente
@@ -185,9 +207,9 @@ export async function renderCorpo(container, state) {
   container.innerHTML = `
     <div class="lista-toolbar">
       <div class="filters filters-compact">
-        <button class="filter-btn ${modoVisualizacao === 'lista' ? 'active' : ''}" id="btn-todo-modo-lista" title="Visualização em lista"><i class="ti ti-list"></i> Lista</button>
-        <button class="filter-btn ${modoVisualizacao === 'kanban' ? 'active' : ''}" id="btn-todo-modo-kanban" title="Visualização em kanban"><i class="ti ti-layout-kanban"></i> Kanban</button>
-        <button class="filter-btn ${filtroMinhasTarefas ? 'active' : ''}" id="btn-todo-minhas"><i class="ti ti-user"></i> Minhas tarefas</button>
+        <button class="kanban-pill-btn ${modoVisualizacao === 'lista' ? 'active' : ''}" id="btn-todo-modo-lista" title="Visualização em lista"><i class="ti ti-list"></i> Lista</button>
+        <button class="kanban-pill-btn ${modoVisualizacao === 'kanban' ? 'active' : ''}" id="btn-todo-modo-kanban" title="Visualização em kanban"><i class="ti ti-layout-kanban"></i> Kanban</button>
+        <button class="kanban-pill-btn ${filtroMinhasTarefas ? 'active' : ''}" id="btn-todo-minhas"><i class="ti ti-user"></i> Minhas tarefas</button>
       </div>
       <div class="lista-toolbar-acoes">
         <button class="btn btn-secondary btn-sm" id="btn-todo-csv"><i class="ti ti-download"></i> CSV</button>
@@ -342,10 +364,11 @@ export async function renderCorpo(container, state) {
     const renderCartao = (l) => {
       const chave = `${l.origem}:${l.id}`;
       const podeGerenciar = podeEditarRegistro(state, l.raw.responsavel_id, 'acoes', 'tarefas');
+      const avatar = corAvatar(l.responsavelNome);
       return `
-        <div class="card kanban-cartao" ${podeGerenciar ? `draggable="true" data-kanban-chave="${chave}" style="cursor:grab"` : ''} style="padding:10px 12px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:start;gap:6px;margin-bottom:6px">
-            <span class="badge badge-neutral" style="font-size:10px">${labelOrigem(l)}</span>
+        <div class="kanban-cartao ${l.statusKey === 'concluido' ? 'concluido' : ''}" ${podeGerenciar ? `draggable="true" data-kanban-chave="${chave}" style="cursor:grab"` : ''}>
+          <div class="kanban-cartao-topo">
+            <span class="kanban-tag ${ORIGEM_TAG_CLASS[l.origem]}">${labelOrigem(l)}</span>
             <div class="table-actions" style="margin:0">
               <button class="icon-btn" data-imprimir-tarefa="${chave}" title="Imprimir esta tarefa"><i class="ti ti-printer"></i></button>
               ${podeGerenciar ? `
@@ -354,23 +377,23 @@ export async function renderCorpo(container, state) {
               ` : ''}
             </div>
           </div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${escapeHtml(l.descricao)}</div>
-          ${l.refLabel ? `<div class="text-muted" style="font-size:11px;margin-bottom:6px"><i class="ti ti-corner-down-right"></i> ${escapeHtml(l.refLabel)}</div>` : ''}
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px">
-            <span class="text-muted"><i class="ti ti-user"></i> ${escapeHtml(l.responsavelNome)}</span>
-            <span class="text-muted">${formatarData(l.prazo) || '—'}</span>
+          <div class="kanban-cartao-titulo">${escapeHtml(l.descricao)}</div>
+          ${l.refLabel ? `<div class="kanban-cartao-ref"><i class="ti ti-corner-down-right"></i> ${escapeHtml(l.refLabel)}</div>` : ''}
+          <div class="kanban-cartao-rodape">
+            <span class="kanban-avatar" style="background:${avatar.bg};color:${avatar.fg}" title="${escapeHtml(l.responsavelNome)}">${iniciaisResponsavel(l.responsavelNome)}</span>
+            <span>${formatarData(l.prazo) || '—'}</span>
           </div>
         </div>`;
     };
 
     area.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:16px;align-items:start">
+      <div class="kanban-board">
         ${colunas.map((col) => {
           const doColuna = filtradas.filter((l) => l.statusKey === col.status);
           return `
-            <div class="kanban-coluna" data-kanban-status="${col.status}" style="background:var(--surface-1);border-radius:8px;padding:12px;min-height:120px">
-              <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-                <span>${col.label}</span><span class="badge badge-neutral">${doColuna.length}</span>
+            <div class="kanban-coluna" data-kanban-status="${col.status}">
+              <div class="kanban-coluna-titulo">
+                <span>${col.label}</span><span class="kanban-coluna-contagem">${doColuna.length}</span>
               </div>
               ${doColuna.length ? doColuna.map(renderCartao).join('') : '<p class="text-muted" style="font-size:12px">Nenhuma tarefa aqui.</p>'}
             </div>`;
@@ -387,11 +410,11 @@ export async function renderCorpo(container, state) {
     });
 
     area.querySelectorAll('.kanban-coluna').forEach((coluna) => {
-      coluna.addEventListener('dragover', (e) => { e.preventDefault(); coluna.style.boxShadow = 'inset 0 0 0 2px var(--gold)'; });
-      coluna.addEventListener('dragleave', () => { coluna.style.boxShadow = ''; });
+      coluna.addEventListener('dragover', (e) => { e.preventDefault(); coluna.classList.add('arrastando-sobre'); });
+      coluna.addEventListener('dragleave', () => { coluna.classList.remove('arrastando-sobre'); });
       coluna.addEventListener('drop', async (e) => {
         e.preventDefault();
-        coluna.style.boxShadow = '';
+        coluna.classList.remove('arrastando-sobre');
         const chave = e.dataTransfer.getData('text/plain');
         if (!chave) return;
         const [origem, id] = chave.split(':');
