@@ -174,19 +174,19 @@ async function renderIndicadoresGrupo(container, state) {
 
   area.innerHTML = `
     <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1.25rem">
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+      <div class="stat-box">
         <div class="text-muted" style="font-size:12px">Total de planos</div>
         <div style="font-size:24px;font-weight:700">${total}</div>
       </div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+      <div class="stat-box">
         <div class="text-muted" style="font-size:12px">% médio de conclusão</div>
         <div style="font-size:24px;font-weight:700">${percentualMedio}%</div>
       </div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+      <div class="stat-box">
         <div class="text-muted" style="font-size:12px">Planos atrasados</div>
         <div style="font-size:24px;font-weight:700;color:${atrasados ? '#ef4444' : 'inherit'}">${atrasados}</div>
       </div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)">
+      <div class="stat-box">
         <div class="text-muted" style="font-size:12px">Concluídos</div>
         <div style="font-size:24px;font-weight:700">${porStatus.concluido || 0}</div>
       </div>

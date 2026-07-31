@@ -1963,12 +1963,12 @@ async function renderDashboard(container, state) {
 
   area.innerHTML = `
     <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:1.25rem">
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Planejadas x Realizadas</div><div style="font-size:22px;font-weight:700">${planejadas} / ${realizadas}</div></div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Internas x Externas</div><div style="font-size:22px;font-weight:700">${internas} / ${externas}</div></div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">NC Maiores / Menores</div><div style="font-size:22px;font-weight:700">${ncPorResultado.nc_maior} / ${ncPorResultado.nc_menor}</div></div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Ações em atraso</div><div style="font-size:22px;font-weight:700;color:${acoesEmAtraso ? '#ef4444' : 'inherit'}">${acoesEmAtraso}</div></div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Ações concluídas</div><div style="font-size:22px;font-weight:700">${acoesConcluidas}</div></div>
-      <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Horas planejadas (total)</div><div style="font-size:22px;font-weight:700">${horasPlanejadas.toFixed(1)}h</div></div>
+      <div class="stat-box"><div class="text-muted" style="font-size:12px">Planejadas x Realizadas</div><div style="font-size:22px;font-weight:700">${planejadas} / ${realizadas}</div></div>
+      <div class="stat-box"><div class="text-muted" style="font-size:12px">Internas x Externas</div><div style="font-size:22px;font-weight:700">${internas} / ${externas}</div></div>
+      <div class="stat-box"><div class="text-muted" style="font-size:12px">NC Maiores / Menores</div><div style="font-size:22px;font-weight:700">${ncPorResultado.nc_maior} / ${ncPorResultado.nc_menor}</div></div>
+      <div class="stat-box"><div class="text-muted" style="font-size:12px">Ações em atraso</div><div style="font-size:22px;font-weight:700;color:${acoesEmAtraso ? '#ef4444' : 'inherit'}">${acoesEmAtraso}</div></div>
+      <div class="stat-box"><div class="text-muted" style="font-size:12px">Ações concluídas</div><div style="font-size:22px;font-weight:700">${acoesConcluidas}</div></div>
+      <div class="stat-box"><div class="text-muted" style="font-size:12px">Horas planejadas (total)</div><div style="font-size:22px;font-weight:700">${horasPlanejadas.toFixed(1)}h</div></div>
     </div>
     <div class="card" style="padding:14px">
       <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:10px">Auditorias por norma</p>
