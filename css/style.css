@@ -534,6 +534,14 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
   min-height: 140px; background: var(--bg-white); font-size: 15px; margin-bottom: 12px;
 }
 
+/* Modificador: título + cartões + os 3 gráficos ficam fixos na tela; só a parte de baixo (abas de
+   Análises/Anexos/Planos de Ação) rola — usado no detalhe da conta em Controladoria, onde os 3
+   gráficos juntos não cabem sem empurrar a análise pra fora da tela. */
+.apresentacao-overlay-fixo { display: flex; flex-direction: column; overflow: hidden; padding: 2.5rem 0 0; }
+.apresentacao-overlay-fixo .apresentacao-conteudo { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.apresentacao-overlay-fixo .detalhe-conta-topo { flex-shrink: 0; padding: 0 2rem; }
+.apresentacao-overlay-fixo .detalhe-conta-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 2rem 2.5rem; }
+
 /* ===== TOAST ===== */
 .toast-box { position: fixed; top: 74px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
 .toast {

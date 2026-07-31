@@ -786,7 +786,7 @@ let chartInstancesConta = [];
 async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'analises') {
   abaDetalheAtiva = abaInicial;
   const overlay = document.createElement('div');
-  overlay.className = 'apresentacao-overlay';
+  overlay.className = 'apresentacao-overlay apresentacao-overlay-fixo';
   overlay.innerHTML = `
     <button class="apresentacao-fechar" id="detalhe-conta-fechar" title="Fechar"><i class="ti ti-x"></i></button>
     <div class="apresentacao-conteudo" id="detalhe-conta-corpo">Carregando...</div>
@@ -841,41 +841,45 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   const temRol = dadosGraficos.rol.labels.length > 0;
 
   corpo.innerHTML = `
-    <h1>${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}</h1>
-    <p class="apresentacao-subtitulo">${CATEGORIA_LABEL[conta.categoria]} · ${conta.ativo ? 'Ativo' : 'Inativo'} · Responsável: ${escapeHtml(nomeMembroPorId.get(conta.responsavel_analise_id) || '—')}</p>
+    <div class="detalhe-conta-topo">
+      <h1>${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}</h1>
+      <p class="apresentacao-subtitulo">${CATEGORIA_LABEL[conta.categoria]} · ${conta.ativo ? 'Ativo' : 'Inativo'} · Responsável: ${escapeHtml(nomeMembroPorId.get(conta.responsavel_analise_id) || '—')}</p>
 
-    <div class="apresentacao-meta-row">
-      <div class="apresentacao-meta-item"><span>Orçado</span><strong>${fmtMoeda(ultimoLancamento?.valor_orcado)}</strong></div>
-      <div class="apresentacao-meta-item"><span>Realizado</span><strong>${fmtMoeda(ultimoLancamento?.valor_realizado)}</strong></div>
-      <div class="apresentacao-meta-item"><span>Período</span><strong>${ultimoLancamento ? fmtCompetencia(ultimoLancamento.competencia) : '—'}</strong></div>
-    </div>
+      <div class="apresentacao-meta-row">
+        <div class="apresentacao-meta-item"><span>Orçado</span><strong>${fmtMoeda(ultimoLancamento?.valor_orcado)}</strong></div>
+        <div class="apresentacao-meta-item"><span>Realizado</span><strong>${fmtMoeda(ultimoLancamento?.valor_realizado)}</strong></div>
+        <div class="apresentacao-meta-item"><span>Período</span><strong>${ultimoLancamento ? fmtCompetencia(ultimoLancamento.competencia) : '—'}</strong></div>
+      </div>
 
-    <div class="apresentacao-grafico-box">
-      <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
-        <div>
-          <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
-          ${temHistorico ? '<canvas id="grafico-historico-anual" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
-        </div>
-        <div>
-          <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
-          ${temMensal ? '<canvas id="grafico-mensal" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
+      <div class="apresentacao-grafico-box">
+        <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+          <div>
+            <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
+            ${temHistorico ? '<canvas id="grafico-historico-anual" height="150"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
+          </div>
+          <div>
+            <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
+            ${temMensal ? '<canvas id="grafico-mensal" height="150"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
+          </div>
+          <div>
+            <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
+            ${temRol ? '<canvas id="grafico-rol" height="150"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
+          </div>
         </div>
       </div>
-    </div>
-    <div class="apresentacao-grafico-box">
-      <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
-      ${temRol ? '<canvas id="grafico-rol" height="90"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta para ver este gráfico.</div>'}
-    </div>
 
-    <div class="filters" style="margin-bottom:1rem;justify-content:space-between;display:flex;flex-wrap:wrap;gap:8px">
-      <div class="filters" style="margin-bottom:0">
-        <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises</button>
-        <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos enviados</button>
-        <button class="filter-btn ${abaDetalheAtiva === 'planos' ? 'active' : ''}" data-aba-detalhe="planos"><i class="ti ti-clipboard-list"></i> Planos de Ação</button>
+      <div class="filters" style="margin-bottom:0;justify-content:space-between;display:flex;flex-wrap:wrap;gap:8px">
+        <div class="filters" style="margin-bottom:0">
+          <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises</button>
+          <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos enviados</button>
+          <button class="filter-btn ${abaDetalheAtiva === 'planos' ? 'active' : ''}" data-aba-detalhe="planos"><i class="ti ti-clipboard-list"></i> Planos de Ação</button>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btn-imprimir-conta-detalhe"><i class="ti ti-printer"></i> Imprimir</button>
       </div>
-      <button class="btn btn-secondary btn-sm" id="btn-imprimir-conta-detalhe"><i class="ti ti-printer"></i> Imprimir</button>
     </div>
-    <div id="detalhe-conta-aba"></div>
+    <div class="detalhe-conta-scroll">
+      <div id="detalhe-conta-aba"></div>
+    </div>
   `;
 
   desenharGraficosConta(corpo, dadosGraficos);
