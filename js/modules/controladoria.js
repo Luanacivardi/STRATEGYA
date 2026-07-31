@@ -18,6 +18,28 @@ const fmtData = (iso) => iso ? formatarDataHora(iso) : '—';
 const fmtMoeda = (v) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtPercent = (v) => v == null ? '—' : `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
 
+// ---------- Máscara de moeda pros inputs de valores (mostra "R$ 1.234,56" enquanto digita) ----------
+const centavosParaMoeda = (centavos) => `R$ ${(centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Formata um número (vindo do banco) pro valor inicial de um input com máscara de moeda.
+const valorInicialMascarado = (v) => (v == null || v === '') ? '' : centavosParaMoeda(Math.round(Number(v) * 100));
+
+// Digita como calculadora: cada dígito novo entra na casa dos centavos, empurrando o resto pra
+// esquerda — evita o usuário ter que se preocupar com onde fica a vírgula.
+function aplicarMascaraMoeda(input) {
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const digitos = input.value.replace(/\D/g, '');
+    input.value = digitos ? centavosParaMoeda(parseInt(digitos, 10)) : '';
+  });
+}
+
+// Extrai o número puro de um input com máscara de moeda pra mandar pro banco.
+const moedaParaNumero = (str) => {
+  const digitos = (str || '').replace(/\D/g, '');
+  return digitos ? parseInt(digitos, 10) / 100 : null;
+};
+
 // Variação = quanto o Realizado desviou do Orçado. Positivo = gastou mais que o planejado.
 function calcVariacao(orcado, realizado) {
   if (orcado == null || realizado == null) return { valor: null, pct: null };
@@ -323,11 +345,11 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
       <div class="form-row">
         <div class="form-group">
           <label>Meta mensal (R$)</label>
-          <input type="number" id="cg-meta-mensal" step="0.01" min="0" value="${conta?.meta_mensal ?? ''}">
+          <input type="text" inputmode="decimal" id="cg-meta-mensal" placeholder="R$ 0,00" value="${valorInicialMascarado(conta?.meta_mensal)}">
         </div>
         <div class="form-group">
           <label>Meta anual (R$)</label>
-          <input type="number" id="cg-meta-anual" step="0.01" min="0" value="${conta?.meta_anual ?? ''}">
+          <input type="text" inputmode="decimal" id="cg-meta-anual" placeholder="R$ 0,00" value="${valorInicialMascarado(conta?.meta_anual)}">
         </div>
       </div>
 
@@ -340,8 +362,8 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
           ${anosHistorico.map((ano) => `
             <tr>
               <td><strong>${ano}</strong></td>
-              <td><input type="number" step="0.01" id="cg-hist-orcado-${ano}" value="${historicoAnual[ano]?.orcado ?? ''}" style="width:140px"></td>
-              <td><input type="number" step="0.01" id="cg-hist-realizado-${ano}" value="${historicoAnual[ano]?.realizado ?? ''}" style="width:140px"></td>
+              <td><input type="text" inputmode="decimal" id="cg-hist-orcado-${ano}" placeholder="R$ 0,00" value="${valorInicialMascarado(historicoAnual[ano]?.orcado)}" style="width:140px"></td>
+              <td><input type="text" inputmode="decimal" id="cg-hist-realizado-${ano}" placeholder="R$ 0,00" value="${valorInicialMascarado(historicoAnual[ano]?.realizado)}" style="width:140px"></td>
             </tr>
           `).join('')}
         </tbody>
@@ -363,11 +385,11 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
         </div>
         <div class="form-group">
           <label>Orçado (R$)</label>
-          <input type="number" id="lm2-orcado" step="0.01">
+          <input type="text" inputmode="decimal" id="lm2-orcado" placeholder="R$ 0,00">
         </div>
         <div class="form-group">
           <label>Realizado (R$)</label>
-          <input type="number" id="lm2-realizado" step="0.01">
+          <input type="text" inputmode="decimal" id="lm2-realizado" placeholder="R$ 0,00">
         </div>
       </div>
       <button class="btn btn-secondary btn-sm" type="submit"><i class="ti ti-device-floppy"></i> Salvar mês</button>
@@ -378,10 +400,19 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
   `);
   modal.classList.add('modal-xl');
 
+  aplicarMascaraMoeda(modal.querySelector('#cg-meta-mensal'));
+  aplicarMascaraMoeda(modal.querySelector('#cg-meta-anual'));
+  if (conta) {
+    anosHistorico.forEach((ano) => {
+      aplicarMascaraMoeda(modal.querySelector(`#cg-hist-orcado-${ano}`));
+      aplicarMascaraMoeda(modal.querySelector(`#cg-hist-realizado-${ano}`));
+    });
+    aplicarMascaraMoeda(modal.querySelector('#lm2-orcado'));
+    aplicarMascaraMoeda(modal.querySelector('#lm2-realizado'));
+  }
+
   modal.querySelector('#form-conta-gerencial').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const metaMensal = modal.querySelector('#cg-meta-mensal').value;
-    const metaAnual = modal.querySelector('#cg-meta-anual').value;
     const payload = {
       empresa_id: empresaAtual.id,
       codigo: modal.querySelector('#cg-codigo').value.trim(),
@@ -389,17 +420,17 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
       categoria: modal.querySelector('#cg-categoria').value,
       departamento_id: modal.querySelector('#cg-departamento').value || null,
       responsavel_analise_id: modal.querySelector('#cg-responsavel').value || null,
-      meta_mensal: metaMensal === '' ? null : Number(metaMensal),
-      meta_anual: metaAnual === '' ? null : Number(metaAnual),
+      meta_mensal: moedaParaNumero(modal.querySelector('#cg-meta-mensal').value),
+      meta_anual: moedaParaNumero(modal.querySelector('#cg-meta-anual').value),
       ativo: modal.querySelector('#cg-ativo').value === 'true',
     };
     if (conta) {
       const historico = {};
       anosHistorico.forEach((ano) => {
-        const orcado = modal.querySelector(`#cg-hist-orcado-${ano}`).value;
-        const realizado = modal.querySelector(`#cg-hist-realizado-${ano}`).value;
-        if (orcado !== '' || realizado !== '') {
-          historico[ano] = { orcado: orcado === '' ? null : Number(orcado), realizado: realizado === '' ? null : Number(realizado) };
+        const orcado = moedaParaNumero(modal.querySelector(`#cg-hist-orcado-${ano}`).value);
+        const realizado = moedaParaNumero(modal.querySelector(`#cg-hist-realizado-${ano}`).value);
+        if (orcado !== null || realizado !== null) {
+          historico[ano] = { orcado, realizado };
         }
       });
       payload.historico_anual = historico;
@@ -447,8 +478,8 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
       btn.addEventListener('click', () => {
         const l = lancamentos.find((x) => x.id === btn.dataset.editarLancamentoEdicao);
         modal.querySelector('#lm2-competencia').value = l.competencia.slice(0, 7);
-        modal.querySelector('#lm2-orcado').value = l.valor_orcado ?? '';
-        modal.querySelector('#lm2-realizado').value = l.valor_realizado ?? '';
+        modal.querySelector('#lm2-orcado').value = valorInicialMascarado(l.valor_orcado);
+        modal.querySelector('#lm2-realizado').value = valorInicialMascarado(l.valor_realizado);
       });
     });
     area.querySelectorAll('[data-excluir-lancamento-edicao]').forEach((btn) => {
@@ -466,14 +497,12 @@ async function abrirFormulario(state, container, departamentos, membros, conta =
 
   modal.querySelector('#form-lancamento-mensal-edicao').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const orcado = modal.querySelector('#lm2-orcado').value;
-    const realizado = modal.querySelector('#lm2-realizado').value;
     const payloadLm = {
       empresa_id: empresaAtual.id,
       conta_id: conta.id,
       competencia: modal.querySelector('#lm2-competencia').value + '-01',
-      valor_orcado: orcado === '' ? null : Number(orcado),
-      valor_realizado: realizado === '' ? null : Number(realizado),
+      valor_orcado: moedaParaNumero(modal.querySelector('#lm2-orcado').value),
+      valor_realizado: moedaParaNumero(modal.querySelector('#lm2-realizado').value),
       usuario_id: user.id,
     };
     const { data: novo, error } = await supabase.from('contas_lancamentos_mensais').upsert(payloadLm, { onConflict: 'conta_id,competencia' }).select().single();
@@ -519,8 +548,8 @@ async function abrirConfigRol(state) {
           ${anosHistorico.map((ano) => `
             <tr>
               <td><strong>${ano}</strong></td>
-              <td><input type="number" step="0.01" id="rol-hist-orcado-${ano}" value="${historicoPorAno.get(ano)?.valor_orcado ?? ''}" style="width:160px"></td>
-              <td><input type="number" step="0.01" id="rol-hist-realizado-${ano}" value="${historicoPorAno.get(ano)?.valor_realizado ?? ''}" style="width:160px"></td>
+              <td><input type="text" inputmode="decimal" id="rol-hist-orcado-${ano}" placeholder="R$ 0,00" value="${valorInicialMascarado(historicoPorAno.get(ano)?.valor_orcado)}" style="width:160px"></td>
+              <td><input type="text" inputmode="decimal" id="rol-hist-realizado-${ano}" placeholder="R$ 0,00" value="${valorInicialMascarado(historicoPorAno.get(ano)?.valor_realizado)}" style="width:160px"></td>
             </tr>
           `).join('')}
         </tbody>
@@ -532,14 +561,21 @@ async function abrirConfigRol(state) {
     <form id="form-rol-mensal" style="margin:0.75rem 0 1rem">
       <div class="form-row">
         <div class="form-group"><label>Competência</label><input type="month" id="rol-m-competencia" required value="${new Date().toISOString().slice(0, 7)}"></div>
-        <div class="form-group"><label>Orçado (R$)</label><input type="number" id="rol-m-orcado" step="0.01"></div>
-        <div class="form-group"><label>Realizado (R$)</label><input type="number" id="rol-m-realizado" step="0.01"></div>
+        <div class="form-group"><label>Orçado (R$)</label><input type="text" inputmode="decimal" id="rol-m-orcado" placeholder="R$ 0,00"></div>
+        <div class="form-group"><label>Realizado (R$)</label><input type="text" inputmode="decimal" id="rol-m-realizado" placeholder="R$ 0,00"></div>
       </div>
       <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-plus"></i> Salvar mês</button>
     </form>
     <div id="rol-mensal-tabela"></div>
   `);
   modal.classList.add('modal-xl');
+
+  anosHistorico.forEach((ano) => {
+    aplicarMascaraMoeda(modal.querySelector(`#rol-hist-orcado-${ano}`));
+    aplicarMascaraMoeda(modal.querySelector(`#rol-hist-realizado-${ano}`));
+  });
+  aplicarMascaraMoeda(modal.querySelector('#rol-m-orcado'));
+  aplicarMascaraMoeda(modal.querySelector('#rol-m-realizado'));
 
   const renderTabelaMensal = () => {
     const area = modal.querySelector('#rol-mensal-tabela');
@@ -566,8 +602,8 @@ async function abrirConfigRol(state) {
       btn.addEventListener('click', () => {
         const m = mensal.find((x) => x.id === btn.dataset.editarRolMensal);
         modal.querySelector('#rol-m-competencia').value = m.competencia.slice(0, 7);
-        modal.querySelector('#rol-m-orcado').value = m.valor_orcado ?? '';
-        modal.querySelector('#rol-m-realizado').value = m.valor_realizado ?? '';
+        modal.querySelector('#rol-m-orcado').value = valorInicialMascarado(m.valor_orcado);
+        modal.querySelector('#rol-m-realizado').value = valorInicialMascarado(m.valor_realizado);
       });
     });
     area.querySelectorAll('[data-excluir-rol-mensal]').forEach((btn) => {
@@ -585,17 +621,13 @@ async function abrirConfigRol(state) {
 
   modal.querySelector('#form-rol-historico').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const linhas = anosHistorico.map((ano) => {
-      const orcado = modal.querySelector(`#rol-hist-orcado-${ano}`).value;
-      const realizado = modal.querySelector(`#rol-hist-realizado-${ano}`).value;
-      return {
-        empresa_id: empresaAtual.id,
-        ano,
-        valor_orcado: orcado === '' ? null : Number(orcado),
-        valor_realizado: realizado === '' ? null : Number(realizado),
-        usuario_id: user.id,
-      };
-    });
+    const linhas = anosHistorico.map((ano) => ({
+      empresa_id: empresaAtual.id,
+      ano,
+      valor_orcado: moedaParaNumero(modal.querySelector(`#rol-hist-orcado-${ano}`).value),
+      valor_realizado: moedaParaNumero(modal.querySelector(`#rol-hist-realizado-${ano}`).value),
+      usuario_id: user.id,
+    }));
     const { error } = await supabase.from('empresa_rol_historico_anual').upsert(linhas, { onConflict: 'empresa_id,ano' });
     if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
     toast('Histórico anual da ROL salvo.', 'sucesso');
@@ -603,13 +635,11 @@ async function abrirConfigRol(state) {
 
   modal.querySelector('#form-rol-mensal').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const orcado = modal.querySelector('#rol-m-orcado').value;
-    const realizado = modal.querySelector('#rol-m-realizado').value;
     const payload = {
       empresa_id: empresaAtual.id,
       competencia: modal.querySelector('#rol-m-competencia').value + '-01',
-      valor_orcado: orcado === '' ? null : Number(orcado),
-      valor_realizado: realizado === '' ? null : Number(realizado),
+      valor_orcado: moedaParaNumero(modal.querySelector('#rol-m-orcado').value),
+      valor_realizado: moedaParaNumero(modal.querySelector('#rol-m-realizado').value),
       usuario_id: user.id,
     };
     const { data: novo, error } = await supabase.from('empresa_rol_mensal').upsert(payload, { onConflict: 'empresa_id,competencia' }).select().single();
@@ -1380,12 +1410,14 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
         </div>
         <div class="form-group">
           <label>Impacto financeiro (R$)</label>
-          <input type="number" id="pda-impacto" step="0.01" min="0">
+          <input type="text" inputmode="decimal" id="pda-impacto" placeholder="R$ 0,00">
         </div>
       </div>
       <button class="btn btn-primary btn-block" type="submit">Criar Plano de Ação</button>
     </form>
   `);
+
+  aplicarMascaraMoeda(modal.querySelector('#pda-impacto'));
 
   modal.querySelector('#form-plano-da-analise').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1397,7 +1429,7 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
       responsavel_id: modal.querySelector('#pda-responsavel').value || null,
       quando: modal.querySelector('#pda-prazo').value || null,
       prioridade: modal.querySelector('#pda-prioridade').value,
-      quanto_custa: modal.querySelector('#pda-impacto').value || null,
+      quanto_custa: moedaParaNumero(modal.querySelector('#pda-impacto').value),
       origem: 'conta_gerencial',
       origem_id: conta.id,
       analise_origem_id: analise.id,
