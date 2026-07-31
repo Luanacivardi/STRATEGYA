@@ -6,6 +6,7 @@ const POLARIDADE = { maior_melhor: 'Maior é melhor', menor_melhor: 'Menor é me
 const CLASSIFICACAO = { com_meta: 'Com meta', monitoramento: 'Monitoramento', complementar: 'Complementar' };
 const TIPO_META = { fixa: 'Fixa', variavel: 'Variável por período' };
 const UNIDADES = ['%', 'R$', 'un', 'dias', 'horas', 'pontos', 'kg', 'ton', 'm²'];
+const PRIORIDADE_LABEL = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
 
 // Meta variável: as metas ficam em indicador_metas, uma por mês (periodo normalizado no dia 1º).
 export function metaEhVariavel(indicador) {
@@ -547,7 +548,7 @@ async function abrirResultados(state, indicador) {
 // meta/último resultado grandes, gráfico ampliado e um campo de análise (salvo em indicadores.analise)
 // para registrar a discussão/interpretação do resultado direto durante a reunião.
 // Histórico de análises da apresentação — mais recente primeiro, com data e autor.
-function renderHistoricoAnalises(analises, nomeMembroPorId) {
+function renderHistoricoAnalises(analises, nomeMembroPorId, podeEditar = true) {
   if (!analises.length) return '<p class="text-muted" style="font-size:13px">Nenhuma análise registrada ainda.</p>';
   return analises.map((a) => `
     <div style="background:var(--bg-white);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
@@ -555,6 +556,11 @@ function renderHistoricoAnalises(analises, nomeMembroPorId) {
         ${new Date(a.created_at).toLocaleString('pt-BR')} · ${escapeHtml(nomeMembroPorId.get(a.usuario_id) || '—')}
       </div>
       <div style="font-size:14px">${escapeHtml(a.texto)}</div>
+      ${podeEditar ? `
+      <div class="table-actions" style="margin-top:8px">
+        <button class="btn btn-secondary btn-sm" data-criar-plano-indicador="${a.id}"><i class="ti ti-clipboard-plus"></i> Criar Plano de Ação</button>
+        <button class="btn btn-secondary btn-sm" data-criar-tarefa-indicador="${a.id}"><i class="ti ti-checkbox"></i> Criar Tarefa</button>
+      </div>` : ''}
     </div>
   `).join('');
 }
@@ -639,7 +645,7 @@ async function abrirApresentacao(state, indicador) {
           <p class="text-muted" style="font-size:12px;margin-top:8px">Ao salvar, esta análise fica registrada abaixo com a data, e também na Ata de Reunião aberta de hoje.</p>
         ` : ''}
         <div id="apr-historico-analises" style="margin-top:1.25rem;display:flex;flex-direction:column;gap:10px">
-          ${renderHistoricoAnalises(analises, nomeMembroPorId)}
+          ${renderHistoricoAnalises(analises, nomeMembroPorId, podeEditar)}
         </div>
       </div>
     </div>
@@ -650,6 +656,21 @@ async function abrirApresentacao(state, indicador) {
   overlay.querySelector('#apr-fechar').addEventListener('click', fechar);
   const onEsc = (e) => { if (e.key === 'Escape') { fechar(); document.removeEventListener('keydown', onEsc); } };
   document.addEventListener('keydown', onEsc);
+
+  const wireAcoesAnaliseIndicador = () => {
+    overlay.querySelectorAll('[data-criar-plano-indicador]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const analiseAlvo = analises.find((a) => a.id === btn.dataset.criarPlanoIndicador);
+        abrirFormularioPlanoDeAcaoDoIndicador(state, indicador, analiseAlvo, membros);
+      });
+    });
+    overlay.querySelectorAll('[data-criar-tarefa-indicador]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        abrirFormularioTarefaDoIndicador(state, indicador, membros);
+      });
+    });
+  };
+  wireAcoesAnaliseIndicador();
 
   if (window.Chart) {
     new Chart(overlay.querySelector('#apresentacao-grafico'), {
@@ -684,7 +705,8 @@ async function abrirApresentacao(state, indicador) {
       indicador.analise = analise;
 
       analises = [novaAnalise, ...analises];
-      overlay.querySelector('#apr-historico-analises').innerHTML = renderHistoricoAnalises(analises, nomeMembroPorId);
+      overlay.querySelector('#apr-historico-analises').innerHTML = renderHistoricoAnalises(analises, nomeMembroPorId, podeEditar);
+      wireAcoesAnaliseIndicador();
       textoArea.value = '';
 
       const { error: errAta } = await registrarAnaliseNaAtaDoDia(supabase, empresaAtual.id, indicador.id, analise);
@@ -695,6 +717,109 @@ async function abrirApresentacao(state, indicador) {
       toast('Análise salva — registrada abaixo e na Ata de Reunião aberta de hoje.', 'sucesso');
     });
   }
+}
+
+// ---------- "Criar Plano de Ação" a partir de uma análise do indicador (mesmo padrão da Controladoria) ----------
+function abrirFormularioPlanoDeAcaoDoIndicador(state, indicador, analise, membros) {
+  const { supabase, empresaAtual } = state;
+  const modal = abrirModal(`Criar Plano de Ação — ${escapeHtml(indicador.nome)}`, `
+    <form id="form-plano-do-indicador">
+      <div class="form-group">
+        <label>Problema identificado</label>
+        <textarea id="pdi-problema" required placeholder="Ex: Resultado abaixo da meta há 3 meses consecutivos">${escapeHtml(analise.texto)}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Causa</label>
+        <textarea id="pdi-causa" placeholder="Causa raiz do desvio"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Responsável</label>
+          <select id="pdi-responsavel">
+            <option value="">—</option>
+            ${membros.map((m) => `<option value="${m.usuario_id}" ${indicador.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prazo</label>
+          <input type="date" id="pdi-prazo">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Prioridade</label>
+        <select id="pdi-prioridade">
+          ${Object.entries(PRIORIDADE_LABEL).map(([v, l]) => `<option value="${v}" ${v === 'media' ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Criar Plano de Ação</button>
+    </form>
+  `);
+
+  modal.querySelector('#form-plano-do-indicador').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      empresa_id: empresaAtual.id,
+      titulo: modal.querySelector('#pdi-problema').value.trim(),
+      o_que: modal.querySelector('#pdi-problema').value.trim(),
+      por_que: modal.querySelector('#pdi-causa').value.trim(),
+      responsavel_id: modal.querySelector('#pdi-responsavel').value || null,
+      quando: modal.querySelector('#pdi-prazo').value || null,
+      prioridade: modal.querySelector('#pdi-prioridade').value,
+      origem: 'indicador',
+      origem_id: indicador.id,
+    };
+    const { error } = await supabase.from('planos_acao').insert(payload);
+    if (error) return toast('Erro ao criar plano de ação: ' + error.message, 'erro');
+    toast('Plano de ação criado — disponível no módulo Ações.', 'sucesso');
+    fecharModal();
+  });
+}
+
+// ---------- "Criar Tarefa" vinculada ao indicador ----------
+function abrirFormularioTarefaDoIndicador(state, indicador, membros) {
+  const { supabase, empresaAtual } = state;
+  const modal = abrirModal(`Criar Tarefa — ${escapeHtml(indicador.nome)}`, `
+    <form id="form-tarefa-do-indicador">
+      <div class="form-group">
+        <label>Descrição</label>
+        <input type="text" id="tdi-descricao" required list="tdi-exemplos" placeholder="Ex: Investigar causa do desvio, Revisar meta...">
+        <datalist id="tdi-exemplos">
+          <option value="Investigar causa do desvio">
+          <option value="Revisar meta">
+          <option value="Apresentar plano de recuperação">
+        </datalist>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Responsável</label>
+          <select id="tdi-responsavel">
+            <option value="">—</option>
+            ${membros.map((m) => `<option value="${m.usuario_id}" ${indicador.responsavel_id === m.usuario_id ? 'selected' : ''}>${escapeHtml(m.nome || m.email)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prazo</label>
+          <input type="date" id="tdi-prazo">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Criar Tarefa</button>
+    </form>
+  `);
+
+  modal.querySelector('#form-tarefa-do-indicador').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      empresa_id: empresaAtual.id,
+      descricao: modal.querySelector('#tdi-descricao').value.trim(),
+      responsavel_id: modal.querySelector('#tdi-responsavel').value || null,
+      prazo: modal.querySelector('#tdi-prazo').value || null,
+      indicador_id: indicador.id,
+    };
+    const { error } = await supabase.from('todo_itens').insert(payload);
+    if (error) return toast('Erro ao criar tarefa: ' + error.message, 'erro');
+    toast('Tarefa criada — disponível no módulo Ações, aba Tarefas.', 'sucesso');
+    fecharModal();
+  });
 }
 
 // Encontra a ata aberta de hoje (cria uma nova se não existir) e registra/atualiza a análise
