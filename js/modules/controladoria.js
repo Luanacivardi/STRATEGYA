@@ -212,7 +212,7 @@ export async function render(container, state) {
                 <td>${fmtMoeda(c.meta_anual)}</td>
                 <td><span class="badge ${c.ativo ? 'badge-success' : 'badge-danger'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 <td class="table-actions">
-                  <button class="icon-btn" data-detalhes="${c.id}" title="Análises, gráficos, anexos e planos de ação"><i class="ti ti-folder-open"></i></button>
+                  <button class="icon-btn" data-detalhes="${c.id}" title="Visualizar: análises, gráficos, anexos e planos de ação"><i class="ti ti-eye"></i></button>
                   <button class="icon-btn" data-imprimir-conta="${c.id}" title="Imprimir (orçado x realizado + análises)"><i class="ti ti-printer"></i></button>
                   ${podeEditar ? `
                     <button class="icon-btn" data-editar="${c.id}" title="Editar conta e lançar valores"><i class="ti ti-pencil"></i></button>
