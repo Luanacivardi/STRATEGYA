@@ -108,8 +108,8 @@ export async function render(container, state) {
                 <td>${PERIODICIDADE[ind.periodicidade]}</td>
                 <td>${escapeHtml(emailPorId.get(ind.responsavel_id) || '—')}</td>
                 <td class="table-actions">
-                  <button class="icon-btn" data-resultados="${ind.id}" title="Visualizar: resultados e gráfico"><i class="ti ti-eye"></i></button>
-                  <button class="icon-btn" data-apresentar="${ind.id}" title="Apresentar (tela cheia)"><i class="ti ti-presentation"></i></button>
+                  <button class="icon-btn" data-resultados="${ind.id}" title="Resultados: lançar e ver gráfico"><i class="ti ti-chart-dots"></i></button>
+                  <button class="icon-btn" data-apresentar="${ind.id}" title="Visualizar (tela cheia)"><i class="ti ti-eye"></i></button>
                   ${podeEditarRegistro(state, ind.responsavel_id, 'planejamento-estrategico', 'indicadores') ? `
                     <button class="icon-btn" data-editar="${ind.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${ind.id}" title="Excluir"><i class="ti ti-trash"></i></button>
