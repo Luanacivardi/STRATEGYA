@@ -5,6 +5,9 @@ import { listarObjetivos } from './objetivos.js';
 const STATUS_LABEL = { pendente: 'Pendente', concluido: 'Concluído' };
 const ORIGEM_LABEL = { manual: 'Manual', plano: 'Plano de Ação', ata: 'Ata de Reunião' };
 
+let modoVisualizacao = 'lista'; // 'lista' | 'kanban'
+let filtroMinhasTarefas = false;
+
 // Tarefas manuais criadas a partir de uma análise da Controladoria (têm conta_id) mostram a tag
 // "Controladoria" em vez de "Manual", mas continuam sendo tratadas como 'manual' internamente
 // (mesma tabela todo_itens, mesmo fluxo de editar/concluir/excluir).
@@ -135,7 +138,7 @@ function exportarCsv(linhas) {
   baixarCsv(`tarefas_${new Date().toISOString().slice(0, 10)}.csv`, cabecalho, linhasValores);
 }
 
-function aplicarFiltros(linhas, container) {
+function aplicarFiltros(linhas, container, userId) {
   const busca = (container.querySelector('#todo-busca')?.value || '').trim().toLowerCase();
   const respFiltro = container.querySelector('#todo-filtro-responsavel').value;
   const indFiltro = container.querySelector('#todo-filtro-indicador').value;
@@ -155,12 +158,13 @@ function aplicarFiltros(linhas, container) {
     if (statusFiltro && l.statusKey !== statusFiltro) return false;
     if (deFiltro && (!l.prazo || l.prazo < deFiltro)) return false;
     if (ateFiltro && (!l.prazo || l.prazo > ateFiltro)) return false;
+    if (filtroMinhasTarefas && l.raw.responsavel_id !== userId) return false;
     return true;
   });
 }
 
 export async function renderCorpo(container, state) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, user } = state;
   const podeEditar = resolverNivel(state, 'acoes', 'tarefas') === 'total';
   const podeCriar = podeEditar || resolverNivel(state, 'acoes', 'tarefas') === 'proprio';
 
@@ -181,26 +185,9 @@ export async function renderCorpo(container, state) {
   container.innerHTML = `
     <div class="lista-toolbar">
       <div class="filters filters-compact">
-        <input type="text" id="todo-busca" class="filter-select filter-select-sm" placeholder="Buscar por palavra-chave...">
-        <select id="todo-filtro-responsavel" class="filter-select filter-select-sm">
-          <option value="">Responsável</option>
-          ${membros.map((m) => `<option value="${escapeHtml(m.nome || m.email)}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
-        </select>
-        <select id="todo-filtro-indicador" class="filter-select filter-select-sm">
-          <option value="">Indicador</option>
-          ${indicadores.map((i) => `<option value="${i.id}">${escapeHtml(i.nome)}</option>`).join('')}
-        </select>
-        <select id="todo-filtro-objetivo" class="filter-select filter-select-sm">
-          <option value="">Objetivo</option>
-          ${objetivos.map((o) => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join('')}
-        </select>
-        <select id="todo-filtro-status" class="filter-select filter-select-sm">
-          <option value="">Status</option>
-          <option value="pendente">Pendente</option>
-          <option value="concluido">Concluído</option>
-        </select>
-        <input type="date" id="todo-filtro-de" class="filter-select filter-select-sm" title="De">
-        <input type="date" id="todo-filtro-ate" class="filter-select filter-select-sm" title="Até">
+        <button class="filter-btn ${modoVisualizacao === 'lista' ? 'active' : ''}" id="btn-todo-modo-lista" title="Visualização em lista"><i class="ti ti-list"></i> Lista</button>
+        <button class="filter-btn ${modoVisualizacao === 'kanban' ? 'active' : ''}" id="btn-todo-modo-kanban" title="Visualização em kanban"><i class="ti ti-layout-kanban"></i> Kanban</button>
+        <button class="filter-btn ${filtroMinhasTarefas ? 'active' : ''}" id="btn-todo-minhas"><i class="ti ti-user"></i> Minhas tarefas</button>
       </div>
       <div class="lista-toolbar-acoes">
         <button class="btn btn-secondary btn-sm" id="btn-todo-csv"><i class="ti ti-download"></i> CSV</button>
@@ -208,6 +195,28 @@ export async function renderCorpo(container, state) {
         <button class="btn btn-secondary btn-sm" id="btn-todo-pdf"><i class="ti ti-printer"></i> PDF</button>
         ${podeCriar ? '<button class="btn btn-primary btn-sm" id="btn-todo-add"><i class="ti ti-plus"></i> Nova tarefa</button>' : ''}
       </div>
+    </div>
+    <div class="filters filters-compact">
+      <input type="text" id="todo-busca" class="filter-select filter-select-sm" placeholder="Buscar por palavra-chave...">
+      <select id="todo-filtro-responsavel" class="filter-select filter-select-sm">
+        <option value="">Responsável</option>
+        ${membros.map((m) => `<option value="${escapeHtml(m.nome || m.email)}">${escapeHtml(m.nome || m.email)}</option>`).join('')}
+      </select>
+      <select id="todo-filtro-indicador" class="filter-select filter-select-sm">
+        <option value="">Indicador</option>
+        ${indicadores.map((i) => `<option value="${i.id}">${escapeHtml(i.nome)}</option>`).join('')}
+      </select>
+      <select id="todo-filtro-objetivo" class="filter-select filter-select-sm">
+        <option value="">Objetivo</option>
+        ${objetivos.map((o) => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join('')}
+      </select>
+      <select id="todo-filtro-status" class="filter-select filter-select-sm">
+        <option value="">Status</option>
+        <option value="pendente">Pendente</option>
+        <option value="concluido">Concluído</option>
+      </select>
+      <input type="date" id="todo-filtro-de" class="filter-select filter-select-sm" title="De">
+      <input type="date" id="todo-filtro-ate" class="filter-select filter-select-sm" title="Até">
     </div>
     <div id="todo-tabela-area"></div>
   `;
@@ -219,7 +228,7 @@ export async function renderCorpo(container, state) {
       const chaves = new Set(selecionadas);
       return linhas.filter((l) => chaves.has(`${l.origem}:${l.id}`));
     }
-    return aplicarFiltros(linhas, container);
+    return aplicarFiltros(linhas, container, user.id);
   }
 
   function atualizarBotoesAcao() {
@@ -229,8 +238,46 @@ export async function renderCorpo(container, state) {
     container.querySelector('#btn-todo-pdf').innerHTML = `<i class="ti ti-printer"></i> PDF (${n})`;
   }
 
+  // Wiring comum às linhas/cartões, usado tanto pela lista quanto pelo kanban.
+  function wireAcoesLinha(area) {
+    area.querySelectorAll('[data-imprimir-tarefa]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const [origem, id] = btn.dataset.imprimirTarefa.split(':');
+        const linha = linhas.find((l) => l.origem === origem && l.id === id);
+        imprimirTarefa(linha);
+      });
+    });
+
+    area.querySelectorAll('[data-concluir-tarefa]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const [origem, id] = btn.dataset.concluirTarefa.split(':');
+        const linha = linhas.find((l) => l.origem === origem && l.id === id);
+        await alternarConclusao(state, linha);
+        await renderCorpo(container, state);
+      });
+    });
+
+    area.querySelectorAll('[data-editar-tarefa]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const [origem, id] = btn.dataset.editarTarefa.split(':');
+        const linha = linhas.find((l) => l.origem === origem && l.id === id);
+        abrirDetalheTarefa(state, container, membros, indicadores, linha);
+      });
+    });
+
+    area.querySelectorAll('[data-excluir-todo]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir esta tarefa?'))) return;
+        const { error } = await supabase.from('todo_itens').delete().eq('id', btn.dataset.excluirTodo);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        toast('Item excluído.', 'sucesso');
+        renderCorpo(container, state);
+      });
+    });
+  }
+
   function renderTabela() {
-    const filtradas = aplicarFiltros(linhas, container);
+    const filtradas = aplicarFiltros(linhas, container, user.id);
 
     const area = container.querySelector('#todo-tabela-area');
     area.innerHTML = filtradas.length ? `
@@ -279,49 +326,99 @@ export async function renderCorpo(container, state) {
       });
     });
 
-    area.querySelectorAll('[data-imprimir-tarefa]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const [origem, id] = btn.dataset.imprimirTarefa.split(':');
-        const linha = linhas.find((l) => l.origem === origem && l.id === id);
-        imprimirTarefa(linha);
+    wireAcoesLinha(area);
+  }
+
+  // Kanban: 2 colunas (Pendente/Concluído — os únicos status possíveis nas 3 origens de tarefa).
+  // Arrastar um cartão pra outra coluna conclui/reabre a tarefa, igual ao botão de concluir da lista.
+  function renderKanban() {
+    const filtradas = aplicarFiltros(linhas, container, user.id);
+    const area = container.querySelector('#todo-tabela-area');
+    const colunas = [
+      { status: 'pendente', label: 'Pendente' },
+      { status: 'concluido', label: 'Concluído' },
+    ];
+
+    const renderCartao = (l) => {
+      const chave = `${l.origem}:${l.id}`;
+      const podeGerenciar = podeEditarRegistro(state, l.raw.responsavel_id, 'acoes', 'tarefas');
+      return `
+        <div class="card kanban-cartao" ${podeGerenciar ? `draggable="true" data-kanban-chave="${chave}" style="cursor:grab"` : ''} style="padding:10px 12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:6px;margin-bottom:6px">
+            <span class="badge badge-neutral" style="font-size:10px">${labelOrigem(l)}</span>
+            <div class="table-actions" style="margin:0">
+              <button class="icon-btn" data-imprimir-tarefa="${chave}" title="Imprimir esta tarefa"><i class="ti ti-printer"></i></button>
+              ${podeGerenciar ? `
+                <button class="icon-btn" data-editar-tarefa="${chave}" title="Editar"><i class="ti ti-pencil"></i></button>
+                ${l.origem === 'manual' ? `<button class="icon-btn" data-excluir-todo="${l.id}" title="Excluir"><i class="ti ti-trash"></i></button>` : ''}
+              ` : ''}
+            </div>
+          </div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px">${escapeHtml(l.descricao)}</div>
+          ${l.refLabel ? `<div class="text-muted" style="font-size:11px;margin-bottom:6px"><i class="ti ti-corner-down-right"></i> ${escapeHtml(l.refLabel)}</div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px">
+            <span class="text-muted"><i class="ti ti-user"></i> ${escapeHtml(l.responsavelNome)}</span>
+            <span class="text-muted">${formatarData(l.prazo) || '—'}</span>
+          </div>
+        </div>`;
+    };
+
+    area.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:16px;align-items:start">
+        ${colunas.map((col) => {
+          const doColuna = filtradas.filter((l) => l.statusKey === col.status);
+          return `
+            <div class="kanban-coluna" data-kanban-status="${col.status}" style="background:var(--surface-1);border-radius:8px;padding:12px;min-height:120px">
+              <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+                <span>${col.label}</span><span class="badge badge-neutral">${doColuna.length}</span>
+              </div>
+              ${doColuna.length ? doColuna.map(renderCartao).join('') : '<p class="text-muted" style="font-size:12px">Nenhuma tarefa aqui.</p>'}
+            </div>`;
+        }).join('')}
+      </div>`;
+
+    wireAcoesLinha(area);
+
+    area.querySelectorAll('[data-kanban-chave]').forEach((card) => {
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', card.dataset.kanbanChave);
+        e.dataTransfer.effectAllowed = 'move';
       });
     });
 
-    area.querySelectorAll('[data-concluir-tarefa]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const [origem, id] = btn.dataset.concluirTarefa.split(':');
+    area.querySelectorAll('.kanban-coluna').forEach((coluna) => {
+      coluna.addEventListener('dragover', (e) => { e.preventDefault(); coluna.style.boxShadow = 'inset 0 0 0 2px var(--gold)'; });
+      coluna.addEventListener('dragleave', () => { coluna.style.boxShadow = ''; });
+      coluna.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        coluna.style.boxShadow = '';
+        const chave = e.dataTransfer.getData('text/plain');
+        if (!chave) return;
+        const [origem, id] = chave.split(':');
         const linha = linhas.find((l) => l.origem === origem && l.id === id);
+        if (!linha || linha.statusKey === coluna.dataset.kanbanStatus) return;
         await alternarConclusao(state, linha);
         await renderCorpo(container, state);
       });
     });
-
-    area.querySelectorAll('[data-editar-tarefa]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const [origem, id] = btn.dataset.editarTarefa.split(':');
-        const linha = linhas.find((l) => l.origem === origem && l.id === id);
-        abrirDetalheTarefa(state, container, membros, indicadores, linha);
-      });
-    });
-
-    area.querySelectorAll('[data-excluir-todo]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        if (!(await confirmar('Excluir esta tarefa?'))) return;
-        const { error } = await supabase.from('todo_itens').delete().eq('id', btn.dataset.excluirTodo);
-        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
-        toast('Item excluído.', 'sucesso');
-        renderCorpo(container, state);
-      });
-    });
   }
 
-  renderTabela();
+  function renderConteudo() {
+    if (modoVisualizacao === 'kanban') renderKanban();
+    else renderTabela();
+  }
+
+  renderConteudo();
   atualizarBotoesAcao();
 
   container.querySelectorAll('#todo-busca, #todo-filtro-responsavel, #todo-filtro-indicador, #todo-filtro-objetivo, #todo-filtro-status, #todo-filtro-de, #todo-filtro-ate').forEach((el) => {
-    el.addEventListener('input', () => { renderTabela(); atualizarBotoesAcao(); });
-    el.addEventListener('change', () => { renderTabela(); atualizarBotoesAcao(); });
+    el.addEventListener('input', () => { renderConteudo(); atualizarBotoesAcao(); });
+    el.addEventListener('change', () => { renderConteudo(); atualizarBotoesAcao(); });
   });
+
+  container.querySelector('#btn-todo-modo-lista').addEventListener('click', () => { modoVisualizacao = 'lista'; renderCorpo(container, state); });
+  container.querySelector('#btn-todo-modo-kanban').addEventListener('click', () => { modoVisualizacao = 'kanban'; renderCorpo(container, state); });
+  container.querySelector('#btn-todo-minhas').addEventListener('click', () => { filtroMinhasTarefas = !filtroMinhasTarefas; renderCorpo(container, state); });
 
   container.querySelector('#btn-todo-csv').addEventListener('click', () => exportarCsv(alvoAtual()));
   container.querySelector('#btn-todo-pdf').addEventListener('click', () => imprimirTarefasEmLote(alvoAtual()));
