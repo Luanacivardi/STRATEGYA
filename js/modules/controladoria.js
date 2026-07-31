@@ -8,6 +8,7 @@ const TIPO_ARQUIVO_ICONE = { pdf: 'ti-file-type-pdf', excel: 'ti-file-type-xls',
 const EXT_PARA_TIPO = { pdf: 'pdf', xls: 'excel', xlsx: 'excel', png: 'png', jpg: 'jpg', jpeg: 'jpg', ppt: 'powerpoint', pptx: 'powerpoint' };
 const PRIORIDADE_LABEL = { baixa: 'Baixa', media: 'Média', alta: 'Alta' };
 const STATUS_PLANO_LABEL = { nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', concluido: 'Concluído', atrasado: 'Atrasado' };
+const MESES_LABEL = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 const fmtCompetencia = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' }) : '—';
 // Reaproveita formatarDataHora() de ui.js (mesmo formato "dd/mm/aaaa hh:mm" usado no resto do
@@ -32,40 +33,12 @@ function badgeVariacao(pct) {
   return `<span class="badge ${cls}">${sinal}${fmtPercent(pct)}</span>`;
 }
 
-// Mini gráfico (SVG puro, sem Chart.js) do andamento orçado x realizado dos últimos meses lançados,
-// pra dar visibilidade da evolução da conta direto na lista, sem precisar abrir o detalhe.
-function sparklineAndamento(lancamentosConta) {
-  const pontos = [...(lancamentosConta || [])].sort((a, b) => a.competencia.localeCompare(b.competencia)).slice(-6);
-  if (pontos.length < 2) return '<span class="text-muted" style="font-size:11px">sem histórico</span>';
-
-  const w = 92, h = 30, pad = 3;
-  const valores = pontos.flatMap((p) => [Number(p.valor_orcado) || 0, Number(p.valor_realizado) || 0]);
-  const max = Math.max(1, ...valores);
-  const stepX = (w - pad * 2) / (pontos.length - 1);
-  const coord = (v, i) => {
-    const x = pad + i * stepX;
-    const y = h - pad - ((Number(v) || 0) / max) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  };
-  const orcadoPts = pontos.map((p, i) => coord(p.valor_orcado, i)).join(' ');
-  const realizadoPts = pontos.map((p, i) => coord(p.valor_realizado, i)).join(' ');
-  const titulo = `Últimos ${pontos.length} meses: orçado (tracejado) x realizado (sólido)`;
-
-  return `
-    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block" role="img" aria-label="${titulo}">
-      <title>${titulo}</title>
-      <polyline points="${orcadoPts}" fill="none" stroke="#9a9ab0" stroke-width="1.5" stroke-dasharray="3,2"/>
-      <polyline points="${realizadoPts}" fill="none" stroke="#E8B84B" stroke-width="2"/>
-    </svg>
-  `;
-}
-
 let filtroCategoria = 'todas';
 let filtroStatus = 'ativo';
 let competenciaAtiva = null; // 'YYYY-MM', escolhida pelo usuário no painel de Resumo Consolidado
 
 export async function render(container, state) {
-  const { supabase, empresaAtual, user } = state;
+  const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'controladoria') === 'total';
 
   let contas, departamentos, membros, lancamentos;
@@ -86,12 +59,6 @@ export async function render(container, state) {
   const nomeDeptoPorId = new Map(departamentos.map((d) => [d.id, d.nome]));
   const nomeMembroPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const categoriaPorContaId = new Map(contas.map((c) => [c.id, c.categoria]));
-
-  const lancamentosPorConta = new Map();
-  lancamentos.forEach((l) => {
-    if (!lancamentosPorConta.has(l.conta_id)) lancamentosPorConta.set(l.conta_id, []);
-    lancamentosPorConta.get(l.conta_id).push(l);
-  });
 
   const contasFiltradas = contas.filter((c) => {
     if (filtroCategoria !== 'todas' && c.categoria !== filtroCategoria) return false;
@@ -145,7 +112,10 @@ export async function render(container, state) {
     <div class="card">
       <div class="card-header">
         <span><i class="ti ti-chart-bar"></i> Resumo Consolidado</span>
-        <input type="month" id="competencia-ativa" value="${competenciaAtiva}">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${podeEditar ? '<button class="btn btn-secondary btn-sm" id="btn-config-rol" title="Configurar a Receita (ROL) da empresa, usada no % sobre a ROL de cada conta"><i class="ti ti-settings"></i> ROL da empresa</button>' : ''}
+          <input type="month" id="competencia-ativa" value="${competenciaAtiva}">
+        </div>
       </div>
       ${doMes.length ? `
         <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:1rem">
@@ -180,7 +150,7 @@ export async function render(container, state) {
             `).join('')}
           </tbody>
         </table>` : ''}
-      ` : '<div class="empty-state"><i class="ti ti-chart-bar"></i>Nenhum lançamento de orçado/realizado nesta competência ainda. Lance os valores no detalhe de cada conta.</div>'}
+      ` : '<div class="empty-state"><i class="ti ti-chart-bar"></i>Nenhum lançamento de orçado/realizado nesta competência ainda. Lance os valores editando cada conta (ícone do lápis).</div>'}
     </div>
 
     <div class="card">
@@ -188,9 +158,6 @@ export async function render(container, state) {
         <span><i class="ti ti-list-details"></i> Contas Gerenciais</span>
         ${podeEditar ? '<button class="btn btn-primary btn-sm" id="btn-add-conta"><i class="ti ti-plus"></i> Nova conta</button>' : ''}
       </div>
-      <p class="text-muted" style="font-size:12px;margin:-0.75rem 0 1rem">
-        As colunas Orçado/Realizado abaixo são de <strong>${fmtCompetencia(competenciaAtiva + '-01')}</strong> — lance direto aqui e clique em <i class="ti ti-device-floppy"></i>, ou mude o mês no seletor do Resumo Consolidado acima.
-      </p>
       <div class="filters">
         <button class="filter-btn ${filtroCategoria === 'todas' ? 'active' : ''}" data-filtro-cat="todas">Todas</button>
         <button class="filter-btn ${filtroCategoria === 'receita' ? 'active' : ''}" data-filtro-cat="receita">Receita</button>
@@ -207,39 +174,31 @@ export async function render(container, state) {
         <table class="table">
           <thead>
             <tr>
-              <th>Código</th><th>Nome da conta</th><th>Categoria</th><th>Responsável</th>
-              <th>Andamento</th><th>Orçado (mês)</th><th>Realizado (mês)</th><th>Variação</th><th>Status</th><th></th>
+              <th>Código</th><th>Nome da conta</th><th>Categoria</th><th>Área responsável</th>
+              <th>Responsável pela análise</th><th>Meta mensal</th><th>Meta anual</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody>
-            ${contasFiltradas.map((c) => {
-              const lancsConta = lancamentosPorConta.get(c.id) || [];
-              const lancMes = lancsConta.find((l) => l.competencia.slice(0, 7) === competenciaAtiva);
-              const podeGerenciarConta = podeEditarRegistro(state, c.responsavel_analise_id, 'controladoria');
-              const variacaoMesConta = lancMes ? calcVariacao(lancMes.valor_orcado == null ? null : Number(lancMes.valor_orcado), lancMes.valor_realizado == null ? null : Number(lancMes.valor_realizado)) : { valor: null, pct: null };
-              return `
+            ${contasFiltradas.map((c) => `
               <tr>
                 <td><strong>${escapeHtml(c.codigo)}</strong></td>
                 <td>${escapeHtml(c.nome)}</td>
                 <td><span class="badge ${CATEGORIA_BADGE[c.categoria]}">${CATEGORIA_LABEL[c.categoria]}</span></td>
+                <td>${escapeHtml(nomeDeptoPorId.get(c.departamento_id) || '—')}</td>
                 <td>${escapeHtml(nomeMembroPorId.get(c.responsavel_analise_id) || '—')}</td>
-                <td>${sparklineAndamento(lancsConta)}</td>
-                <td><input type="number" step="0.01" class="lm-rapido-input" data-conta-id="${c.id}" data-campo="orcado" value="${lancMes?.valor_orcado ?? ''}" ${podeGerenciarConta ? '' : 'disabled'} style="width:110px" placeholder="—"></td>
-                <td><input type="number" step="0.01" class="lm-rapido-input" data-conta-id="${c.id}" data-campo="realizado" value="${lancMes?.valor_realizado ?? ''}" ${podeGerenciarConta ? '' : 'disabled'} style="width:110px" placeholder="—"></td>
-                <td>${badgeVariacao(variacaoMesConta.pct)}</td>
+                <td>${fmtMoeda(c.meta_mensal)}</td>
+                <td>${fmtMoeda(c.meta_anual)}</td>
                 <td><span class="badge ${c.ativo ? 'badge-success' : 'badge-danger'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 <td class="table-actions">
-                  ${podeGerenciarConta ? `<button class="icon-btn" data-salvar-rapido="${c.id}" title="Salvar orçado/realizado de ${fmtCompetencia(competenciaAtiva + '-01')}"><i class="ti ti-device-floppy"></i></button>` : ''}
-                  <button class="icon-btn" data-detalhes="${c.id}" title="Orçado x Realizado, análises e anexos"><i class="ti ti-folder-open"></i></button>
+                  <button class="icon-btn" data-detalhes="${c.id}" title="Análises, gráficos, anexos e planos de ação"><i class="ti ti-folder-open"></i></button>
                   <button class="icon-btn" data-imprimir-conta="${c.id}" title="Imprimir (orçado x realizado + análises)"><i class="ti ti-printer"></i></button>
                   ${podeEditar ? `
-                    <button class="icon-btn" data-editar="${c.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                    <button class="icon-btn" data-editar="${c.id}" title="Editar conta e lançar valores"><i class="ti ti-pencil"></i></button>
                     <button class="icon-btn" data-excluir="${c.id}" title="Excluir"><i class="ti ti-trash"></i></button>
                   ` : ''}
                 </td>
               </tr>
-            `;
-            }).join('')}
+            `).join('')}
           </tbody>
         </table>` : '<div class="empty-state"><i class="ti ti-report-money"></i>Nenhuma conta gerencial cadastrada.</div>'}
     </div>
@@ -252,33 +211,15 @@ export async function render(container, state) {
     btn.addEventListener('click', () => { filtroStatus = btn.dataset.filtroStatus; render(container, state); });
   });
 
-  const inputResumoCompetencia = container.querySelector('#competencia-ativa');
-  if (inputResumoCompetencia) inputResumoCompetencia.addEventListener('change', (e) => {
+  const inputCompetenciaAtiva = container.querySelector('#competencia-ativa');
+  if (inputCompetenciaAtiva) inputCompetenciaAtiva.addEventListener('change', (e) => {
     if (!e.target.value) return;
     competenciaAtiva = e.target.value;
     render(container, state);
   });
 
-  container.querySelectorAll('[data-salvar-rapido]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const contaId = btn.dataset.salvarRapido;
-      const linha = btn.closest('tr');
-      const orcadoVal = linha.querySelector('[data-campo="orcado"]').value;
-      const realizadoVal = linha.querySelector('[data-campo="realizado"]').value;
-      const payload = {
-        empresa_id: empresaAtual.id,
-        conta_id: contaId,
-        competencia: competenciaAtiva + '-01',
-        valor_orcado: orcadoVal === '' ? null : Number(orcadoVal),
-        valor_realizado: realizadoVal === '' ? null : Number(realizadoVal),
-        usuario_id: user.id,
-      };
-      const { error } = await supabase.from('contas_lancamentos_mensais').upsert(payload, { onConflict: 'conta_id,competencia' });
-      if (error) return toast('Erro ao salvar lançamento: ' + error.message, 'erro');
-      toast('Lançamento salvo.', 'sucesso');
-      render(container, state);
-    });
-  });
+  const btnConfigRol = container.querySelector('#btn-config-rol');
+  if (btnConfigRol) btnConfigRol.addEventListener('click', () => abrirConfigRol(state));
 
   const btnAdd = container.querySelector('#btn-add-conta');
   if (btnAdd) btnAdd.addEventListener('click', () => abrirFormulario(state, container, departamentos, membros));
@@ -315,8 +256,27 @@ export async function render(container, state) {
   });
 }
 
-function abrirFormulario(state, container, departamentos, membros, conta = null) {
-  const { supabase, empresaAtual } = state;
+// ---------- Formulário de conta gerencial (ícone do lápis / "Nova conta") ----------
+// Também é onde se edita o Histórico Anual e se lançam/editam os valores mensais — a edição de
+// dados vive aqui; o botão de visualização (pasta) só mostra análise e os gráficos resultantes.
+async function abrirFormulario(state, container, departamentos, membros, conta = null) {
+  const { supabase, empresaAtual, user } = state;
+
+  let lancamentos = [];
+  if (conta) {
+    try {
+      const { data, error } = await supabase.from('contas_lancamentos_mensais').select('*').eq('conta_id', conta.id);
+      if (error) throw error;
+      lancamentos = data || [];
+    } catch (err) {
+      return toast('Erro ao carregar lançamentos mensais: ' + err.message, 'erro');
+    }
+  }
+
+  const anoAtual = new Date().getFullYear();
+  const anosHistorico = [anoAtual - 3, anoAtual - 2, anoAtual - 1];
+  const historicoAnual = conta?.historico_anual || {};
+
   const modal = abrirModal(conta ? 'Editar conta gerencial' : 'Nova conta gerencial', `
     <form id="form-conta-gerencial">
       <div class="form-row">
@@ -370,9 +330,53 @@ function abrirFormulario(state, container, departamentos, membros, conta = null)
           <input type="number" id="cg-meta-anual" step="0.01" min="0" value="${conta?.meta_anual ?? ''}">
         </div>
       </div>
+
+      ${conta ? `
+      <hr class="sep">
+      <label style="font-size:13px;font-weight:600">Histórico Anual</label>
+      <table class="table" style="margin-bottom:0.5rem">
+        <thead><tr><th>Ano</th><th>Orçado (R$)</th><th>Realizado (R$)</th></tr></thead>
+        <tbody>
+          ${anosHistorico.map((ano) => `
+            <tr>
+              <td><strong>${ano}</strong></td>
+              <td><input type="number" step="0.01" id="cg-hist-orcado-${ano}" value="${historicoAnual[ano]?.orcado ?? ''}" style="width:140px"></td>
+              <td><input type="number" step="0.01" id="cg-hist-realizado-${ano}" value="${historicoAnual[ano]?.realizado ?? ''}" style="width:140px"></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <p class="text-muted" style="font-size:12px;margin-bottom:1rem">Usado no gráfico "Histórico Anual" desta conta. Salvo junto com o botão abaixo.</p>
+      ` : ''}
+
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
+
+    ${conta ? `
+    <hr class="sep">
+    <label style="font-size:13px;font-weight:600">Lançamentos Mensais</label>
+    <form id="form-lancamento-mensal-edicao" style="margin:0.75rem 0 1rem">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Competência</label>
+          <input type="month" id="lm2-competencia" required value="${new Date().toISOString().slice(0, 7)}">
+        </div>
+        <div class="form-group">
+          <label>Orçado (R$)</label>
+          <input type="number" id="lm2-orcado" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Realizado (R$)</label>
+          <input type="number" id="lm2-realizado" step="0.01">
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" type="submit"><i class="ti ti-device-floppy"></i> Salvar mês</button>
+      <span class="text-muted" style="font-size:12px;margin-left:8px">Lançar numa competência que já existe atualiza o valor.</span>
+    </form>
+    <div id="cg-lancamentos-tabela"></div>
+    ` : '<p class="text-muted" style="margin-top:1rem"><i class="ti ti-info-circle"></i> Salve a conta primeiro; reabra a edição pelo ícone do lápis para lançar o histórico anual e os valores mensais.</p>'}
   `);
+  modal.classList.add('modal-xl');
 
   modal.querySelector('#form-conta-gerencial').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -389,6 +393,17 @@ function abrirFormulario(state, container, departamentos, membros, conta = null)
       meta_anual: metaAnual === '' ? null : Number(metaAnual),
       ativo: modal.querySelector('#cg-ativo').value === 'true',
     };
+    if (conta) {
+      const historico = {};
+      anosHistorico.forEach((ano) => {
+        const orcado = modal.querySelector(`#cg-hist-orcado-${ano}`).value;
+        const realizado = modal.querySelector(`#cg-hist-realizado-${ano}`).value;
+        if (orcado !== '' || realizado !== '') {
+          historico[ano] = { orcado: orcado === '' ? null : Number(orcado), realizado: realizado === '' ? null : Number(realizado) };
+        }
+      });
+      payload.historico_anual = historico;
+    }
     const query = conta
       ? supabase.from('contas_gerenciais').update(payload).eq('id', conta.id)
       : supabase.from('contas_gerenciais').insert(payload);
@@ -400,6 +415,209 @@ function abrirFormulario(state, container, departamentos, membros, conta = null)
     toast('Salvo com sucesso.', 'sucesso');
     fecharModal();
     render(container, state);
+  });
+
+  if (!conta) return;
+
+  const renderTabelaLancamentos = () => {
+    const area = modal.querySelector('#cg-lancamentos-tabela');
+    const ordenado = [...lancamentos].sort((a, b) => b.competencia.localeCompare(a.competencia));
+    area.innerHTML = ordenado.length ? `
+      <table class="table">
+        <thead><tr><th>Competência</th><th>Orçado</th><th>Realizado</th><th>Variação</th><th></th></tr></thead>
+        <tbody>
+          ${ordenado.map((l) => {
+            const v = calcVariacao(l.valor_orcado == null ? null : Number(l.valor_orcado), l.valor_realizado == null ? null : Number(l.valor_realizado));
+            return `
+            <tr>
+              <td>${fmtCompetencia(l.competencia)}</td>
+              <td>${fmtMoeda(l.valor_orcado)}</td>
+              <td>${fmtMoeda(l.valor_realizado)}</td>
+              <td>${fmtMoeda(v.valor)} ${badgeVariacao(v.pct)}</td>
+              <td class="table-actions">
+                <button class="icon-btn" data-editar-lancamento-edicao="${l.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn" data-excluir-lancamento-edicao="${l.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : '<div class="empty-state"><i class="ti ti-chart-bar"></i>Nenhum lançamento mensal registrado ainda.</div>';
+
+    area.querySelectorAll('[data-editar-lancamento-edicao]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const l = lancamentos.find((x) => x.id === btn.dataset.editarLancamentoEdicao);
+        modal.querySelector('#lm2-competencia').value = l.competencia.slice(0, 7);
+        modal.querySelector('#lm2-orcado').value = l.valor_orcado ?? '';
+        modal.querySelector('#lm2-realizado').value = l.valor_realizado ?? '';
+      });
+    });
+    area.querySelectorAll('[data-excluir-lancamento-edicao]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir este lançamento?'))) return;
+        const { error } = await supabase.from('contas_lancamentos_mensais').delete().eq('id', btn.dataset.excluirLancamentoEdicao);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        lancamentos = lancamentos.filter((x) => x.id !== btn.dataset.excluirLancamentoEdicao);
+        toast('Lançamento excluído.', 'sucesso');
+        renderTabelaLancamentos();
+      });
+    });
+  };
+  renderTabelaLancamentos();
+
+  modal.querySelector('#form-lancamento-mensal-edicao').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const orcado = modal.querySelector('#lm2-orcado').value;
+    const realizado = modal.querySelector('#lm2-realizado').value;
+    const payloadLm = {
+      empresa_id: empresaAtual.id,
+      conta_id: conta.id,
+      competencia: modal.querySelector('#lm2-competencia').value + '-01',
+      valor_orcado: orcado === '' ? null : Number(orcado),
+      valor_realizado: realizado === '' ? null : Number(realizado),
+      usuario_id: user.id,
+    };
+    const { data: novo, error } = await supabase.from('contas_lancamentos_mensais').upsert(payloadLm, { onConflict: 'conta_id,competencia' }).select().single();
+    if (error) return toast('Erro ao salvar lançamento: ' + error.message, 'erro');
+    toast('Lançamento salvo.', 'sucesso');
+    const idx = lancamentos.findIndex((l) => l.competencia === novo.competencia);
+    if (idx >= 0) lancamentos[idx] = novo; else lancamentos.push(novo);
+    renderTabelaLancamentos();
+  });
+}
+
+// ---------- Configuração da ROL (Receita Operacional Líquida) da empresa ----------
+// Dado único por empresa (não por conta), usado como denominador do gráfico "% sobre a ROL" de
+// todas as contas. Só quem tem nível 'total' em controladoria edita (RLS já garante isso).
+async function abrirConfigRol(state) {
+  const { supabase, empresaAtual, user } = state;
+
+  let historico, mensal;
+  try {
+    const [resHist, resMensal] = await Promise.all([
+      supabase.from('empresa_rol_historico_anual').select('*').eq('empresa_id', empresaAtual.id),
+      supabase.from('empresa_rol_mensal').select('*').eq('empresa_id', empresaAtual.id),
+    ]);
+    if (resHist.error) throw resHist.error;
+    if (resMensal.error) throw resMensal.error;
+    historico = resHist.data || [];
+    mensal = resMensal.data || [];
+  } catch (err) {
+    return toast('Erro ao carregar ROL: ' + err.message, 'erro');
+  }
+
+  const anoAtual = new Date().getFullYear();
+  const anosHistorico = [anoAtual - 3, anoAtual - 2, anoAtual - 1];
+  const historicoPorAno = new Map(historico.map((h) => [h.ano, h]));
+
+  const modal = abrirModal('Receita (ROL) da empresa', `
+    <p class="text-muted" style="font-size:12px;margin-bottom:1rem">Usada para calcular o gráfico "% sobre a ROL" de cada conta gerencial.</p>
+    <form id="form-rol-historico" style="margin-bottom:1.5rem">
+      <label style="font-size:13px;font-weight:600">Histórico Anual</label>
+      <table class="table" style="margin:0.5rem 0">
+        <thead><tr><th>Ano</th><th>Orçado (R$)</th><th>Realizado (R$)</th></tr></thead>
+        <tbody>
+          ${anosHistorico.map((ano) => `
+            <tr>
+              <td><strong>${ano}</strong></td>
+              <td><input type="number" step="0.01" id="rol-hist-orcado-${ano}" value="${historicoPorAno.get(ano)?.valor_orcado ?? ''}" style="width:160px"></td>
+              <td><input type="number" step="0.01" id="rol-hist-realizado-${ano}" value="${historicoPorAno.get(ano)?.valor_realizado ?? ''}" style="width:160px"></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-device-floppy"></i> Salvar histórico anual</button>
+    </form>
+    <hr class="sep">
+    <label style="font-size:13px;font-weight:600">Lançamento mensal (${anoAtual} em diante)</label>
+    <form id="form-rol-mensal" style="margin:0.75rem 0 1rem">
+      <div class="form-row">
+        <div class="form-group"><label>Competência</label><input type="month" id="rol-m-competencia" required value="${new Date().toISOString().slice(0, 7)}"></div>
+        <div class="form-group"><label>Orçado (R$)</label><input type="number" id="rol-m-orcado" step="0.01"></div>
+        <div class="form-group"><label>Realizado (R$)</label><input type="number" id="rol-m-realizado" step="0.01"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-plus"></i> Salvar mês</button>
+    </form>
+    <div id="rol-mensal-tabela"></div>
+  `);
+  modal.classList.add('modal-xl');
+
+  const renderTabelaMensal = () => {
+    const area = modal.querySelector('#rol-mensal-tabela');
+    const ordenado = [...mensal].sort((a, b) => b.competencia.localeCompare(a.competencia));
+    area.innerHTML = ordenado.length ? `
+      <table class="table">
+        <thead><tr><th>Competência</th><th>Orçado</th><th>Realizado</th><th></th></tr></thead>
+        <tbody>
+          ${ordenado.map((m) => `
+            <tr>
+              <td>${fmtCompetencia(m.competencia)}</td>
+              <td>${fmtMoeda(m.valor_orcado)}</td>
+              <td>${fmtMoeda(m.valor_realizado)}</td>
+              <td class="table-actions">
+                <button class="icon-btn" data-editar-rol-mensal="${m.id}" title="Editar"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn" data-excluir-rol-mensal="${m.id}" title="Excluir"><i class="ti ti-trash"></i></button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>` : '<div class="empty-state"><i class="ti ti-report-money"></i>Nenhum mês lançado ainda.</div>';
+
+    area.querySelectorAll('[data-editar-rol-mensal]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const m = mensal.find((x) => x.id === btn.dataset.editarRolMensal);
+        modal.querySelector('#rol-m-competencia').value = m.competencia.slice(0, 7);
+        modal.querySelector('#rol-m-orcado').value = m.valor_orcado ?? '';
+        modal.querySelector('#rol-m-realizado').value = m.valor_realizado ?? '';
+      });
+    });
+    area.querySelectorAll('[data-excluir-rol-mensal]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!(await confirmar('Excluir este mês da ROL?'))) return;
+        const { error } = await supabase.from('empresa_rol_mensal').delete().eq('id', btn.dataset.excluirRolMensal);
+        if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
+        mensal = mensal.filter((x) => x.id !== btn.dataset.excluirRolMensal);
+        toast('Excluído.', 'sucesso');
+        renderTabelaMensal();
+      });
+    });
+  };
+  renderTabelaMensal();
+
+  modal.querySelector('#form-rol-historico').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const linhas = anosHistorico.map((ano) => {
+      const orcado = modal.querySelector(`#rol-hist-orcado-${ano}`).value;
+      const realizado = modal.querySelector(`#rol-hist-realizado-${ano}`).value;
+      return {
+        empresa_id: empresaAtual.id,
+        ano,
+        valor_orcado: orcado === '' ? null : Number(orcado),
+        valor_realizado: realizado === '' ? null : Number(realizado),
+        usuario_id: user.id,
+      };
+    });
+    const { error } = await supabase.from('empresa_rol_historico_anual').upsert(linhas, { onConflict: 'empresa_id,ano' });
+    if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
+    toast('Histórico anual da ROL salvo.', 'sucesso');
+  });
+
+  modal.querySelector('#form-rol-mensal').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const orcado = modal.querySelector('#rol-m-orcado').value;
+    const realizado = modal.querySelector('#rol-m-realizado').value;
+    const payload = {
+      empresa_id: empresaAtual.id,
+      competencia: modal.querySelector('#rol-m-competencia').value + '-01',
+      valor_orcado: orcado === '' ? null : Number(orcado),
+      valor_realizado: realizado === '' ? null : Number(realizado),
+      usuario_id: user.id,
+    };
+    const { data: novo, error } = await supabase.from('empresa_rol_mensal').upsert(payload, { onConflict: 'empresa_id,competencia' }).select().single();
+    if (error) return toast('Erro ao salvar: ' + error.message, 'erro');
+    toast('Mês salvo.', 'sucesso');
+    const idx = mensal.findIndex((m) => m.competencia === novo.competencia);
+    if (idx >= 0) mensal[idx] = novo; else mensal.push(novo);
+    renderTabelaMensal();
   });
 }
 
@@ -536,11 +754,12 @@ async function imprimirConta(state, conta) {
   `);
 }
 
-// ---------- DETALHE DA CONTA: orçado x realizado + análises periódicas + anexos + planos de ação ----------
-let abaDetalheAtiva = 'valores';
-let chartInstanceValores = null;
+// ---------- DETALHE DA CONTA (ícone da pasta): análises periódicas (com os 3 gráficos) + anexos + planos de ação ----------
+// Data-entry vive no formulário de edição (ícone do lápis) — aqui é só visualização.
+let abaDetalheAtiva = 'analises';
+let chartInstancesConta = [];
 
-async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'valores') {
+async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial = 'analises') {
   abaDetalheAtiva = abaInicial;
   const modal = abrirModal(`${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}`, '<div id="detalhe-conta-corpo">Carregando...</div>');
   modal.classList.add('modal-xl');
@@ -551,16 +770,25 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   const { supabase, empresaAtual } = state;
   const corpo = modal.querySelector('#detalhe-conta-corpo');
 
-  let analises, anexos;
+  let analises, anexos, lancamentosConta, rolMensal, rolHistorico;
   try {
-    const [resAnalises, resAnexos] = await Promise.all([
+    const [resAnalises, resAnexos, resLancamentos, resRolMensal, resRolHistorico] = await Promise.all([
       supabase.from('contas_analises').select('*').eq('conta_id', conta.id).order('competencia', { ascending: false }),
       supabase.from('contas_anexos').select('*').eq('conta_id', conta.id).order('created_at', { ascending: false }),
+      supabase.from('contas_lancamentos_mensais').select('*').eq('conta_id', conta.id),
+      supabase.from('empresa_rol_mensal').select('*').eq('empresa_id', empresaAtual.id),
+      supabase.from('empresa_rol_historico_anual').select('*').eq('empresa_id', empresaAtual.id),
     ]);
     if (resAnalises.error) throw resAnalises.error;
     if (resAnexos.error) throw resAnexos.error;
+    if (resLancamentos.error) throw resLancamentos.error;
+    if (resRolMensal.error) throw resRolMensal.error;
+    if (resRolHistorico.error) throw resRolHistorico.error;
     analises = resAnalises.data || [];
     anexos = resAnexos.data || [];
+    lancamentosConta = resLancamentos.data || [];
+    rolMensal = resRolMensal.data || [];
+    rolHistorico = resRolHistorico.data || [];
   } catch (err) {
     corpo.innerHTML = `<div class="alert alert-warning">Erro ao carregar: ${escapeHtml(err.message)}</div>`;
     return;
@@ -571,9 +799,8 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   corpo.innerHTML = `
     <div class="filters" style="margin-bottom:1rem;justify-content:space-between;display:flex;flex-wrap:wrap;gap:8px">
       <div class="filters" style="margin-bottom:0">
-        <button class="filter-btn ${abaDetalheAtiva === 'valores' ? 'active' : ''}" data-aba-detalhe="valores"><i class="ti ti-chart-bar"></i> Orçado x Realizado</button>
-        <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises periódicas</button>
-        <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos</button>
+        <button class="filter-btn ${abaDetalheAtiva === 'analises' ? 'active' : ''}" data-aba-detalhe="analises"><i class="ti ti-notes"></i> Análises e gráficos</button>
+        <button class="filter-btn ${abaDetalheAtiva === 'anexos' ? 'active' : ''}" data-aba-detalhe="anexos"><i class="ti ti-paperclip"></i> Relatórios e gráficos enviados</button>
         <button class="filter-btn ${abaDetalheAtiva === 'planos' ? 'active' : ''}" data-aba-detalhe="planos"><i class="ti ti-clipboard-list"></i> Planos de Ação</button>
       </div>
       <button class="btn btn-secondary btn-sm" id="btn-imprimir-conta-detalhe"><i class="ti ti-printer"></i> Imprimir</button>
@@ -589,10 +816,8 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   });
 
   const areaAba = corpo.querySelector('#detalhe-conta-aba');
-  if (abaDetalheAtiva === 'valores') {
-    await renderAbaValores(state, modal, conta, areaAba);
-  } else if (abaDetalheAtiva === 'analises') {
-    renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba);
+  if (abaDetalheAtiva === 'analises') {
+    renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba, lancamentosConta, rolMensal, rolHistorico);
   } else if (abaDetalheAtiva === 'anexos') {
     renderAbaAnexos(state, modal, conta, anexos, nomeMembroPorId, areaAba);
   } else {
@@ -600,124 +825,114 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   }
 }
 
-// ---------- ABA "Orçado x Realizado": lançamento mensal + tabela + gráfico ----------
-async function renderAbaValores(state, modal, conta, areaAba) {
-  const { supabase, empresaAtual, user } = state;
-  const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
+// ---------- Monta os dados dos 3 gráficos (Histórico Anual, Mensal do ano corrente, % sobre a ROL) ----------
+function construirDadosGraficosConta(conta, lancamentosConta, rolMensal, rolHistorico) {
+  const anoAtual = new Date().getFullYear();
+  const anosHistorico = [anoAtual - 3, anoAtual - 2, anoAtual - 1];
+  const historicoAnual = conta.historico_anual || {};
+  const rolHistPorAno = new Map(rolHistorico.map((r) => [r.ano, r]));
 
-  let lancamentos;
-  try {
-    const { data, error } = await supabase.from('contas_lancamentos_mensais').select('*').eq('conta_id', conta.id).order('competencia', { ascending: false });
-    if (error) throw error;
-    lancamentos = data || [];
-  } catch (err) {
-    areaAba.innerHTML = `<div class="alert alert-warning">Erro ao carregar lançamentos: ${escapeHtml(err.message)}</div>`;
-    return;
-  }
+  const lancDoAnoAtual = lancamentosConta.filter((l) => l.competencia.slice(0, 4) === String(anoAtual));
+  const lancPorMes = new Map(lancDoAnoAtual.map((l) => [l.competencia.slice(5, 7), l]));
+  const somaAnoAtual = lancDoAnoAtual.reduce((acc, l) => {
+    acc.orcado += Number(l.valor_orcado) || 0;
+    acc.realizado += Number(l.valor_realizado) || 0;
+    return acc;
+  }, { orcado: 0, realizado: 0 });
 
-  areaAba.innerHTML = `
-    ${podeGerenciar ? `
-    <form id="form-lancamento-mensal" style="margin-bottom:1.25rem">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Competência</label>
-          <input type="month" id="lm-competencia" required value="${new Date().toISOString().slice(0, 7)}">
-        </div>
-        <div class="form-group">
-          <label>Valor orçado (R$)</label>
-          <input type="number" id="lm-orcado" step="0.01">
-        </div>
-        <div class="form-group">
-          <label>Valor realizado (R$)</label>
-          <input type="number" id="lm-realizado" step="0.01">
-        </div>
-      </div>
-      <button class="btn btn-primary btn-sm" type="submit"><i class="ti ti-device-floppy"></i> Salvar lançamento</button>
-      <span class="text-muted" style="font-size:12px;margin-left:8px">Lançar numa competência que já existe atualiza o valor.</span>
-    </form>
-    ` : '<p class="text-muted" style="margin-bottom:1rem"><i class="ti ti-lock"></i> Apenas o responsável pela análise desta conta (ou a Qualidade/administração) pode lançar valores.</p>'}
+  // ---- Histórico Anual ----
+  const historicoLabels = [...anosHistorico.map(String), String(anoAtual)];
+  const historicoOrcado = [...anosHistorico.map((a) => historicoAnual[a]?.orcado ?? null), lancDoAnoAtual.length ? somaAnoAtual.orcado : null];
+  const historicoRealizado = [...anosHistorico.map((a) => historicoAnual[a]?.realizado ?? null), lancDoAnoAtual.length ? somaAnoAtual.realizado : null];
 
-    <canvas id="grafico-conta-valores" height="110"></canvas>
+  // ---- Mensal (ano corrente) ----
+  const mensalLabels = MESES_LABEL.map((m) => `${m}/${String(anoAtual).slice(2)}`);
+  const mensalOrcado = MESES_LABEL.map((_, i) => {
+    const l = lancPorMes.get(String(i + 1).padStart(2, '0'));
+    return l?.valor_orcado ?? null;
+  });
+  const mensalRealizado = MESES_LABEL.map((_, i) => {
+    const l = lancPorMes.get(String(i + 1).padStart(2, '0'));
+    return l?.valor_realizado ?? null;
+  });
 
-    ${lancamentos.length ? `
-      <table class="table" style="margin-top:1rem">
-        <thead><tr><th>Competência</th><th>Orçado</th><th>Realizado</th><th>Variação</th>${podeGerenciar ? '<th></th>' : ''}</tr></thead>
-        <tbody>
-          ${lancamentos.map((l) => {
-            const v = calcVariacao(l.valor_orcado == null ? null : Number(l.valor_orcado), l.valor_realizado == null ? null : Number(l.valor_realizado));
-            return `
-            <tr>
-              <td>${fmtCompetencia(l.competencia)}</td>
-              <td>${fmtMoeda(l.valor_orcado)}</td>
-              <td>${fmtMoeda(l.valor_realizado)}</td>
-              <td>${fmtMoeda(v.valor)} ${badgeVariacao(v.pct)}</td>
-              ${podeGerenciar ? `
-              <td class="table-actions">
-                <button class="icon-btn" data-editar-lancamento="${l.id}" title="Editar"><i class="ti ti-pencil"></i></button>
-                <button class="icon-btn" data-excluir-lancamento="${l.id}" title="Excluir"><i class="ti ti-trash"></i></button>
-              </td>` : ''}
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>` : '<div class="empty-state" style="margin-top:1rem"><i class="ti ti-chart-bar"></i>Nenhum lançamento mensal registrado ainda.</div>'}
-  `;
+  // ---- % sobre a ROL ----
+  const rolLabels = [];
+  const rolPctOrcado = [];
+  const rolPctRealizado = [];
+  anosHistorico.forEach((ano) => {
+    const rolAno = rolHistPorAno.get(ano);
+    const hist = historicoAnual[ano];
+    if (!rolAno || !hist) return;
+    rolLabels.push(String(ano));
+    rolPctOrcado.push(rolAno.valor_orcado ? (hist.orcado / rolAno.valor_orcado) * 100 : null);
+    rolPctRealizado.push(rolAno.valor_realizado ? (hist.realizado / rolAno.valor_realizado) * 100 : null);
+  });
+  const rolMensalPorCompetencia = new Map(rolMensal.map((r) => [r.competencia.slice(0, 7), r]));
+  [...lancPorMes.entries()].sort(([a], [b]) => a.localeCompare(b)).forEach(([mm, lanc]) => {
+    const rolMes = rolMensalPorCompetencia.get(`${anoAtual}-${mm}`);
+    if (!rolMes) return;
+    rolLabels.push(`${MESES_LABEL[Number(mm) - 1]}/${String(anoAtual).slice(2)}`);
+    rolPctOrcado.push(rolMes.valor_orcado ? (Number(lanc.valor_orcado || 0) / Number(rolMes.valor_orcado)) * 100 : null);
+    rolPctRealizado.push(rolMes.valor_realizado ? (Number(lanc.valor_realizado || 0) / Number(rolMes.valor_realizado)) * 100 : null);
+  });
 
-  const cronologico = [...lancamentos].sort((a, b) => a.competencia.localeCompare(b.competencia));
-  if (chartInstanceValores) { chartInstanceValores.destroy(); chartInstanceValores = null; }
-  const canvas = areaAba.querySelector('#grafico-conta-valores');
-  if (canvas && window.Chart) {
-    chartInstanceValores = new Chart(canvas, {
+  return {
+    historico: { labels: historicoLabels, orcado: historicoOrcado, realizado: historicoRealizado },
+    mensal: { labels: mensalLabels, orcado: mensalOrcado, realizado: mensalRealizado },
+    rol: { labels: rolLabels, pctOrcado: rolPctOrcado, pctRealizado: rolPctRealizado },
+  };
+}
+
+function desenharGraficosConta(areaAba, dados) {
+  chartInstancesConta.forEach((c) => c.destroy());
+  chartInstancesConta = [];
+  if (!window.Chart) return;
+
+  const canvasHistorico = areaAba.querySelector('#grafico-historico-anual');
+  if (canvasHistorico) {
+    chartInstancesConta.push(new Chart(canvasHistorico, {
       type: 'bar',
       data: {
-        labels: cronologico.map((l) => fmtCompetencia(l.competencia)),
+        labels: dados.historico.labels,
         datasets: [
-          { label: 'Orçado', data: cronologico.map((l) => l.valor_orcado), backgroundColor: 'rgba(37,37,56,0.25)', borderColor: '#252538', borderWidth: 1 },
-          { label: 'Realizado', data: cronologico.map((l) => l.valor_realizado), backgroundColor: 'rgba(232,184,75,0.65)', borderColor: '#E8B84B', borderWidth: 1 },
+          { label: 'Orçado', data: dados.historico.orcado, backgroundColor: 'rgba(37,37,56,0.55)' },
+          { label: 'Realizado', data: dados.historico.realizado, backgroundColor: 'rgba(232,184,75,0.85)' },
         ],
       },
       options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
-    });
+    }));
   }
 
-  if (!podeGerenciar) return;
+  const canvasMensal = areaAba.querySelector('#grafico-mensal');
+  if (canvasMensal) {
+    chartInstancesConta.push(new Chart(canvasMensal, {
+      type: 'bar',
+      data: {
+        labels: dados.mensal.labels,
+        datasets: [
+          { label: 'Orçado', data: dados.mensal.orcado, backgroundColor: 'rgba(37,37,56,0.55)' },
+          { label: 'Realizado', data: dados.mensal.realizado, backgroundColor: 'rgba(232,184,75,0.85)' },
+        ],
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
+    }));
+  }
 
-  areaAba.querySelector('#form-lancamento-mensal').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const orcado = areaAba.querySelector('#lm-orcado').value;
-    const realizado = areaAba.querySelector('#lm-realizado').value;
-    const payload = {
-      empresa_id: empresaAtual.id,
-      conta_id: conta.id,
-      competencia: areaAba.querySelector('#lm-competencia').value + '-01',
-      valor_orcado: orcado === '' ? null : Number(orcado),
-      valor_realizado: realizado === '' ? null : Number(realizado),
-      usuario_id: user.id,
-    };
-    const { error } = await supabase.from('contas_lancamentos_mensais').upsert(payload, { onConflict: 'conta_id,competencia' });
-    if (error) return toast('Erro ao salvar lançamento: ' + error.message, 'erro');
-    toast('Lançamento salvo.', 'sucesso');
-    renderAbaValores(state, modal, conta, areaAba);
-  });
-
-  areaAba.querySelectorAll('[data-editar-lancamento]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const l = lancamentos.find((x) => x.id === btn.dataset.editarLancamento);
-      areaAba.querySelector('#lm-competencia').value = l.competencia.slice(0, 7);
-      areaAba.querySelector('#lm-orcado').value = l.valor_orcado ?? '';
-      areaAba.querySelector('#lm-realizado').value = l.valor_realizado ?? '';
-      areaAba.querySelector('#lm-competencia').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  });
-
-  areaAba.querySelectorAll('[data-excluir-lancamento]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (!(await confirmar('Excluir este lançamento?'))) return;
-      const { error } = await supabase.from('contas_lancamentos_mensais').delete().eq('id', btn.dataset.excluirLancamento);
-      if (error) return toast('Erro ao excluir: ' + error.message, 'erro');
-      toast('Lançamento excluído.', 'sucesso');
-      renderAbaValores(state, modal, conta, areaAba);
-    });
-  });
+  const canvasRol = areaAba.querySelector('#grafico-rol');
+  if (canvasRol) {
+    chartInstancesConta.push(new Chart(canvasRol, {
+      type: 'line',
+      data: {
+        labels: dados.rol.labels,
+        datasets: [
+          { label: '% ROL Orçado', data: dados.rol.pctOrcado, borderColor: '#252538', backgroundColor: 'transparent', tension: 0.25 },
+          { label: '% ROL Realizado', data: dados.rol.pctRealizado, borderColor: '#E8B84B', backgroundColor: 'transparent', tension: 0.25 },
+        ],
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { ticks: { callback: (v) => `${v}%` } } } },
+    }));
+  }
 }
 
 // ---------- ABA "Planos de Ação": lista os planos criados a partir de análises desta conta ----------
@@ -753,11 +968,33 @@ async function renderAbaPlanos(state, conta, nomeMembroPorId, areaAba) {
   `;
 }
 
-function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba) {
+function renderAbaAnalises(state, containerPai, modal, conta, membros, analises, nomeMembroPorId, areaAba, lancamentosConta, rolMensal, rolHistorico) {
   const { supabase, empresaAtual, user } = state;
   const podeGerenciar = podeEditarRegistro(state, conta.responsavel_analise_id, 'controladoria');
+  const anoAtual = new Date().getFullYear();
+
+  const dadosGraficos = construirDadosGraficosConta(conta, lancamentosConta, rolMensal, rolHistorico);
+  const temHistorico = dadosGraficos.historico.orcado.some((v) => v != null) || dadosGraficos.historico.realizado.some((v) => v != null);
+  const temMensal = dadosGraficos.mensal.orcado.some((v) => v != null) || dadosGraficos.mensal.realizado.some((v) => v != null);
+  const temRol = dadosGraficos.rol.labels.length > 0;
 
   areaAba.innerHTML = `
+    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:1.5rem">
+      <div>
+        <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
+        ${temHistorico ? '<canvas id="grafico-historico-anual" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
+      </div>
+      <div>
+        <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
+        ${temMensal ? '<canvas id="grafico-mensal" height="170"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
+      </div>
+    </div>
+    <div style="margin-bottom:1.5rem">
+      <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
+      ${temRol ? '<canvas id="grafico-rol" height="90"></canvas>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta para ver este gráfico.</div>'}
+    </div>
+    <hr class="sep" style="margin-bottom:1.5rem">
+
     ${podeGerenciar ? `
     <form id="form-nova-analise" style="margin-bottom:1.25rem">
       <div class="form-row">
@@ -802,6 +1039,8 @@ function renderAbaAnalises(state, containerPai, modal, conta, membros, analises,
       </div>
     `).join('') : '<div class="empty-state"><i class="ti ti-notes"></i>Nenhuma análise registrada ainda.</div>'}
   `;
+
+  desenharGraficosConta(areaAba, dadosGraficos);
 
   if (!podeGerenciar) return;
 
