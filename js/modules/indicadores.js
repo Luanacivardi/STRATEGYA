@@ -427,7 +427,7 @@ async function abrirResultados(state, indicador) {
     <canvas id="grafico-resultado" height="140"></canvas>
     <hr class="sep">
     <div id="resultados-tabela-area"></div>
-  `);
+  `, 'modal-fullscreen');
 
   function renderResultadosFiltrados() {
     const filtrados = anoFiltroAtivo ? resultados.filter((r) => r.periodo.startsWith(anoFiltroAtivo)) : resultados;
