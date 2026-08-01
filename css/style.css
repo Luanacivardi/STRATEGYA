@@ -114,7 +114,23 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   overflow-x: auto; transition: box-shadow 0.2s ease;
 }
 
-.stat-box { padding: 14px; border-radius: var(--radius); background: var(--surface-1); }
+/* Mini-card de KPI usado dentro de módulos (Auditorias, Controladoria, Planos de Ação) — mesma
+   linguagem visual do .dashboard-card (sombra colorida + barra lateral via --accent), só que mais
+   compacto para caber em grades densas de indicadores. */
+.stat-box {
+  --accent: var(--gold);
+  --accent-shadow: rgba(232,184,75,0.20);
+  position: relative; overflow: hidden;
+  padding: 14px 14px 14px 16px;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 6%, var(--surface-2)) 0%, var(--surface-2) 65%);
+  border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 8px 18px -10px var(--accent-shadow), 0 1px 3px rgba(37,37,56,0.05);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.stat-box::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--accent); border-radius: 14px 0 0 14px;
+}
 .card-header {
   font-size: 14px; font-weight: 700; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;
   color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 10px; border-bottom: 2px solid var(--gold);
@@ -439,11 +455,18 @@ input[type="file"]::file-selector-button:hover { background: var(--gold); border
   content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
   background: var(--accent); border-radius: 18px 0 0 18px;
 }
-.dashboard-card--blue   { --accent: #3b82f6; --accent-shadow: rgba(59,130,246,0.20); }
-.dashboard-card--purple { --accent: #8b5cf6; --accent-shadow: rgba(139,92,246,0.20); }
-.dashboard-card--green  { --accent: #10b981; --accent-shadow: rgba(16,185,129,0.20); }
-.dashboard-card--pink   { --accent: #ec4899; --accent-shadow: rgba(236,72,153,0.20); }
-.dashboard-card--orange { --accent: #f97316; --accent-shadow: rgba(249,115,22,0.20); }
+
+/* Paleta de destaque compartilhada por todos os cards de KPI do sistema (Dashboard, Documentos,
+   Auditorias, Controladoria, Planos de Ação etc.) — combine com .dashboard-card ou .stat-box para
+   herdar a sombra colorida e a barra lateral na cor certa. Mesma cor = mesmo significado em todo
+   o app: azul/roxo = contagem/percentual informativo, laranja = em andamento/atenção, verde =
+   sucesso/concluído, rosa = atraso/pendência, cinza = neutro/histórico. */
+.accent-blue   { --accent: #3b82f6; --accent-shadow: rgba(59,130,246,0.20); }
+.accent-purple { --accent: #8b5cf6; --accent-shadow: rgba(139,92,246,0.20); }
+.accent-green  { --accent: #10b981; --accent-shadow: rgba(16,185,129,0.20); }
+.accent-pink   { --accent: #ec4899; --accent-shadow: rgba(236,72,153,0.20); }
+.accent-orange { --accent: #f97316; --accent-shadow: rgba(249,115,22,0.20); }
+.accent-slate  { --accent: #64748b; --accent-shadow: rgba(100,116,139,0.18); }
 .dashboard-card-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
 .dashboard-card-value { font-size: 24px; font-weight: 800; color: var(--accent); }
 .dashboard-card[data-atalho] { cursor: pointer; }

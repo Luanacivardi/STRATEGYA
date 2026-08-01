@@ -770,12 +770,12 @@ function renderMonitoramento(corpo, { documentos, revisoesObsoletas }, irPara) {
 
   corpo.innerHTML = `
     <div class="dashboard-grid">
-      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Documentos ativos</div><div class="dashboard-card-value">${totalDocumentos}</div></div>
-      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Registros ativos</div><div class="dashboard-card-value">${totalRegistros}</div></div>
-      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Em elaboração/revisão</div><div class="dashboard-card-value">${emElaboracao}</div></div>
-      <div class="dashboard-card" data-atalho="aprovacoes"><div class="dashboard-card-label">Aguardando aprovação</div><div class="dashboard-card-value">${aguardandoAprovacao}</div></div>
-      <div class="dashboard-card" data-atalho="mestra"><div class="dashboard-card-label">Publicados</div><div class="dashboard-card-value">${publicados}</div></div>
-      <div class="dashboard-card" data-atalho="obsoletos"><div class="dashboard-card-label">Obsoletos (histórico)</div><div class="dashboard-card-value">${totalObsoletos}</div></div>
+      <div class="dashboard-card accent-blue" data-atalho="mestra"><div class="dashboard-card-label">Documentos ativos</div><div class="dashboard-card-value">${totalDocumentos}</div></div>
+      <div class="dashboard-card accent-purple" data-atalho="mestra"><div class="dashboard-card-label">Registros ativos</div><div class="dashboard-card-value">${totalRegistros}</div></div>
+      <div class="dashboard-card accent-orange" data-atalho="mestra"><div class="dashboard-card-label">Em elaboração/revisão</div><div class="dashboard-card-value">${emElaboracao}</div></div>
+      <div class="dashboard-card accent-pink" data-atalho="aprovacoes"><div class="dashboard-card-label">Aguardando aprovação</div><div class="dashboard-card-value">${aguardandoAprovacao}</div></div>
+      <div class="dashboard-card accent-green" data-atalho="mestra"><div class="dashboard-card-label">Publicados</div><div class="dashboard-card-value">${publicados}</div></div>
+      <div class="dashboard-card accent-slate" data-atalho="obsoletos"><div class="dashboard-card-label">Obsoletos (histórico)</div><div class="dashboard-card-value">${totalObsoletos}</div></div>
     </div>
 
     <h4>Registros com retenção vencendo em até 60 dias (ISO 9001 — cláusula 7.5.3.2)</h4>

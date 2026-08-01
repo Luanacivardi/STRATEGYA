@@ -2,6 +2,7 @@ import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, p
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
 const CATEGORIA_BADGE = { receita: 'badge-success', custo: 'badge-warning', despesa: 'badge-danger', investimento: 'badge-neutral' };
+const CATEGORIA_COR = { receita: 'green', custo: 'orange', despesa: 'pink', investimento: 'blue' };
 
 const TIPO_ARQUIVO_LABEL = { pdf: 'PDF', excel: 'Excel', png: 'PNG', jpg: 'JPG', powerpoint: 'PowerPoint' };
 const TIPO_ARQUIVO_ICONE = { pdf: 'ti-file-type-pdf', excel: 'ti-file-type-xls', png: 'ti-photo', jpg: 'ti-photo', powerpoint: 'ti-file-type-ppt' };
@@ -122,7 +123,7 @@ export async function render(container, state) {
       <div class="card-header"><span><i class="ti ti-report-money"></i> Resumo por categoria</span></div>
       <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
         ${totais.map((t) => `
-          <div class="stat-box">
+          <div class="stat-box accent-${CATEGORIA_COR[t.cat]}">
             <div class="badge ${CATEGORIA_BADGE[t.cat]}" style="margin-bottom:8px">${CATEGORIA_LABEL[t.cat]}</div>
             <div style="font-size:20px;font-weight:700">${t.qtd}</div>
             <div class="text-muted" style="font-size:12px">conta${t.qtd === 1 ? '' : 's'} ativa${t.qtd === 1 ? '' : 's'} · meta mensal ${fmtMoeda(t.metaMensal)}</div>
@@ -141,19 +142,19 @@ export async function render(container, state) {
       </div>
       ${doMes.length ? `
         <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:1rem">
-          <div class="stat-box">
+          <div class="stat-box accent-blue">
             <div class="text-muted" style="font-size:12px">Orçado no mês</div>
             <div style="font-size:18px;font-weight:700">${fmtMoeda(totalOrcadoMes)}</div>
           </div>
-          <div class="stat-box">
+          <div class="stat-box accent-purple">
             <div class="text-muted" style="font-size:12px">Realizado no mês</div>
             <div style="font-size:18px;font-weight:700">${fmtMoeda(totalRealizadoMes)}</div>
           </div>
-          <div class="stat-box">
+          <div class="stat-box accent-orange">
             <div class="text-muted" style="font-size:12px">Variação no mês</div>
             <div style="font-size:18px;font-weight:700">${fmtMoeda(variacaoMes.valor)} ${badgeVariacao(variacaoMes.pct)}</div>
           </div>
-          <div class="stat-box">
+          <div class="stat-box accent-green">
             <div class="text-muted" style="font-size:12px">Acumulado em ${anoResumo} (até o mês)</div>
             <div style="font-size:18px;font-weight:700">${fmtMoeda(totalRealizadoAno)} <span class="text-muted" style="font-size:12px;font-weight:400">de ${fmtMoeda(totalOrcadoAno)}</span> ${badgeVariacao(variacaoAno.pct)}</div>
           </div>
