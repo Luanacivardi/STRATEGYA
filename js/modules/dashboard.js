@@ -2,10 +2,10 @@ import { escapeHtml, formatarValor } from '../ui.js';
 import { metaDoPeriodo } from './indicadores.js';
 
 const PERSPECTIVAS = [
-  { key: 'financeira', label: 'Financeira' },
-  { key: 'clientes', label: 'Mercado' },
-  { key: 'processos_internos', label: 'Processos Internos' },
-  { key: 'aprendizado_crescimento', label: 'Aprendizado e Crescimento' },
+  { key: 'financeira', label: 'Financeira', cor: 'blue' },
+  { key: 'clientes', label: 'Mercado', cor: 'pink' },
+  { key: 'processos_internos', label: 'Processos Internos', cor: 'orange' },
+  { key: 'aprendizado_crescimento', label: 'Aprendizado e Crescimento', cor: 'purple' },
 ];
 
 // meta: já resolvida para o período do último resultado (fixa = indicadores.meta;
@@ -91,10 +91,10 @@ export async function render(container, state) {
     const atingidos = objs.filter((o) => o.status === 'atingido').length;
     const pct = objs.length ? Math.round((atingidos / objs.length) * 100) : 0;
     return `
-      <div class="dashboard-card">
+      <div class="dashboard-card dashboard-card--${p.cor}">
         <div class="dashboard-card-label">${p.label}</div>
         <div class="dashboard-card-value">${objs.length ? pct + '%' : '—'}</div>
-        <div class="text-muted" style="color:rgba(255,255,255,0.5)">${objs.length} objetivo(s)</div>
+        <div class="text-muted">${objs.length} objetivo(s)</div>
       </div>`;
   }).join('');
 
@@ -119,23 +119,23 @@ export async function render(container, state) {
 
   container.innerHTML = `
     <div class="dashboard-grid">
-      <div class="dashboard-card" data-atalho="objetivos">
+      <div class="dashboard-card dashboard-card--blue" data-atalho="objetivos">
         <div class="dashboard-card-label">Objetivos Estratégicos</div>
         <div class="dashboard-card-value">${totalObjetivos}</div>
       </div>
-      <div class="dashboard-card" data-atalho="objetivos">
+      <div class="dashboard-card dashboard-card--purple" data-atalho="objetivos">
         <div class="dashboard-card-label">% Objetivos Atingidos</div>
         <div class="dashboard-card-value">${pctObjetivos}%</div>
       </div>
-      <div class="dashboard-card" data-atalho="indicadores">
+      <div class="dashboard-card dashboard-card--orange" data-atalho="indicadores">
         <div class="dashboard-card-label">Indicadores Definidos</div>
         <div class="dashboard-card-value">${(indicadores || []).length}</div>
       </div>
-      <div class="dashboard-card" data-atalho="indicadores">
+      <div class="dashboard-card dashboard-card--green" data-atalho="indicadores">
         <div class="dashboard-card-label">Indicadores no Verde</div>
         <div class="dashboard-card-value">${verde}</div>
       </div>
-      <div class="dashboard-card" data-atalho="indicadores">
+      <div class="dashboard-card dashboard-card--pink" data-atalho="indicadores">
         <div class="dashboard-card-label">Indicadores no Vermelho</div>
         <div class="dashboard-card-value">${vermelho}</div>
       </div>
