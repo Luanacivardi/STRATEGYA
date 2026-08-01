@@ -185,7 +185,7 @@ export async function render(container, state) {
   if (indicadorAlvoId) {
     const alvo = itens.find((i) => i.id === indicadorAlvoId);
     indicadorAlvoId = null;
-    if (alvo) abrirResultados(state, alvo);
+    if (alvo) abrirFormulario(state, container, objetivos, membros, alvo);
   }
 }
 
@@ -212,13 +212,32 @@ function imprimirListaIndicadores(itens, nomeObjetivoPorId, emailPorId) {
   `);
 }
 
-function abrirFormulario(state, container, objetivos, membros, item = null) {
+async function abrirFormulario(state, container, objetivos, membros, item = null) {
   const { supabase, empresaAtual, user } = state;
   const travarResponsavelEmSiMesmo = resolverNivel(state, 'planejamento-estrategico', 'indicadores') === 'proprio';
   const classificacaoAtual = item?.classificacao || 'com_meta';
   const tipoMetaAtual = item?.tipo_meta || 'fixa';
   const unidadeAtual = item?.unidade || '';
   const unidadeEhCustom = unidadeAtual && !UNIDADES.includes(unidadeAtual);
+
+  // Lançar/editar/excluir resultados vive aqui dentro (edição do indicador), não tem mais tela própria.
+  const podeGerenciarResultados = item ? podeEditarRegistro(state, item.responsavel_id, 'planejamento-estrategico', 'indicadores') : false;
+  const ehVariavel = item ? metaEhVariavel(item) : false;
+  let resultados = [];
+  let metasPorMes = new Map();
+  let anos = [];
+  if (item) {
+    try {
+      const { data: resultadosData, error: errRes } = await supabase.from('resultados_indicadores').select('*').eq('indicador_id', item.id).order('periodo');
+      if (errRes) throw errRes;
+      resultados = [...resultadosData].sort((a, b) => a.periodo.localeCompare(b.periodo));
+      anos = [...new Set(resultados.map((r) => r.periodo.slice(0, 4)))].sort();
+      if (ehVariavel) metasPorMes = await carregarMetasPorMes(supabase, item.id);
+    } catch (err) {
+      return toast('Erro ao carregar resultados: ' + err.message, 'erro');
+    }
+  }
+  let anoFiltroAtivo = null; // null = todos os anos
 
   const modal = abrirModal(item ? 'Editar indicador' : 'Novo indicador', `
     <form id="form-indicador">
@@ -262,7 +281,7 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
         <input type="number" step="any" id="in-meta" value="${item?.meta ?? ''}">
       </div>
       <p class="text-muted" id="dica-meta-variavel" style="font-size:12px;display:${classificacaoAtual === 'com_meta' && tipoMetaAtual === 'variavel' ? '' : 'none'}">
-        Meta variável: defina a meta de cada período diretamente na tela de <strong>Resultados</strong> do indicador, junto com o lançamento do realizado.
+        Meta variável: defina a meta de cada período logo abaixo, em <strong>Resultados</strong>, junto com o lançamento do realizado.
       </p>
       <div class="form-row">
         <div class="form-group">
@@ -297,7 +316,51 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
       </div>
       <button class="btn btn-primary btn-block" type="submit">Salvar</button>
     </form>
-  `);
+
+    ${item ? `
+    <hr class="sep">
+    <label style="font-size:13px;font-weight:600">Resultados</label>
+    ${podeGerenciarResultados ? `
+      <form id="form-resultado" style="margin:0.75rem 0 1rem">
+        <input type="hidden" id="res-id">
+        <div class="form-row" style="align-items:end">
+          <div class="form-group">
+            <label>Período</label>
+            <input type="date" id="res-periodo" required>
+          </div>
+          <div class="form-group">
+            <label>Valor realizado</label>
+            <input type="number" step="any" id="res-valor" required>
+          </div>
+          ${ehVariavel ? `
+          <div class="form-group">
+            <label>Meta do período</label>
+            <input type="number" step="any" id="res-meta" placeholder="Meta deste mês">
+          </div>` : ''}
+        </div>
+        <div class="form-group">
+          <label>Observação</label>
+          <input type="text" id="res-observacao">
+        </div>
+        <div class="form-row">
+          <div class="form-group"><button class="btn btn-secondary btn-block" type="submit" id="btn-salvar-resultado">Adicionar</button></div>
+          <div class="form-group" id="grupo-cancelar-edicao" style="display:none">
+            <button class="btn btn-secondary btn-block" type="button" id="btn-cancelar-edicao-resultado">Cancelar edição</button>
+          </div>
+        </div>
+      </form>
+    ` : '<p class="text-muted" style="margin:0.75rem 0 1rem"><i class="ti ti-lock"></i> Apenas o responsável por este indicador (ou a Qualidade/administração) pode lançar resultados.</p>'}
+    ${anos.length > 1 ? `
+      <div class="filters" id="resultados-filtro-anos">
+        <button type="button" class="filter-btn ano-filtro-btn active" data-ano="">Todos</button>
+        ${anos.map((a) => `<button type="button" class="filter-btn ano-filtro-btn" data-ano="${a}">${a}</button>`).join('')}
+      </div>
+    ` : ''}
+    <canvas id="grafico-resultado" height="140"></canvas>
+    <hr class="sep">
+    <div id="resultados-tabela-area"></div>
+    ` : ''}
+  `, item ? 'modal-xl' : '');
 
   function atualizarCamposMeta() {
     const ehComMeta = modal.querySelector('#in-classificacao').value === 'com_meta';
@@ -348,78 +411,8 @@ function abrirFormulario(state, container, objetivos, membros, item = null) {
     fecharModal();
     render(container, state);
   });
-}
 
-async function abrirResultados(state, indicador) {
-  const { supabase } = state;
-  const podeEditar = podeEditarRegistro(state, indicador.responsavel_id, 'planejamento-estrategico', 'indicadores');
-  const ehVariavel = metaEhVariavel(indicador);
-
-  const { data: resultadosData, error } = await supabase
-    .from('resultados_indicadores')
-    .select('*')
-    .eq('indicador_id', indicador.id)
-    .order('periodo');
-
-  if (error) return toast('Erro ao carregar resultados: ' + error.message, 'erro');
-
-  let metasPorMes = new Map();
-  if (ehVariavel) {
-    try {
-      metasPorMes = await carregarMetasPorMes(supabase, indicador.id);
-    } catch (errMetas) {
-      return toast('Erro ao carregar metas por período: ' + errMetas.message, 'erro');
-    }
-  }
-
-  // Ordenação explícita por período (defensiva: garante ordem cronológica mesmo que
-  // algum registro antigo tenha sido salvo antes da validação de ano em dataValida()).
-  const resultados = [...resultadosData].sort((a, b) => a.periodo.localeCompare(b.periodo));
-  const anos = [...new Set(resultados.map((r) => r.periodo.slice(0, 4)))].sort();
-  let anoFiltroAtivo = null; // null = todos os anos
-
-  const modal = abrirModal(`Resultados — ${escapeHtml(indicador.nome)}`, `
-    ${podeEditar ? `
-      <form id="form-resultado">
-        <input type="hidden" id="res-id">
-        <div class="form-row" style="align-items:end">
-          <div class="form-group">
-            <label>Período</label>
-            <input type="date" id="res-periodo" required>
-          </div>
-          <div class="form-group">
-            <label>Valor realizado</label>
-            <input type="number" step="any" id="res-valor" required>
-          </div>
-          ${ehVariavel ? `
-          <div class="form-group">
-            <label>Meta do período</label>
-            <input type="number" step="any" id="res-meta" placeholder="Meta deste mês">
-          </div>` : ''}
-        </div>
-        <div class="form-group">
-          <label>Observação</label>
-          <input type="text" id="res-observacao">
-        </div>
-        <div class="form-row">
-          <div class="form-group"><button class="btn btn-primary btn-block" type="submit" id="btn-salvar-resultado">Adicionar</button></div>
-          <div class="form-group" id="grupo-cancelar-edicao" style="display:none">
-            <button class="btn btn-secondary btn-block" type="button" id="btn-cancelar-edicao-resultado">Cancelar edição</button>
-          </div>
-        </div>
-      </form>
-      <hr class="sep">
-    ` : ''}
-    ${anos.length > 1 ? `
-      <div class="filters" id="resultados-filtro-anos">
-        <button type="button" class="filter-btn ano-filtro-btn active" data-ano="">Todos</button>
-        ${anos.map((a) => `<button type="button" class="filter-btn ano-filtro-btn" data-ano="${a}">${a}</button>`).join('')}
-      </div>
-    ` : ''}
-    <canvas id="grafico-resultado" height="140"></canvas>
-    <hr class="sep">
-    <div id="resultados-tabela-area"></div>
-  `, 'modal-fullscreen');
+  if (!item) return;
 
   function renderResultadosFiltrados() {
     const filtrados = anoFiltroAtivo ? resultados.filter((r) => r.periodo.startsWith(anoFiltroAtivo)) : resultados;
@@ -427,15 +420,15 @@ async function abrirResultados(state, indicador) {
     const area = modal.querySelector('#resultados-tabela-area');
     area.innerHTML = filtrados.length ? `
       <table class="table">
-        <thead><tr><th>Período</th><th>Realizado</th>${ehVariavel ? '<th>Meta do período</th>' : ''}<th>Observação</th>${podeEditar ? '<th></th>' : ''}</tr></thead>
+        <thead><tr><th>Período</th><th>Realizado</th>${ehVariavel ? '<th>Meta do período</th>' : ''}<th>Observação</th>${podeGerenciarResultados ? '<th></th>' : ''}</tr></thead>
         <tbody>
           ${filtrados.map((r) => `
             <tr>
               <td>${r.periodo}</td>
-              <td>${formatarValor(r.valor_realizado, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}</td>
-              ${ehVariavel ? `<td>${(() => { const m = metaDoPeriodo(indicador, metasPorMes, r.periodo); return m === null ? '<span class="text-muted">—</span>' : `${formatarValor(m, indicador.unidade)} ${escapeHtml(indicador.unidade || '')}`; })()}</td>` : ''}
+              <td>${formatarValor(r.valor_realizado, item.unidade)} ${escapeHtml(item.unidade || '')}</td>
+              ${ehVariavel ? `<td>${(() => { const m = metaDoPeriodo(item, metasPorMes, r.periodo); return m === null ? '<span class="text-muted">—</span>' : `${formatarValor(m, item.unidade)} ${escapeHtml(item.unidade || '')}`; })()}</td>` : ''}
               <td>${escapeHtml(r.observacao || '')}</td>
-              ${podeEditar ? `<td class="table-actions">
+              ${podeGerenciarResultados ? `<td class="table-actions">
                 <button class="icon-btn" data-editar-resultado="${r.id}" title="Editar"><i class="ti ti-pencil"></i></button>
                 <button class="icon-btn" data-excluir-resultado="${r.id}" title="Excluir"><i class="ti ti-trash"></i></button>
               </td>` : ''}
@@ -443,7 +436,7 @@ async function abrirResultados(state, indicador) {
         </tbody>
       </table>` : `<p class="text-muted">Nenhum resultado apurado${anoFiltroAtivo ? ' em ' + anoFiltroAtivo : ' ainda'}.</p>`;
 
-    desenharGrafico(filtrados, indicador, metasPorMes);
+    desenharGrafico(filtrados, item, metasPorMes);
 
     area.querySelectorAll('[data-editar-resultado]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -453,7 +446,7 @@ async function abrirResultados(state, indicador) {
         modal.querySelector('#res-valor').value = r.valor_realizado;
         modal.querySelector('#res-observacao').value = r.observacao || '';
         if (ehVariavel) {
-          const metaMes = metaDoPeriodo(indicador, metasPorMes, r.periodo);
+          const metaMes = metaDoPeriodo(item, metasPorMes, r.periodo);
           modal.querySelector('#res-meta').value = metaMes === null ? '' : metaMes;
         }
         modal.querySelector('#btn-salvar-resultado').textContent = 'Salvar edição';
@@ -468,7 +461,7 @@ async function abrirResultados(state, indicador) {
         const { error: errDel } = await supabase.from('resultados_indicadores').delete().eq('id', btn.dataset.excluirResultado);
         if (errDel) return toast('Erro ao excluir: ' + errDel.message, 'erro');
         fecharModal();
-        abrirResultados(state, indicador);
+        abrirFormulario(state, container, objetivos, membros, item);
       });
     });
   }
@@ -483,14 +476,14 @@ async function abrirResultados(state, indicador) {
 
   renderResultadosFiltrados();
 
-  const form = modal.querySelector('#form-resultado');
-  if (form) {
+  const formResultado = modal.querySelector('#form-resultado');
+  if (formResultado) {
     const btnCancelar = modal.querySelector('#btn-cancelar-edicao-resultado');
     const grupoCancelar = modal.querySelector('#grupo-cancelar-edicao');
     const btnSalvar = modal.querySelector('#btn-salvar-resultado');
 
     btnCancelar.addEventListener('click', () => {
-      form.reset();
+      formResultado.reset();
       modal.querySelector('#res-id').value = '';
       btnSalvar.textContent = 'Adicionar';
       grupoCancelar.style.display = 'none';
@@ -501,17 +494,17 @@ async function abrirResultados(state, indicador) {
       modal.querySelector('#res-periodo').addEventListener('change', (e) => {
         const campoMeta = modal.querySelector('#res-meta');
         if (campoMeta.value !== '') return; // não sobrescreve o que a pessoa já digitou
-        const metaMes = metaDoPeriodo(indicador, metasPorMes, e.target.value);
+        const metaMes = metaDoPeriodo(item, metasPorMes, e.target.value);
         if (metaMes !== null) campoMeta.value = metaMes;
       });
     }
 
-    form.addEventListener('submit', async (e) => {
+    formResultado.addEventListener('submit', async (e) => {
       e.preventDefault();
       const periodo = modal.querySelector('#res-periodo').value;
       if (!dataValida(periodo)) return toast('Período inválido: informe uma data real.', 'erro');
       const payload = {
-        indicador_id: indicador.id,
+        indicador_id: item.id,
         periodo,
         valor_realizado: Number(modal.querySelector('#res-valor').value),
         observacao: modal.querySelector('#res-observacao').value.trim() || null,
@@ -524,17 +517,18 @@ async function abrirResultados(state, indicador) {
         if (metaInformada !== '') {
           // Meta guardada por mês (dia 1º), valendo para qualquer lançamento daquele mês.
           const { error: errMeta } = await supabase.from('indicador_metas')
-            .upsert({ indicador_id: indicador.id, periodo: periodo.slice(0, 7) + '-01', meta: Number(metaInformada) }, { onConflict: 'indicador_id,periodo' });
+            .upsert({ indicador_id: item.id, periodo: periodo.slice(0, 7) + '-01', meta: Number(metaInformada) }, { onConflict: 'indicador_id,periodo' });
           if (errMeta) return toast('Resultado salvo, mas houve erro ao salvar a meta do período: ' + errMeta.message, 'erro');
         }
       }
 
       toast('Resultado salvo com sucesso.', 'sucesso');
       fecharModal();
-      abrirResultados(state, indicador);
+      abrirFormulario(state, container, objetivos, membros, item);
     });
   }
 }
+
 
 // Visualização em tela cheia, pensada para projetar numa reunião: nome do indicador em destaque,
 // meta/último resultado grandes, gráfico ampliado e um campo de análise (salvo em indicadores.analise)
