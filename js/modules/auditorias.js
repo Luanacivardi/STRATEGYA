@@ -1,4 +1,5 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, imprimirSecao, enviarPorEmail, resolverNivel, formatarData } from '../ui.js';
+import { CATALOGO_REQUISITOS } from './catalogoRequisitosNorma.js';
 
 // Módulo "Gestão de Auditorias Corporativas" (ISO 9001/14001/45001): solicitação → priorização
 // (IPA) → planejamento inteligente → distribuição automática de horas → agenda automática →
@@ -17,7 +18,7 @@ function podeEditarAuditorias(state, submodulo) {
 
 const TIPO_LABEL = {
   interna: 'Interna', externa: 'Externa', cliente: 'Cliente', fornecedor: 'Fornecedor',
-  certificacao: 'Certificação', manutencao: 'Manutenção', recertificacao: 'Recertificação', extraordinaria: 'Extraordinária', outro: 'Outro',
+  certificacao: 'Certificação', manutencao: 'Manutenção', recertificacao: 'Recertificação', extraordinaria: 'Extraordinária', smeta: 'SMETA', outro: 'Outro',
 };
 const MODALIDADE_LABEL = { individual: 'Individual', integrada: 'Integrada' };
 const NORMA_LABEL = { iso9001: 'ISO 9001', iso14001: 'ISO 14001', iso45001: 'ISO 45001', outra: 'Outra' };
@@ -1341,6 +1342,8 @@ function montarExecucao(state, modal, auditoria, processos, aoAtualizarLista) {
   const area = modal.querySelector('#ad-execucao-area');
   if (!area) return;
 
+  const travado = auditoria.relatorio_fechado === true;
+
   async function carregarERenderizar() {
     const { data: achados } = await supabase.from('auditorias_achados').select('*').eq('auditoria_id', auditoria.id).order('created_at', { ascending: false });
     const lista = achados || [];
@@ -1352,16 +1355,17 @@ function montarExecucao(state, modal, auditoria, processos, aoAtualizarLista) {
         ${Object.entries(RESULTADO_LABEL).map(([v, l]) => `<span class="badge ${RESULTADO_BADGE[v]}">${l}: ${contagem[v] || 0}</span>`).join(' ')}
       </div>
       <table class="table">
-        <thead><tr><th>Processo</th><th>Norma</th><th>Requisito</th><th>Resultado</th><th>Entrevistado</th><th></th></tr></thead>
+        <thead><tr><th>Processo</th><th>Norma</th><th>Requisito</th><th>Resultado</th><th>Entrevistado</th>${travado ? '' : '<th></th>'}</tr></thead>
         <tbody>${lista.map((a) => `
           <tr>
             <td>${escapeHtml(a.processo || '—')}</td><td>${a.norma ? NORMA_LABEL[a.norma] : '—'}</td><td>${escapeHtml(a.requisito || '—')}</td>
             <td><span class="badge ${RESULTADO_BADGE[a.resultado]}">${RESULTADO_LABEL[a.resultado]}</span></td>
             <td>${escapeHtml(a.entrevistado || '—')}</td>
-            <td class="table-actions">${a.anexo_nome ? `<button type="button" class="icon-btn" data-ver-anexo="${a.id}"><i class="ti ti-paperclip"></i></button>` : ''}
-              <button type="button" class="icon-btn" data-excluir-achado="${a.id}"><i class="ti ti-trash"></i></button></td>
-          </tr>`).join('') || '<tr><td colspan="6" class="text-muted">Nenhum achado registrado.</td></tr>'}</tbody>
+            ${travado ? '' : `<td class="table-actions">${a.anexo_nome ? `<button type="button" class="icon-btn" data-ver-anexo="${a.id}"><i class="ti ti-paperclip"></i></button>` : ''}
+              <button type="button" class="icon-btn" data-excluir-achado="${a.id}"><i class="ti ti-trash"></i></button></td>`}
+          </tr>`).join('') || `<tr><td colspan="${travado ? 5 : 6}" class="text-muted">Nenhum achado registrado.</td></tr>`}</tbody>
       </table>
+      ${travado ? '' : `
       <div class="form-row">
         <div class="form-group"><label style="font-weight:400;font-size:12px">Processo</label>
           <select id="ex-processo"><option value="">—</option>${processos.map((p) => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}</select>
@@ -1379,7 +1383,7 @@ function montarExecucao(state, modal, auditoria, processos, aoAtualizarLista) {
         </div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Anexo (opcional)</label><input type="file" id="ex-anexo"></div>
       </div>
-      <button type="button" class="btn btn-secondary btn-block" id="btn-add-achado">Registrar achado</button>
+      <button type="button" class="btn btn-secondary btn-block" id="btn-add-achado">Registrar achado</button>`}
     `;
 
     area.querySelectorAll('[data-excluir-achado]').forEach((btn) => btn.addEventListener('click', async () => {
@@ -1394,6 +1398,7 @@ function montarExecucao(state, modal, auditoria, processos, aoAtualizarLista) {
       window.open(data.signedUrl, '_blank');
     }));
 
+    if (travado) return;
     area.querySelector('#btn-add-achado').addEventListener('click', async () => {
       const processoId = area.querySelector('#ex-processo').value || null;
       const resultado = area.querySelector('#ex-resultado').value;
@@ -1561,7 +1566,7 @@ async function renderRelatorios(container, state) {
 }
 
 async function renderCorpoRelatorio(area, state, auditoriaId) {
-  const { supabase, empresaAtual } = state;
+  const { supabase, empresaAtual, user } = state;
   area.innerHTML = 'Carregando...';
 
   const [{ data: auditoria }, { data: processos }, { data: itensData }, { data: pessoasData }, { data: instrumentosData }, { data: procedimentosData }, { data: agendaData }, { data: auditoresData }, { data: equipeData }, { data: achadosData }] = await Promise.all([
@@ -1577,6 +1582,14 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
     supabase.from('auditorias_achados').select('*').eq('auditoria_id', auditoriaId).order('created_at'),
   ]);
   if (!auditoria) { area.innerHTML = '<div class="alert alert-warning">Auditoria não encontrada.</div>'; return; }
+
+  const travado = auditoria.relatorio_fechado === true;
+  // Mesma checagem de moduloHabilitadoParaEmpresa() em app.js (não exportada) — se o plano da
+  // empresa não inclui Documentos, o campo Procedimento cai para texto livre (fallback abaixo).
+  const documentosHabilitado = (empresaAtual?.modulos_habilitados || []).includes('documentos');
+  const documentosPublicados = documentosHabilitado
+    ? (await supabase.from('documentos').select('id, numero, nome').eq('empresa_id', empresaAtual.id).eq('status', 'publicado').order('nome')).data || []
+    : [];
 
   let itens = itensData || [];
   let pessoas = pessoasData || [];
@@ -1597,6 +1610,12 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
   }
 
   area.innerHTML = `
+    ${travado ? `
+      <div class="alert alert-info">
+        <i class="ti ti-lock"></i>
+        <span>Relatório finalizado em ${formatarData(auditoria.relatorio_fechado_em) || '—'}. Conteúdo bloqueado para edição — a única ação disponível a partir daqui é o tratamento dos planos de ação em Gestão de Ações.</span>
+      </div>` : ''}
+
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-id-badge-2"></i> Solicitação</p>
       <table class="table">
@@ -1613,6 +1632,23 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
           <tr><th>Status</th><td><span class="badge ${STATUS_BADGE[auditoria.status]}">${STATUS_LABEL[auditoria.status]}</span></td></tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="planejamento-box">
+      <p class="planejamento-box-titulo"><i class="ti ti-notebook"></i> Ata de Reunião</p>
+      <div class="form-group">
+        <label style="font-weight:400;font-size:12px">Ata de abertura</label>
+        ${travado
+          ? `<p style="white-space:pre-wrap">${escapeHtml(auditoria.ata_abertura || '—')}</p>`
+          : `<textarea id="ata-abertura" rows="3">${escapeHtml(auditoria.ata_abertura || '')}</textarea>`}
+      </div>
+      <div class="form-group">
+        <label style="font-weight:400;font-size:12px">Ata de encerramento</label>
+        ${travado
+          ? `<p style="white-space:pre-wrap">${escapeHtml(auditoria.ata_fechamento || '—')}</p>`
+          : `<textarea id="ata-fechamento" rows="3">${escapeHtml(auditoria.ata_fechamento || '')}</textarea>`}
+      </div>
+      ${travado ? '' : '<button type="button" class="btn btn-secondary btn-sm" id="btn-salvar-atas">Salvar atas</button>'}
     </div>
 
     <div class="planejamento-box">
@@ -1639,9 +1675,21 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-list-check"></i> Requisitos avaliados</p>
       <table class="table">
-        <thead><tr><th>Nº requisito</th><th>Norma</th><th>Processo</th><th>Situação</th><th>Descrição</th><th></th></tr></thead>
+        <thead><tr><th>Nº requisito</th><th>Norma</th><th>Processo</th><th>Situação</th><th>Descrição</th>${travado ? '' : '<th></th>'}</tr></thead>
         <tbody id="rel-itens-tbody"></tbody>
       </table>
+      ${travado ? '' : `
+      ${(() => {
+        const normasComCatalogo = (auditoria.normas || []).filter((n) => CATALOGO_REQUISITOS[n]);
+        return normasComCatalogo.length ? `
+        <div class="form-row" style="align-items:flex-end;margin-top:0.75rem">
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Carregar requisitos da norma</label>
+            <select id="ri-carregar-norma">${normasComCatalogo.map((n) => `<option value="${n}">${NORMA_LABEL[n]}</option>`).join('')}</select>
+          </div>
+          <div class="form-group"><button type="button" class="btn btn-secondary" id="btn-carregar-requisitos">Carregar requisitos</button></div>
+        </div>
+        <p class="text-muted" style="font-size:11px;margin-bottom:0.75rem">Carrega a lista de itens (a partir da cláusula 4) da norma escolhida, já marcados como "Conforme" — edite a situação e preencha a evidência de cada um conforme apurado na auditoria.</p>` : '';
+      })()}
       <div class="form-row" style="align-items:flex-end">
         <div class="form-group"><label style="font-weight:400;font-size:12px">Nº do requisito</label><input type="text" id="ri-numero" placeholder="Ex: 8.5.1"></div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Norma</label>
@@ -1655,12 +1703,13 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
         </div>
       </div>
       <div class="form-group"><label style="font-weight:400;font-size:12px">Descrição da constatação</label><textarea id="ri-descricao" rows="2">${TEMPLATE_SITUACAO.conforme}</textarea></div>
-      <button type="button" class="btn btn-secondary" id="btn-add-item-relatorio">Adicionar requisito</button>
+      <button type="button" class="btn btn-secondary" id="btn-add-item-relatorio">Adicionar requisito</button>`}
     </div>
 
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-users"></i> Pessoas auditadas</p>
-      <table class="table"><thead><tr><th>Nome</th><th>Documentação de RH</th><th>Observação</th><th></th></tr></thead><tbody id="rel-pessoas-tbody"></tbody></table>
+      <table class="table"><thead><tr><th>Nome</th><th>Documentação de RH</th><th>Observação</th>${travado ? '' : '<th></th>'}</tr></thead><tbody id="rel-pessoas-tbody"></tbody></table>
+      ${travado ? '' : `
       <div class="form-row" style="align-items:flex-end">
         <div class="form-group"><label style="font-weight:400;font-size:12px">Nome</label><input type="text" id="pe-nome"></div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Documentação de RH</label>
@@ -1668,45 +1717,63 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
         </div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="pe-obs"></div>
         <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-pessoa">Adicionar</button></div>
-      </div>
+      </div>`}
     </div>
 
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-ruler-2"></i> Instrumentos auditados</p>
-      <table class="table"><thead><tr><th>Instrumento</th><th>Calibração</th><th>Observação</th><th></th></tr></thead><tbody id="rel-instrumentos-tbody"></tbody></table>
-      <div class="form-row" style="align-items:flex-end">
-        <div class="form-group"><label style="font-weight:400;font-size:12px">Instrumento</label><input type="text" id="in-nome"></div>
-        <div class="form-group"><label style="font-weight:400;font-size:12px">Calibração</label>
-          <select id="in-conforme"><option value="true">Conforme</option><option value="false">Não conforme</option></select>
-        </div>
-        <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="in-obs"></div>
-        <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-instrumento">Adicionar</button></div>
+      <label style="font-weight:400;font-size:12px;display:flex;align-items:center;gap:6px;margin-bottom:10px">
+        <input type="checkbox" id="in-nao-aplicavel" ${auditoria.instrumentos_nao_aplicavel ? 'checked' : ''} ${travado ? 'disabled' : ''}>
+        Não aplicável (esta auditoria não utiliza instrumentos de medição)
+      </label>
+      <div id="in-area" style="${auditoria.instrumentos_nao_aplicavel ? 'display:none' : ''}">
+        <table class="table"><thead><tr><th>Instrumento</th><th>Calibração</th><th>Data calibração</th><th>Nº certificado</th><th>Observação</th>${travado ? '' : '<th></th>'}</tr></thead><tbody id="rel-instrumentos-tbody"></tbody></table>
+        ${travado ? '' : `
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Instrumento</label><input type="text" id="in-nome"></div>
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Calibração</label>
+            <select id="in-conforme"><option value="true">Conforme</option><option value="false">Não conforme</option></select>
+          </div>
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Data calibração</label><input type="date" id="in-data-calibracao"></div>
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Nº certificado</label><input type="text" id="in-numero-certificado"></div>
+          <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="in-obs"></div>
+          <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-instrumento">Adicionar</button></div>
+        </div>`}
       </div>
     </div>
 
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-list-details"></i> Procedimentos auditados</p>
-      <table class="table"><thead><tr><th>Procedimento</th><th>Controle de ações</th><th>Observação</th><th></th></tr></thead><tbody id="rel-procedimentos-tbody"></tbody></table>
+      <table class="table"><thead><tr><th>Procedimento</th><th>Controle de ações</th><th>Observação</th>${travado ? '' : '<th></th>'}</tr></thead><tbody id="rel-procedimentos-tbody"></tbody></table>
+      ${travado ? '' : `
       <div class="form-row" style="align-items:flex-end">
-        <div class="form-group"><label style="font-weight:400;font-size:12px">Procedimento</label><input type="text" id="pc-nome"></div>
+        <div class="form-group"><label style="font-weight:400;font-size:12px">Procedimento</label>
+          ${documentosHabilitado
+            ? `<select id="pc-nome"><option value="">— Selecione —</option>${documentosPublicados.map((d) => `<option value="${d.id}">${escapeHtml(d.numero ? d.numero + ' — ' + d.nome : d.nome)}</option>`).join('')}</select>`
+            : '<input type="text" id="pc-nome">'}
+        </div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Controle de ações</label>
           <select id="pc-conforme"><option value="true">Conforme</option><option value="false">Não conforme</option></select>
         </div>
         <div class="form-group"><label style="font-weight:400;font-size:12px">Observação</label><input type="text" id="pc-obs"></div>
         <div class="form-group"><button type="button" class="btn btn-secondary btn-block" id="btn-add-procedimento">Adicionar</button></div>
-      </div>
+      </div>`}
     </div>
 
     <div class="planejamento-box">
       <p class="planejamento-box-titulo"><i class="ti ti-file-check"></i> Conclusão da auditoria</p>
-      <textarea id="rel-conclusao" rows="4">${escapeHtml(auditoria.conclusao_texto || textoConclusaoPadrao())}</textarea>
+      <textarea id="rel-conclusao" rows="4" ${travado ? 'readonly' : ''}>${escapeHtml(auditoria.conclusao_texto || textoConclusaoPadrao())}</textarea>
+      ${travado ? '' : `
       <div class="filters" style="margin-top:0.75rem">
         <button type="button" class="btn btn-secondary btn-sm" id="btn-restaurar-conclusao">Restaurar texto padrão</button>
         <button type="button" class="btn btn-secondary btn-sm" id="btn-salvar-conclusao">Salvar conclusão</button>
-      </div>
+      </div>`}
     </div>
 
-    <button type="button" class="btn btn-primary btn-block" id="btn-imprimir-relatorio-detalhado"><i class="ti ti-printer"></i> Imprimir relatório completo</button>
+    <div class="filters">
+      <button type="button" class="btn btn-primary btn-block" id="btn-imprimir-relatorio-detalhado"><i class="ti ti-printer"></i> Imprimir relatório completo</button>
+      ${travado ? '' : '<button type="button" class="btn btn-secondary btn-block" id="btn-finalizar-relatorio"><i class="ti ti-lock"></i> Finalizar Relatório</button>'}
+    </div>
   `;
 
   // Execução (achados) fica restrita à aba Relatórios — NC Maior/Menor aqui já dispara o plano
@@ -1722,8 +1789,8 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
         <td>${escapeHtml(nomeProcesso(i.processo_id))}</td>
         <td><span class="badge ${SITUACAO_BADGE[i.situacao]}">${SITUACAO_LABEL[i.situacao]}</span></td>
         <td>${escapeHtml(i.descricao || '')}</td>
-        <td class="table-actions"><button type="button" class="icon-btn" data-remover-item="${i.id}"><i class="ti ti-trash"></i></button></td>
-      </tr>`).join('') : '<tr><td colspan="6" class="text-muted">Nenhum requisito registrado ainda.</td></tr>';
+        ${travado ? '' : `<td class="table-actions"><button type="button" class="icon-btn" data-remover-item="${i.id}"><i class="ti ti-trash"></i></button></td>`}
+      </tr>`).join('') : `<tr><td colspan="${travado ? 5 : 6}" class="text-muted">Nenhum requisito registrado ainda.</td></tr>`;
     area.querySelectorAll('[data-remover-item]').forEach((btn) => btn.addEventListener('click', async () => {
       await supabase.from('auditorias_relatorio_itens').delete().eq('id', btn.dataset.removerItem);
       itens = itens.filter((i) => i.id !== btn.dataset.removerItem);
@@ -1732,42 +1799,70 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
   }
   renderItensTbody();
 
-  area.querySelector('#ri-situacao').addEventListener('change', (e) => {
-    const ta = area.querySelector('#ri-descricao');
-    const valoresTemplate = Object.values(TEMPLATE_SITUACAO);
-    if (!ta.value.trim() || valoresTemplate.includes(ta.value.trim())) ta.value = TEMPLATE_SITUACAO[e.target.value];
-  });
+  if (!travado) {
+    area.querySelector('#ri-situacao').addEventListener('change', (e) => {
+      const ta = area.querySelector('#ri-descricao');
+      const valoresTemplate = Object.values(TEMPLATE_SITUACAO);
+      if (!ta.value.trim() || valoresTemplate.includes(ta.value.trim())) ta.value = TEMPLATE_SITUACAO[e.target.value];
+    });
 
-  area.querySelector('#btn-add-item-relatorio').addEventListener('click', async () => {
-    const numero = area.querySelector('#ri-numero').value.trim();
-    if (!numero) return toast('Informe o número do requisito.', 'erro');
-    const payload = {
-      auditoria_id: auditoriaId,
-      numero_requisito: numero,
-      norma: area.querySelector('#ri-norma').value,
-      processo_id: area.querySelector('#ri-processo').value || null,
-      situacao: area.querySelector('#ri-situacao').value,
-      descricao: area.querySelector('#ri-descricao').value.trim() || null,
-    };
-    const { data: salvo, error } = await supabase.from('auditorias_relatorio_itens').insert(payload).select().single();
-    if (error) return toast('Erro ao adicionar: ' + error.message, 'erro');
-    itens.push(salvo);
-    renderItensTbody();
-    area.querySelector('#ri-numero').value = '';
-    area.querySelector('#ri-descricao').value = TEMPLATE_SITUACAO.conforme;
-    area.querySelector('#ri-situacao').value = 'conforme';
-  });
+    area.querySelector('#btn-add-item-relatorio').addEventListener('click', async () => {
+      const numero = area.querySelector('#ri-numero').value.trim();
+      if (!numero) return toast('Informe o número do requisito.', 'erro');
+      const payload = {
+        auditoria_id: auditoriaId,
+        numero_requisito: numero,
+        norma: area.querySelector('#ri-norma').value,
+        processo_id: area.querySelector('#ri-processo').value || null,
+        situacao: area.querySelector('#ri-situacao').value,
+        descricao: area.querySelector('#ri-descricao').value.trim() || null,
+      };
+      const { data: salvo, error } = await supabase.from('auditorias_relatorio_itens').insert(payload).select().single();
+      if (error) return toast('Erro ao adicionar: ' + error.message, 'erro');
+      itens.push(salvo);
+      renderItensTbody();
+      area.querySelector('#ri-numero').value = '';
+      area.querySelector('#ri-descricao').value = TEMPLATE_SITUACAO.conforme;
+      area.querySelector('#ri-situacao').value = 'conforme';
+    });
 
-  // ---- Listas auxiliares (pessoas, instrumentos, procedimentos) — mesmo padrão para as 3 ----
-  function montarListaAuxiliar({ tbodyId, lista, tabela, campoNome, campoConforme, inputNomeId, inputConformeId, inputObsId, btnId, labelConforme }) {
+    const btnCarregarRequisitos = area.querySelector('#btn-carregar-requisitos');
+    if (btnCarregarRequisitos) btnCarregarRequisitos.addEventListener('click', async () => {
+      const norma = area.querySelector('#ri-carregar-norma').value;
+      const catalogo = CATALOGO_REQUISITOS[norma] || [];
+      const faltantes = catalogo.filter((c) => !itens.some((i) => i.numero_requisito === c.numero && i.norma === norma));
+      if (!faltantes.length) return toast(`Requisitos de ${NORMA_LABEL[norma]} já carregados.`, 'sucesso');
+      const payload = faltantes.map((c) => ({
+        auditoria_id: auditoriaId,
+        numero_requisito: c.numero,
+        norma,
+        situacao: 'conforme',
+        descricao: null,
+        processo_id: null,
+      }));
+      const { data: salvos, error } = await supabase.from('auditorias_relatorio_itens').insert(payload).select();
+      if (error) return toast('Erro ao carregar requisitos: ' + error.message, 'erro');
+      itens.push(...salvos);
+      renderItensTbody();
+      toast(`${salvos.length} requisito(s) de ${NORMA_LABEL[norma]} carregado(s) — auditado/conforme por padrão, edite a situação e a evidência de cada um.`, 'sucesso');
+    });
+  }
+
+  // ---- Listas auxiliares (pessoas, instrumentos, procedimentos) — mesmo padrão para as 3, com
+  // suporte a campos extra (instrumentos) e a resolver o "nome" de um jeito diferente do valor
+  // bruto do input (procedimentos, quando o campo vira um <select> de documentos).
+  function montarListaAuxiliar({ tbodyId, lista, tabela, campoNome, campoConforme, inputNomeId, inputConformeId, inputObsId, btnId, labelConforme, camposExtras = [], resolverNome, payloadExtra, readOnly }) {
     function renderTbody() {
+      const totalColunas = (readOnly ? 3 : 4) + camposExtras.length;
       area.querySelector(tbodyId).innerHTML = lista.length ? lista.map((r) => `
         <tr>
           <td>${escapeHtml(r[campoNome])}</td>
           <td><span class="badge ${r[campoConforme] ? 'badge-success' : 'badge-danger'}">${r[campoConforme] ? labelConforme : 'Não conforme'}</span></td>
+          ${camposExtras.map((c) => `<td>${c.formatar ? c.formatar(r[c.campo]) : escapeHtml(r[c.campo] || '—')}</td>`).join('')}
           <td>${escapeHtml(r.observacao || '—')}</td>
-          <td class="table-actions"><button type="button" class="icon-btn" data-remover-aux="${r.id}"><i class="ti ti-trash"></i></button></td>
-        </tr>`).join('') : '<tr><td colspan="4" class="text-muted">Nenhum registro ainda.</td></tr>';
+          ${readOnly ? '' : `<td class="table-actions"><button type="button" class="icon-btn" data-remover-aux="${r.id}"><i class="ti ti-trash"></i></button></td>`}
+        </tr>`).join('') : `<tr><td colspan="${totalColunas}" class="text-muted">Nenhum registro ainda.</td></tr>`;
+      if (readOnly) return;
       area.querySelectorAll(`${tbodyId} [data-remover-aux]`).forEach((btn) => btn.addEventListener('click', async () => {
         await supabase.from(tabela).delete().eq('id', btn.dataset.removerAux);
         const idx = lista.findIndex((r) => r.id === btn.dataset.removerAux);
@@ -1776,21 +1871,26 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
       }));
     }
     renderTbody();
+    if (readOnly) return;
     area.querySelector(btnId).addEventListener('click', async () => {
-      const nome = area.querySelector(inputNomeId).value.trim();
+      const inputNome = area.querySelector(inputNomeId);
+      const nome = resolverNome ? resolverNome(inputNome) : inputNome.value.trim();
       if (!nome) return toast('Preencha o campo antes de adicionar.', 'erro');
       const payload = {
         auditoria_id: auditoriaId,
         [campoNome]: nome,
         [campoConforme]: area.querySelector(inputConformeId).value === 'true',
         observacao: area.querySelector(inputObsId).value.trim() || null,
+        ...(payloadExtra ? payloadExtra() : {}),
       };
+      camposExtras.forEach((c) => { payload[c.campo] = area.querySelector(c.inputId).value || null; });
       const { data: salvo, error } = await supabase.from(tabela).insert(payload).select().single();
       if (error) return toast('Erro ao adicionar: ' + error.message, 'erro');
       lista.push(salvo);
       renderTbody();
-      area.querySelector(inputNomeId).value = '';
+      inputNome.value = '';
       area.querySelector(inputObsId).value = '';
+      camposExtras.forEach((c) => { area.querySelector(c.inputId).value = ''; });
     });
   }
 
@@ -1798,59 +1898,133 @@ async function renderCorpoRelatorio(area, state, auditoriaId) {
     tbodyId: '#rel-pessoas-tbody', lista: pessoas, tabela: 'auditorias_relatorio_pessoas',
     campoNome: 'nome', campoConforme: 'documentacao_rh_conforme',
     inputNomeId: '#pe-nome', inputConformeId: '#pe-conforme', inputObsId: '#pe-obs', btnId: '#btn-add-pessoa', labelConforme: 'Conforme',
+    readOnly: travado,
   });
   montarListaAuxiliar({
     tbodyId: '#rel-instrumentos-tbody', lista: instrumentos, tabela: 'auditorias_relatorio_instrumentos',
     campoNome: 'instrumento', campoConforme: 'calibracao_conforme',
     inputNomeId: '#in-nome', inputConformeId: '#in-conforme', inputObsId: '#in-obs', btnId: '#btn-add-instrumento', labelConforme: 'Conforme',
+    camposExtras: [
+      { campo: 'data_calibracao', inputId: '#in-data-calibracao', formatar: (v) => v ? formatarData(v) : '—' },
+      { campo: 'numero_certificado', inputId: '#in-numero-certificado' },
+    ],
+    readOnly: travado,
   });
   montarListaAuxiliar({
     tbodyId: '#rel-procedimentos-tbody', lista: procedimentos, tabela: 'auditorias_relatorio_procedimentos',
     campoNome: 'procedimento', campoConforme: 'controle_acoes_conforme',
     inputNomeId: '#pc-nome', inputConformeId: '#pc-conforme', inputObsId: '#pc-obs', btnId: '#btn-add-procedimento', labelConforme: 'Conforme',
+    resolverNome: documentosHabilitado ? (select) => (select.value ? select.selectedOptions[0].textContent : '') : undefined,
+    payloadExtra: documentosHabilitado ? () => ({ documento_id: area.querySelector('#pc-nome').value || null }) : undefined,
+    readOnly: travado,
   });
 
+  // ---- Instrumentos: flag "não aplicável" ----
+  if (!travado) {
+    area.querySelector('#in-nao-aplicavel').addEventListener('change', async (e) => {
+      const naoAplicavel = e.target.checked;
+      const { error } = await supabase.from('auditorias').update({ instrumentos_nao_aplicavel: naoAplicavel }).eq('id', auditoriaId);
+      if (error) { toast('Erro ao salvar: ' + error.message, 'erro'); e.target.checked = !naoAplicavel; return; }
+      auditoria.instrumentos_nao_aplicavel = naoAplicavel;
+      area.querySelector('#in-area').style.display = naoAplicavel ? 'none' : '';
+    });
+  }
+
+  // ---- Ata de reunião ----
+  if (!travado) {
+    area.querySelector('#btn-salvar-atas').addEventListener('click', async () => {
+      const payload = {
+        ata_abertura: area.querySelector('#ata-abertura').value.trim() || null,
+        ata_fechamento: area.querySelector('#ata-fechamento').value.trim() || null,
+      };
+      const { error } = await supabase.from('auditorias').update(payload).eq('id', auditoriaId);
+      if (error) return toast('Erro ao salvar atas: ' + error.message, 'erro');
+      Object.assign(auditoria, payload);
+      toast('Atas salvas com sucesso.', 'sucesso');
+    });
+  }
+
   // ---- Conclusão ----
-  area.querySelector('#btn-restaurar-conclusao').addEventListener('click', () => {
-    area.querySelector('#rel-conclusao').value = textoConclusaoPadrao();
-  });
-  area.querySelector('#btn-salvar-conclusao').addEventListener('click', async () => {
-    const { error } = await supabase.from('auditorias').update({ conclusao_texto: area.querySelector('#rel-conclusao').value.trim() }).eq('id', auditoriaId);
-    if (error) return toast('Erro ao salvar conclusão: ' + error.message, 'erro');
-    toast('Conclusão salva com sucesso.', 'sucesso');
-  });
+  if (!travado) {
+    area.querySelector('#btn-restaurar-conclusao').addEventListener('click', () => {
+      area.querySelector('#rel-conclusao').value = textoConclusaoPadrao();
+    });
+    area.querySelector('#btn-salvar-conclusao').addEventListener('click', async () => {
+      const { error } = await supabase.from('auditorias').update({ conclusao_texto: area.querySelector('#rel-conclusao').value.trim() }).eq('id', auditoriaId);
+      if (error) return toast('Erro ao salvar conclusão: ' + error.message, 'erro');
+      toast('Conclusão salva com sucesso.', 'sucesso');
+    });
+  }
+
+  // ---- Finalização e trava do relatório ----
+  if (!travado) {
+    area.querySelector('#btn-finalizar-relatorio').addEventListener('click', async () => {
+      if (!(await confirmar('Finalizar o relatório? Depois de finalizado, o conteúdo não poderá mais ser editado — apenas o tratamento de planos de ação continua disponível.'))) return;
+
+      const ncs = achados.filter((a) => a.resultado === 'nc_maior' || a.resultado === 'nc_menor');
+      if (ncs.length) {
+        const { data: planosVinculados } = await supabase.from('planos_acao').select('origem_id').eq('origem', 'auditoria').in('origem_id', ncs.map((a) => a.id));
+        const idsComPlano = new Set((planosVinculados || []).map((p) => p.origem_id));
+        const semPlano = ncs.filter((a) => !idsComPlano.has(a.id));
+        if (semPlano.length) {
+          toast(`${semPlano.length} achado(s) de não conformidade sem plano de ação vinculado — não é possível finalizar. Verifique em Gestão de Ações.`, 'erro');
+          return;
+        }
+      }
+
+      const { error } = await supabase.from('auditorias').update({
+        relatorio_fechado: true, relatorio_fechado_em: new Date().toISOString(), relatorio_fechado_por: user.id,
+      }).eq('id', auditoriaId);
+      if (error) return toast('Erro ao finalizar: ' + error.message, 'erro');
+      toast('Relatório finalizado.', 'sucesso');
+      renderCorpoRelatorio(area, state, auditoriaId);
+    });
+  }
 
   // ---- Impressão ----
   area.querySelector('#btn-imprimir-relatorio-detalhado').addEventListener('click', () => {
-    imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, area.querySelector('#rel-conclusao').value.trim(), nomeProcesso, agendaPorDia, nomeAuditorRel, equipe, achados);
+    const ataAbertura = travado ? (auditoria.ata_abertura || '') : area.querySelector('#ata-abertura').value.trim();
+    const ataFechamento = travado ? (auditoria.ata_fechamento || '') : area.querySelector('#ata-fechamento').value.trim();
+    imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, area.querySelector('#rel-conclusao').value.trim(), nomeProcesso, agendaPorDia, nomeAuditorRel, equipe, achados, ataAbertura, ataFechamento);
   });
 }
 
-function agruparPorRequisito(lista) {
-  const grupos = new Map();
-  lista.forEach((i) => {
-    const chave = i.numero_requisito;
-    if (!grupos.has(chave)) grupos.set(chave, []);
-    grupos.get(chave).push(i);
+// Auditorias integradas (multi-norma): agrupa os requisitos pelo mesmo número, uma coluna por
+// norma presente entre os itens — ex: o "4.1" avaliado tanto na ISO 9001 quanto na ISO 14001
+// aparece na mesma linha, lado a lado, em vez de duas seções separadas de conforme/não conforme.
+function renderTabelaRequisitosAgrupados(itens, nomeProcesso) {
+  if (!itens.length) return '<p class="text-muted">Nenhum requisito avaliado registrado.</p>';
+  const ordemNormas = ['iso9001', 'iso14001', 'iso45001', 'outra'];
+  const normasPresentes = ordemNormas.filter((n) => itens.some((i) => i.norma === n));
+  const colunasNorma = normasPresentes.length ? normasPresentes : [null]; // sem norma informada em nenhum item
+
+  const porRequisito = new Map();
+  itens.forEach((i) => {
+    if (!porRequisito.has(i.numero_requisito)) porRequisito.set(i.numero_requisito, new Map());
+    porRequisito.get(i.numero_requisito).set(i.norma || null, i);
   });
-  return [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  const requisitosOrdenados = [...porRequisito.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  const celula = (item) => {
+    if (!item) return '—';
+    return `<span class="badge ${SITUACAO_BADGE[item.situacao]}">${SITUACAO_LABEL[item.situacao]}</span>
+      ${item.processo_id ? `<div class="text-muted" style="font-size:11px;margin-top:2px">${escapeHtml(nomeProcesso(item.processo_id))}</div>` : ''}
+      ${item.descricao ? `<div style="margin-top:2px">${escapeHtml(item.descricao)}</div>` : ''}`;
+  };
+
+  return `
+    <table class="table">
+      <thead><tr><th>Requisito</th>${colunasNorma.map((n) => `<th>${n ? NORMA_LABEL[n] : 'Norma'}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${requisitosOrdenados.map((numero) => {
+          const porNorma = porRequisito.get(numero);
+          return `<tr><td>${escapeHtml(numero)}</td>${colunasNorma.map((n) => `<td>${celula(porNorma.get(n))}</td>`).join('')}</tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
-function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, conclusaoTexto, nomeProcesso, agendaPorDia, nomeAuditor, equipe, achados) {
-  const conformes = agruparPorRequisito(itens.filter((i) => i.situacao === 'conforme'));
-  const naoConformes = agruparPorRequisito(itens.filter((i) => i.situacao !== 'conforme'));
-
-  const blocoRequisito = ([numero, entradas]) => `
-    <div class="print-field-card" style="margin-bottom:8px">
-      <div class="campo-label">Requisito ${escapeHtml(numero)}</div>
-      ${entradas.map((e) => `
-        <div style="margin-bottom:4px">
-          <span class="badge ${SITUACAO_BADGE[e.situacao]}">${SITUACAO_LABEL[e.situacao]}</span>
-          ${e.norma ? ` <span class="text-muted">(${NORMA_LABEL[e.norma]}${e.processo_id ? ' — ' + escapeHtml(nomeProcesso(e.processo_id)) : ''})</span>` : ''}
-          <div class="campo-valor">${escapeHtml(e.descricao || '')}</div>
-        </div>`).join('')}
-    </div>`;
-
+function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, procedimentos, conclusaoTexto, nomeProcesso, agendaPorDia, nomeAuditor, equipe, achados, ataAbertura, ataFechamento) {
   imprimirSecao(`
     <h2 style="margin-bottom:4px">Relatório de Auditoria ${escapeHtml(auditoria.numero)}</h2>
     <p class="text-muted">${escapeHtml(auditoria.titulo)}</p>
@@ -1871,6 +2045,12 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
         <tr><th>Equipe auditora</th><td>${(equipe || []).map((e) => escapeHtml(e.auditores?.nome || '—') + (e.papel === 'lider' ? ' (Líder)' : '')).join(', ') || '—'}</td></tr>
       </tbody>
     </table>
+
+    <h4 style="margin-top:16px">Ata de Abertura</h4>
+    <p style="white-space:pre-wrap">${escapeHtml(ataAbertura || '—')}</p>
+
+    <h4 style="margin-top:16px">Ata de Encerramento</h4>
+    <p style="white-space:pre-wrap">${escapeHtml(ataFechamento || '—')}</p>
 
     <h4 style="margin-top:16px">Agenda da Auditoria</h4>
     ${agendaPorDia && Object.keys(agendaPorDia).length ? Object.entries(agendaPorDia).map(([dia, blocos]) => `
@@ -1900,11 +2080,8 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
         </tr>`).join('') || '<tr><td colspan="6">Nenhum achado registrado.</td></tr>'}</tbody>
     </table>
 
-    <h4 style="margin-top:16px">Conformidades</h4>
-    <div class="print-field-grid">${conformes.length ? conformes.map(blocoRequisito).join('') : '<p class="text-muted">Nenhum requisito conforme registrado.</p>'}</div>
-
-    <h4 style="margin-top:16px">Não Conformidades</h4>
-    <div class="print-field-grid">${naoConformes.length ? naoConformes.map(blocoRequisito).join('') : '<p class="text-muted">Nenhuma não conformidade registrada.</p>'}</div>
+    <h4 style="margin-top:16px">Requisitos Avaliados</h4>
+    ${renderTabelaRequisitosAgrupados(itens, nomeProcesso)}
 
     <h4 style="margin-top:16px">Pessoas Auditadas</h4>
     <table class="table">
@@ -1913,10 +2090,11 @@ function imprimirRelatorioDetalhado(auditoria, itens, pessoas, instrumentos, pro
     </table>
 
     <h4 style="margin-top:16px">Instrumentos Auditados</h4>
+    ${auditoria.instrumentos_nao_aplicavel ? '<p class="text-muted">Não aplicável — esta auditoria não envolveu instrumentos de medição.</p>' : `
     <table class="table">
-      <thead><tr><th>Instrumento</th><th>Calibração</th><th>Observação</th></tr></thead>
-      <tbody>${instrumentos.map((i) => `<tr><td>${escapeHtml(i.instrumento)}</td><td>${i.calibracao_conforme ? 'Conforme' : 'Não conforme'}</td><td>${escapeHtml(i.observacao || '—')}</td></tr>`).join('') || '<tr><td colspan="3">Nenhum registro.</td></tr>'}</tbody>
-    </table>
+      <thead><tr><th>Instrumento</th><th>Calibração</th><th>Data calibração</th><th>Nº certificado</th><th>Observação</th></tr></thead>
+      <tbody>${instrumentos.map((i) => `<tr><td>${escapeHtml(i.instrumento)}</td><td>${i.calibracao_conforme ? 'Conforme' : 'Não conforme'}</td><td>${i.data_calibracao ? formatarData(i.data_calibracao) : '—'}</td><td>${escapeHtml(i.numero_certificado || '—')}</td><td>${escapeHtml(i.observacao || '—')}</td></tr>`).join('') || '<tr><td colspan="5">Nenhum registro.</td></tr>'}</tbody>
+    </table>`}
 
     <h4 style="margin-top:16px">Procedimentos Auditados</h4>
     <table class="table">
