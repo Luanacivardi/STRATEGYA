@@ -54,9 +54,9 @@ jobs:
 
       # ---------- ARQUIVOS DO STORAGE ----------
       # O backup nativo do Supabase NAO cobre os arquivos. Por isso este passo existe.
-      - name: Baixar arquivos do Storage
+     - name: Baixar arquivos do Storage
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: https://qfmzgsoindjtqzewgecp.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/backup-storage.mjs backup/arquivos
 
