@@ -1,6 +1,7 @@
 node_modules/
 dist/
- # Documentos internos
-   *.docx
-   *.xlsx
-   *.pdf
+
+# Documentos internos
+*.docx
+*.xlsx
+*.pdf
