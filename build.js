@@ -1,6 +1,15 @@
-// Gera a pasta dist/ com o app pronto para publicacao: JS ofuscado (js-obfuscator) e um
-// aviso de copyright/fingerprint no topo de cada arquivo. index.html, css/ e supabase/ sao
-// copiados como estao (nao ha logica de negocio sensivel neles).
+// Gera a pasta dist/ com o app pronto para publicacao.
+//
+// Ofuscacao LEVE: o repositorio e privado, entao o objetivo aqui nao e mais esconder
+// o codigo do mundo — e apenas dificultar que um cliente pagante copie a logica a partir
+// do bundle servido. Renomeacao de identificadores + stringArray entregam a maior parte
+// dessa dissuasao a custo quase zero.
+//
+// Removidos deliberadamente (mediram 2,93x de inflacao no bundle, 740 KB -> 2168 KB):
+//   controlFlowFlattening  - principal responsavel pelo tamanho e pela lentidao de execucao
+//   deadCodeInjection      - injeta codigo morto so para confundir; puro peso
+//   selfDefending          - quebra qualquer tentativa de depurar producao
+//   splitStrings           - fragmenta strings, inflando sem ganho relevante
 //
 // Uso: npm run build  ->  gera dist/
 'use strict';
@@ -14,20 +23,18 @@ const BUILD_ID = new Date().toISOString();
 
 const OBFUSCATOR_OPTIONS = {
   compact: true,
-  controlFlowFlattening: true,
-  controlFlowFlatteningThreshold: 0.75,
-  deadCodeInjection: true,
-  deadCodeInjectionThreshold: 0.4,
-  identifierNamesGenerator: 'hexadecimal',
+  simplify: true,
+  identifierNamesGenerator: 'mangled',
   renameGlobals: false,
-  rotateStringArray: true,
-  selfDefending: true,
-  shuffleStringArray: true,
-  splitStrings: true,
-  splitStringsChunkLength: 8,
   stringArray: true,
   stringArrayEncoding: ['base64'],
-  stringArrayThreshold: 0.85,
+  stringArrayThreshold: 0.75,
+  rotateStringArray: true,
+  shuffleStringArray: true,
+  controlFlowFlattening: false,
+  deadCodeInjection: false,
+  selfDefending: false,
+  splitStrings: false,
   transformObjectKeys: false, // preserva chaves usadas em selects/colunas do Supabase
   unicodeEscapeSequence: false,
 };
@@ -61,17 +68,34 @@ function copiarRecursivo(origem, destino, { ofuscarJs = false } = {}) {
   }
 }
 
+function copiarSeExistir(nome) {
+  const origem = path.join(ROOT, nome);
+  if (fs.existsSync(origem)) fs.copyFileSync(origem, path.join(DIST, nome));
+}
+
 function main() {
   limparDist();
   copiarRecursivo(path.join(ROOT, 'js'), path.join(DIST, 'js'), { ofuscarJs: true });
   copiarRecursivo(path.join(ROOT, 'css'), path.join(DIST, 'css'));
   fs.copyFileSync(path.join(ROOT, 'index.html'), path.join(DIST, 'index.html'));
-  fs.copyFileSync(path.join(ROOT, 'CNAME'), path.join(DIST, 'CNAME'));
-  if (fs.existsSync(path.join(ROOT, 'manifest.json'))) fs.copyFileSync(path.join(ROOT, 'manifest.json'), path.join(DIST, 'manifest.json'));
-  if (fs.existsSync(path.join(ROOT, 'icons'))) copiarRecursivo(path.join(ROOT, 'icons'), path.join(DIST, 'icons'));
-  if (fs.existsSync(path.join(ROOT, 'sw.js'))) fs.copyFileSync(path.join(ROOT, 'sw.js'), path.join(DIST, 'sw.js'));
-  if (fs.existsSync(path.join(ROOT, 'redefinir-senha.html'))) fs.copyFileSync(path.join(ROOT, 'redefinir-senha.html'), path.join(DIST, 'redefinir-senha.html'));
-  console.log(`Build concluido em dist/ (${BUILD_ID})`);
+  copiarSeExistir('CNAME');            // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
+  copiarSeExistir('manifest.json');
+  copiarSeExistir('sw.js');
+  copiarSeExistir('redefinir-senha.html');
+  if (fs.existsSync(path.join(ROOT, 'icons'))) {
+    copiarRecursivo(path.join(ROOT, 'icons'), path.join(DIST, 'icons'));
+  }
+
+  // Relatorio de tamanho: se o bundle inflar de novo, aparece aqui no log do build.
+  let bytes = 0;
+  (function medir(dir) {
+    for (const nome of fs.readdirSync(dir)) {
+      const p = path.join(dir, nome);
+      const s = fs.statSync(p);
+      s.isDirectory() ? medir(p) : (bytes += s.size);
+    }
+  })(DIST);
+  console.log(`Build concluido em dist/ (${BUILD_ID}) — ${(bytes / 1024).toFixed(0)} KB`);
 }
 
 main();
