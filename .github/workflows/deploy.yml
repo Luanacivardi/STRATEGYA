@@ -1,24 +1,93 @@
-name: Build e deploy (ofuscado)
+name: Backup semanal (banco + arquivos)
 
+# Roda todo domingo as 03:00 (horario de Brasilia) e tambem sob demanda,
+# pelo botao "Run workflow" na aba Actions.
 on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
+  schedule:
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
 
 jobs:
-  build-deploy:
+  backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Baixar o repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar o Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          node-version: 20
-      - run: npm install
-      - run: npm run build
-      - name: Publica dist/ na branch gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+          version: latest
+
+      # Monta a URL de conexao aqui dentro, a partir da senha.
+      # Assim nao existe string para montar a mao, e caracteres especiais na
+      # senha (/ @ # : ?) sao codificados automaticamente em vez de quebrarem
+      # a URL — que foi exatamente o erro "failed to parse connection string".
+      - name: Preparar conexao
+        env:
+          SENHA: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$SENHA" ]; then
+            echo "ERRO: o secret SUPABASE_DB_PASSWORD nao esta configurado."
+            exit 1
+          fi
+          SENHA_CODIFICADA=$(node -e 'process.stdout.write(encodeURIComponent(process.env.SENHA))')
+          URL="postgresql://postgres.qfmzgsoindjtqzewgecp:${SENHA_CODIFICADA}@aws-1-sa-east-1.pooler.supabase.com:5432/postgres"
+          echo "::add-mask::$URL"
+          echo "DB_URL=$URL" >> "$GITHUB_ENV"
+          echo "Conexao montada (usuario, host e porta fixos; senha vinda do secret)."
+          mkdir -p backup
+
+      # ---------- BANCO DE DADOS ----------
+      # Tres arquivos separados, porque restaurar exige aplicar nesta ordem:
+      # 1) estrutura das tabelas  2) dados  3) papeis e permissoes
+      - name: Exportar estrutura do banco
+        run: supabase db dump --db-url "$DB_URL" -f backup/01-estrutura.sql
+
+      - name: Exportar dados
+        run: supabase db dump --db-url "$DB_URL" --data-only -f backup/02-dados.sql
+
+      - name: Exportar papeis e permissoes
+        run: supabase db dump --db-url "$DB_URL" --role-only -f backup/03-papeis.sql || echo "sem papeis customizados"
+
+      # ---------- ARQUIVOS DO STORAGE ----------
+      # O backup nativo do Supabase NAO cobre os arquivos. Por isso este passo existe.
+      - name: Baixar arquivos do Storage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/backup-storage.mjs backup/arquivos
+
+      # ---------- CONFERENCIA ----------
+      - name: Resumo do backup
+        run: |
+          echo "===== CONTEUDO DO BACKUP ====="
+          ls -lh backup/
+          echo
+          echo "Tamanho total:"
+          du -sh backup/
+          echo
+          echo "Linhas em cada dump:"
+          wc -l backup/*.sql
+          echo
+          echo "===== VERIFICACAO ====="
+          if [ ! -s backup/02-dados.sql ]; then
+            echo "ERRO: o dump de dados esta vazio."
+            exit 1
+          fi
+          LINHAS=$(wc -l < backup/02-dados.sql)
+          if [ "$LINHAS" -lt 50 ]; then
+            echo "ERRO: o dump de dados tem apenas $LINHAS linhas. Algo esta errado."
+            exit 1
+          fi
+          echo "OK: dump de dados com $LINHAS linhas."
+
+      - name: Guardar o backup
+        uses: actions/upload-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
+          name: backup-strategya-${{ github.run_number }}
+          path: backup/
+          retention-days: 90
+          compression-level: 9
