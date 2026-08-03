@@ -2,10 +2,24 @@ name: Backup semanal (banco + arquivos)
 
 # Roda todo domingo as 03:00 (horario de Brasilia) e tambem sob demanda,
 # pelo botao "Run workflow" na aba Actions.
+#
+# Usa apenas DOIS secrets:
+#   SUPABASE_DB_PASSWORD      -> so a senha do banco, nada mais
+#   SUPABASE_SERVICE_ROLE_KEY -> a chave service_role
+#
+# O usuario, o host, a porta e a URL do projeto ficam fixos aqui embaixo porque
+# nao sao segredo (a URL ja e publica no config.js do app). Deixar fixo elimina
+# a maior fonte de erro: montar string de conexao a mao.
 on:
   schedule:
     - cron: '0 6 * * 0'
   workflow_dispatch:
+
+env:
+  PROJETO_URL: https://qfmzgsoindjtqzewgecp.supabase.co
+  DB_USUARIO: postgres.qfmzgsoindjtqzewgecp
+  DB_HOST: aws-1-sa-east-1.pooler.supabase.com
+  DB_PORTA: '5432'
 
 jobs:
   backup:
@@ -21,26 +35,41 @@ jobs:
         with:
           version: latest
 
-      - name: Preparar pasta de destino
-        run: mkdir -p backup
+      # Monta a URL de conexao aqui dentro. Caracteres especiais na senha
+      # (/ @ # : ?) sao codificados automaticamente, em vez de quebrarem a URL.
+      - name: Preparar conexao
+        env:
+          SENHA: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$SENHA" ]; then
+            echo "ERRO: o secret SUPABASE_DB_PASSWORD nao esta configurado."
+            echo "Crie em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          SENHA_CODIFICADA=$(node -e 'process.stdout.write(encodeURIComponent(process.env.SENHA))')
+          URL="postgresql://${DB_USUARIO}:${SENHA_CODIFICADA}@${DB_HOST}:${DB_PORTA}/postgres"
+          echo "::add-mask::$URL"
+          echo "DB_URL=$URL" >> "$GITHUB_ENV"
+          echo "Conexao montada: ${DB_USUARIO}@${DB_HOST}:${DB_PORTA}"
+          mkdir -p backup
 
       # ---------- BANCO DE DADOS ----------
       # Tres arquivos separados, porque restaurar exige aplicar nesta ordem:
-      # 1) estrutura das tabelas  2) dados  3) policies, funcoes e triggers
+      # 1) estrutura das tabelas  2) dados  3) papeis e permissoes
       - name: Exportar estrutura do banco
-        run: supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" -f backup/01-estrutura.sql
+        run: supabase db dump --db-url "$DB_URL" -f backup/01-estrutura.sql
 
       - name: Exportar dados
-        run: supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --data-only -f backup/02-dados.sql
+        run: supabase db dump --db-url "$DB_URL" --data-only -f backup/02-dados.sql
 
-      - name: Exportar policies, funcoes e permissoes
-        run: supabase db dump --db-url "${{ secrets.SUPABASE_DB_URL }}" --role-only -f backup/03-papeis.sql || echo "sem papeis customizados"
+      - name: Exportar papeis e permissoes
+        run: supabase db dump --db-url "$DB_URL" --role-only -f backup/03-papeis.sql || echo "sem papeis customizados"
 
       # ---------- ARQUIVOS DO STORAGE ----------
       # O backup nativo do Supabase NAO cobre os arquivos. Por isso este passo existe.
       - name: Baixar arquivos do Storage
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ env.PROJETO_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/backup-storage.mjs backup/arquivos
 
@@ -57,7 +86,6 @@ jobs:
           wc -l backup/*.sql
           echo
           echo "===== VERIFICACAO ====="
-          # Falha o workflow se o dump de dados vier vazio ou suspeito
           if [ ! -s backup/02-dados.sql ]; then
             echo "ERRO: o dump de dados esta vazio."
             exit 1
