@@ -44,9 +44,28 @@ Deno.serve(async (req: Request) => {
       return resposta({ error: 'Sem permissão para alterar a senha de colaboradores desta empresa.' }, 403);
     }
 
+    type Membro = { usuario_id: string; papel: string };
     const { data: membros, error: errMembros } = await clienteChamador.rpc('listar_usuarios_empresa', { p_empresa_id: empresaId });
-    if (errMembros || !membros?.some((m: { usuario_id: string }) => m.usuario_id === usuarioId)) {
+    const alvo = (membros as Membro[] | null)?.find((m) => m.usuario_id === usuarioId);
+    if (errMembros || !alvo) {
       return resposta({ error: 'Usuário não pertence a esta empresa.' }, 403);
+    }
+
+    // Quem é o alvo importa tanto quanto quem chama. Sem esta trava, um Administrador de um cliente
+    // podia redefinir a senha da conta ORBEEX (que é membro de todas as empresas que administra),
+    // logar com ela e alcançar TODAS as empresas da plataforma — escalada de privilégio completa.
+    // Os triggers proteger_papel_orbeex/proteger_exclusao_papel_orbeex já cobrem o papel no banco;
+    // a senha era o caminho que faltava fechar.
+    const { data: dadosChamador } = await clienteChamador.auth.getUser();
+    const chamadorId = dadosChamador?.user?.id;
+    if (!chamadorId) return resposta({ error: 'Não autenticado.' }, 401);
+    const chamadorEhOrbeex = (membros as Membro[]).find((m) => m.usuario_id === chamadorId)?.papel === 'orbeex';
+
+    if (alvo.papel === 'orbeex' && !chamadorEhOrbeex) {
+      return resposta({ error: 'Somente a equipe ORBEEX pode redefinir a senha de uma conta ORBEEX.' }, 403);
+    }
+    if (alvo.papel === 'admin' && !chamadorEhOrbeex && alvo.usuario_id !== chamadorId) {
+      return resposta({ error: 'Um Administrador não pode redefinir a senha de outro Administrador. Peça à equipe ORBEEX ou use "Esqueci minha senha".' }, 403);
     }
 
     const admin = createClient(supabaseUrl, serviceKey);
