@@ -238,9 +238,12 @@ const modPlaceholder = document.getElementById('modulo-placeholder');
 const btnPermissoes = document.getElementById('btn-permissoes');
 
 async function carregarEmpresas() {
+  // 'ativo' vem junto de propósito (em vez de filtrar no .eq): um vínculo desativado ainda é
+  // legível pelo próprio usuário, e é o que permite distinguir "nunca foi vinculado a nada" de
+  // "teve o acesso revogado" — que são mensagens bem diferentes para quem está na tela.
   const { data, error } = await supabase
     .from('usuarios_empresas')
-    .select('papel, departamento_id, empresas(id, nome, cnpj, cor_primaria, cor_destaque, cor_texto, logo_url, modulos_habilitados)')
+    .select('papel, departamento_id, ativo, empresas(id, nome, cnpj, cor_primaria, cor_destaque, cor_texto, logo_url, modulos_habilitados)')
     .eq('usuario_id', state.user.id);
 
   if (error) {
@@ -248,8 +251,9 @@ async function carregarEmpresas() {
     return;
   }
 
-  state.empresas = (data || [])
-    .filter((v) => v.empresas)
+  const vinculos = data || [];
+  state.empresas = vinculos
+    .filter((v) => v.ativo && v.empresas)
     .map((v) => ({ ...v.empresas, papel: v.papel, departamentoId: v.departamento_id }));
 
   state.ehOrbeex = state.empresas.some((e) => e.papel === 'orbeex');
@@ -260,6 +264,13 @@ async function carregarEmpresas() {
     .join('');
 
   if (state.empresas.length === 0) {
+    // "Nova empresa" é exclusivo da equipe ORBEEX (e agora também no banco, ver migração 0094):
+    // mandar um colaborador comum criar empresa era um convite para uma ação que ele não pode
+    // executar — e, no caso de acesso revogado, uma forma de contornar a revogação.
+    const teveAcessoRevogado = vinculos.some((v) => !v.ativo);
+    document.getElementById('sem-empresa-texto').textContent = teveAcessoRevogado
+      ? 'Seu acesso foi desativado pelo administrador da empresa. Procure o responsável pelo sistema na sua organização.'
+      : 'Você ainda não está vinculado a nenhuma empresa. Procure o responsável pelo sistema na sua organização.';
     semEmpresaBox.style.display = 'flex';
     appLayout.style.display = 'none';
     empresaNomeTitulo.textContent = '—';
