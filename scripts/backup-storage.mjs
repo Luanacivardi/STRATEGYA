@@ -86,7 +86,9 @@ async function baixar(bucket, caminho, destino) {
 async function main() {
   await fs.mkdir(DESTINO, { recursive: true });
 
-  const buckets = await listarBuckets();
+  // O bucket 'backups' guarda os proprios backups (diario + semanal) — nao
+  // faz sentido copiar backup dentro de backup, isso so cresceria sem fim.
+  const buckets = (await listarBuckets()).filter((b) => b.id !== 'backups');
   console.log(`Buckets encontrados: ${buckets.length}\n`);
 
   let totalArquivos = 0;

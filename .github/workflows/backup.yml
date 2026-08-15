@@ -10,6 +10,11 @@ name: Backup semanal (banco + arquivos)
 # O usuario, o host, a porta e a URL do projeto ficam fixos aqui embaixo porque
 # nao sao segredo (a URL ja e publica no config.js do app). Deixar fixo elimina
 # a maior fonte de erro: montar string de conexao a mao.
+#
+# O backup final (zip com estrutura+dados+papeis+arquivos) vai pro bucket
+# PRIVADO 'backups' no Supabase Storage — NUNCA pra actions/upload-artifact,
+# porque este repositorio e publico e artifacts publicos podem ser baixados
+# por qualquer conta do GitHub.
 on:
   schedule:
     - cron: '0 6 * * 0'
@@ -97,10 +102,59 @@ jobs:
           fi
           echo "OK: dump de dados com $LINHAS linhas."
 
-      - name: Guardar o backup
-        uses: actions/upload-artifact@v4
-        with:
-          name: backup-strategya-${{ github.run_number }}
-          path: backup/
-          retention-days: 90
-          compression-level: 9
+      # ---------- ENVIO ----------
+      # NAO usamos actions/upload-artifact: o repositorio e publico, e artifacts
+      # de repositorio publico podem ser baixados por qualquer conta do GitHub.
+      # O backup completo (dados de colaboradores, apuracoes de compliance,
+      # documentos) vai direto pro bucket PRIVADO 'backups' no Supabase Storage,
+      # que so a service_role consegue ler.
+      - name: Compactar backup
+        id: compactar
+        run: |
+          DATA=$(date -u +%Y-%m-%d)
+          NOME="strategya-backup-semanal-${DATA}.zip"
+          (cd backup && zip -rq "../${NOME}" .)
+          echo "nome=${NOME}" >> "$GITHUB_OUTPUT"
+
+      - name: Enviar para o Supabase Storage
+        env:
+          CHAVE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NOME: ${{ steps.compactar.outputs.nome }}
+        run: |
+          RESP=$(curl -sS -w '\n%{http_code}' \
+            -X POST "${PROJETO_URL}/storage/v1/object/backups/semanal/${NOME}" \
+            -H "Authorization: Bearer ${CHAVE}" \
+            -H "apikey: ${CHAVE}" \
+            -H "Content-Type: application/zip" \
+            -H "x-upsert: true" \
+            --data-binary "@${NOME}")
+          STATUS=$(echo "$RESP" | tail -n1)
+          echo "$RESP" | head -n -1
+          if [ "$STATUS" -ge 300 ]; then
+            echo "ERRO: upload do backup falhou (status $STATUS)."
+            exit 1
+          fi
+          echo "OK: ${NOME} enviado para backups/semanal/."
+
+      # Mantem so os ultimos 8 backups semanais (~2 meses) no bucket.
+      - name: Limpar backups semanais antigos
+        env:
+          CHAVE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          LISTA=$(curl -sS -X POST "${PROJETO_URL}/storage/v1/object/list/backups" \
+            -H "Authorization: Bearer ${CHAVE}" \
+            -H "apikey: ${CHAVE}" \
+            -H "Content-Type: application/json" \
+            -d '{"prefix":"semanal/","limit":1000,"sortBy":{"column":"name","order":"asc"}}')
+          ANTIGOS=$(echo "$LISTA" | jq -r '[.[].name] | .[0:-8][]' 2>/dev/null || true)
+          if [ -n "$ANTIGOS" ]; then
+            PREFIXOS=$(echo "$ANTIGOS" | sed 's#^#semanal/#' | jq -R -s -c 'split("\n")[:-1]')
+            curl -sS -X DELETE "${PROJETO_URL}/storage/v1/object/backups" \
+              -H "Authorization: Bearer ${CHAVE}" \
+              -H "apikey: ${CHAVE}" \
+              -H "Content-Type: application/json" \
+              -d "{\"prefixes\": ${PREFIXOS}}"
+            echo "Removidos: $ANTIGOS"
+          else
+            echo "Nada a remover."
+          fi
