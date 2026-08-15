@@ -583,13 +583,31 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
   min-height: 140px; background: var(--bg-white); font-size: 15px; margin-bottom: 12px;
 }
 
-/* Modificador: título + cartões + os 3 gráficos ficam fixos na tela; só a parte de baixo (abas de
-   Análises/Anexos/Planos de Ação) rola — usado no detalhe da conta em Controladoria, onde os 3
-   gráficos juntos não cabem sem empurrar a análise pra fora da tela. */
-.apresentacao-overlay-fixo { display: flex; flex-direction: column; overflow: hidden; padding: 2.5rem 0 0; }
-.apresentacao-overlay-fixo .apresentacao-conteudo { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.apresentacao-overlay-fixo .detalhe-conta-topo { flex-shrink: 0; padding: 0 2rem; }
-.apresentacao-overlay-fixo .detalhe-conta-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 2rem 2.5rem; }
+/* Detalhe da conta (Controladoria). Este modificador já tentou manter o topo (título + cartões +
+   gráficos) fixo, com rolagem só na parte de baixo. Duas coisas quebravam nisso:
+     - `margin: 0 auto` da .apresentacao-conteudo dentro de um flex em coluna faz o item encolher
+       até o conteúdo em vez de esticar: a tela inteira vinha ~580px de largura em vez dos 1000px
+       previstos, e por isso os dois gráficos de cima nunca ficavam lado a lado;
+     - com os gráficos em tamanho legível, o topo passa de 1100px e simplesmente não cabe num
+       notebook — a área das análises ficava fora da tela.
+   Agora o overlay rola inteiro, como uma página normal, e o conteúdo ocupa a largura de fato. */
+.apresentacao-overlay-fixo { padding: 2.5rem 0 0; }
+.apresentacao-overlay-fixo .apresentacao-conteudo { width: 100%; }
+.apresentacao-overlay-fixo .detalhe-conta-topo { padding: 0 2rem; }
+.apresentacao-overlay-fixo .detalhe-conta-scroll { padding: 1rem 2rem 2.5rem; }
+
+/* ===== GRÁFICOS DO DETALHE DA CONTA (Controladoria) =====
+   Histórico Anual e Mensal lado a lado, % sobre a ROL ocupando a linha inteira embaixo.
+   As alturas ficam aqui (e não em style inline no JS) para o ajuste ser um número só. */
+.conta-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; }
+.conta-grafico-largo { grid-column: 1 / -1; margin-top: 1.25rem; }
+.conta-grafico-titulo {
+  color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.4px; margin-bottom: 10px;
+}
+.conta-grafico-area { position: relative; height: 240px; }
+.conta-grafico-largo .conta-grafico-area { height: 280px; }
+.conta-grafico-vazio { padding: 20px; }
 
 /* ===== TOAST ===== */
 .toast-box { position: fixed; top: 74px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
@@ -907,6 +925,18 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
   body.imprimindo-secao #print-secao table.table td { border: none; border-bottom: 1px solid #eee; padding: 8px 12px; }
   body.imprimindo-secao #print-secao table.table thead th { background: #f4f4f4; color: #333; }
   body.imprimindo-secao #print-secao table.table tr:nth-child(even) { background: #fafafa; }
+
+  /* Gráficos dentro de um relatório impresso (Controladoria): mesma disposição da tela — os dois
+     de valores lado a lado e o de % sobre a ROL ocupando a linha inteira. break-inside: avoid
+     impede que um gráfico seja cortado ao meio pela quebra de página. */
+  .print-graficos { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0 18px; }
+  .print-grafico { break-inside: avoid; page-break-inside: avoid; }
+  .print-grafico-largo { grid-column: 1 / -1; }
+  .print-grafico-titulo {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: #777;
+    font-weight: 700; margin-bottom: 4px;
+  }
+  .print-grafico img { width: 100%; height: auto; display: block; }
 
   /* Grade de cartões com sombra para campo/valor (usado nos relatórios novos: Auditorias, etc.),
      alternativa mais moderna à tabela tradicional quando fizer sentido. */
