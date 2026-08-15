@@ -790,13 +790,25 @@ async function renderConteudoAtivo() {
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     const mod = TABS_PLANEJAMENTO[tabAtiva];
     const container = document.getElementById(`tab-${tabAtiva}`);
-    if (mod && container) mod.render(container, state);
+    // Com await, um erro dentro do render da aba vira erro tratável aqui em vez de uma promise
+    // rejeitada em silêncio — que deixava a aba pela metade sem nenhum aviso na tela.
+    if (mod && container) {
+      try {
+        await mod.render(container, state);
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-warning">Não foi possível carregar esta aba: ${escapeHtml(err.message || err)}</div>`;
+      }
+    }
     return;
   }
 
   if (MODULOS_SIMPLES[moduloAtivo]) {
     areaModuloSimples.style.display = 'block';
-    await MODULOS_SIMPLES[moduloAtivo].render(areaModuloSimples, state);
+    try {
+      await MODULOS_SIMPLES[moduloAtivo].render(areaModuloSimples, state);
+    } catch (err) {
+      areaModuloSimples.innerHTML = `<div class="alert alert-warning">Não foi possível carregar este módulo: ${escapeHtml(err.message || err)}</div>`;
+    }
     return;
   }
 

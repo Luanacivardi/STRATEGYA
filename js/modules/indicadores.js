@@ -639,9 +639,17 @@ async function abrirApresentacao(state, indicador) {
   `;
   document.body.appendChild(overlay);
 
-  const fechar = () => overlay.remove();
+  // Fechar pelo X precisa limpar tudo que a abertura criou (listener global e gráfico), igual ao
+  // Esc: antes, só o Esc removia o listener — fechando no X ele ficava no document para sempre, e
+  // o Chart de cada abertura continuava vivo em memória.
+  let graficoApresentacao = null;
+  const fechar = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onEsc);
+    if (graficoApresentacao) { graficoApresentacao.destroy(); graficoApresentacao = null; }
+  };
   overlay.querySelector('#apr-fechar').addEventListener('click', fechar);
-  const onEsc = (e) => { if (e.key === 'Escape') { fechar(); document.removeEventListener('keydown', onEsc); } };
+  const onEsc = (e) => { if (e.key === 'Escape') fechar(); };
   document.addEventListener('keydown', onEsc);
 
   const wireAcoesAnaliseIndicador = () => {
@@ -661,7 +669,7 @@ async function abrirApresentacao(state, indicador) {
 
   if (window.Chart) {
     const cores = coresGrafico();
-    new Chart(overlay.querySelector('#apresentacao-grafico'), {
+    graficoApresentacao = new Chart(overlay.querySelector('#apresentacao-grafico'), {
       type: 'line',
       data: {
         labels: resultados.map((r) => formatarMesAno(r.periodo)),

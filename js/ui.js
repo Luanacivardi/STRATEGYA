@@ -102,7 +102,15 @@ export function formatarValor(valor, unidade) {
 // usado por Documentos, Planos de Ação e Tarefas, que antes reimplementavam o mesmo escape/blob/
 // download cada um por conta própria.
 export function baixarCsv(nomeArquivo, cabecalho, linhasValores) {
-  const escaparCsv = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
+  // Excel/Sheets tratam célula iniciada por = + - @ (e pelos controles tab/CR) como FÓRMULA, não
+  // como texto: um título de tarefa começando com "=" viraria cálculo — ou pior, uma chamada de
+  // função — na planilha de quem abrisse o arquivo. A aspa simples à frente força texto.
+  const PERIGOSOS = ['=', '+', '-', '@', '\t', '\r'];
+  const escaparCsv = (v) => {
+    let texto = String(v ?? '');
+    if (PERIGOSOS.includes(texto[0])) texto = "'" + texto;
+    return '"' + texto.replaceAll('"', '""') + '"';
+  };
   const csv = [cabecalho, ...linhasValores].map((linha) => linha.map(escaparCsv).join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
