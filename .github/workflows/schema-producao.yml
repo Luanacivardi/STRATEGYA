@@ -1,0 +1,71 @@
+name: Espelhar schema de producao no repositorio
+
+# Por que existe: as migracoes aplicadas direto pelo painel/SQL Editor nunca viravam arquivo aqui.
+# O banco tinha 122 migracoes registradas contra 95 arquivos no repositorio, ou seja, o codigo
+# versionado nao descrevia mais o banco real — e diferenca nenhuma aparecia em code review.
+#
+# Este workflow gera supabase/schema_producao.sql (estrutura, RLS, funcoes e triggers; SEM dados)
+# e comita se algo mudou. O diff do git passa a mostrar qualquer alteracao de schema, tenha ela
+# vindo de um arquivo de migracao ou de um comando avulso no painel.
+#
+# Nao substitui o backup semanal (que leva dados e arquivos): aqui e so a estrutura, para revisao.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1' # segunda, 04:00 de Brasilia (depois do backup semanal de domingo)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DB_USUARIO: postgres.qfmzgsoindjtqzewgecp
+  DB_HOST: aws-1-sa-east-1.pooler.supabase.com
+  DB_PORTA: '5432'
+
+jobs:
+  espelhar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Preparar conexao
+        env:
+          SENHA: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$SENHA" ]; then
+            echo "ERRO: o secret SUPABASE_DB_PASSWORD nao esta configurado."
+            exit 1
+          fi
+          SENHA_CODIFICADA=$(node -e 'process.stdout.write(encodeURIComponent(process.env.SENHA))')
+          URL="postgresql://${DB_USUARIO}:${SENHA_CODIFICADA}@${DB_HOST}:${DB_PORTA}/postgres"
+          echo "::add-mask::$URL"
+          echo "DB_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Exportar estrutura
+        run: supabase db dump --db-url "$DB_URL" -f supabase/schema_producao.sql
+
+      - name: Conferir que o dump nao veio vazio
+        run: |
+          LINHAS=$(wc -l < supabase/schema_producao.sql)
+          if [ "$LINHAS" -lt 100 ]; then
+            echo "ERRO: dump com apenas $LINHAS linhas — algo deu errado."
+            exit 1
+          fi
+          echo "OK: $LINHAS linhas."
+
+      - name: Comitar se mudou
+        run: |
+          if git diff --quiet -- supabase/schema_producao.sql; then
+            echo "Schema sem alteracoes desde a ultima execucao."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/schema_producao.sql
+          git commit -m "Espelha schema de producao [skip ci]"
+          git push
