@@ -1,0 +1,12 @@
+# Cabeçalhos de segurança aplicados pelo Cloudflare (assets estáticos do Worker).
+# Copiado para dist/ pelo build.js — o Cloudflare lê este arquivo na raiz dos assets.
+# ATENÇÃO: o GitHub Pages ignora este arquivo. Enquanto strategya.orbeex.com.br for servido
+# por lá, aquele domínio continua sem nenhuma destas proteções.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; img-src 'self' data: blob: https://qfmzgsoindjtqzewgecp.supabase.co; connect-src 'self' https://qfmzgsoindjtqzewgecp.supabase.co wss://qfmzgsoindjtqzewgecp.supabase.co https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
