@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData, buscarTodos } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 import * as todo from './todo.js';
 
@@ -139,7 +139,7 @@ async function renderIndicadoresGrupo(container, state) {
   let planos, origens;
   try {
     const [resPlanos, origensData] = await Promise.all([
-      supabase.from('planos_acao').select('*').eq('empresa_id', empresaAtual.id),
+      buscarTodos(() => supabase.from('planos_acao').select('*').eq('empresa_id', empresaAtual.id)),
       carregarOrigens(supabase, empresaAtual.id),
     ]);
     if (resPlanos.error) throw resPlanos.error;
@@ -227,7 +227,7 @@ async function renderPlanos(container, state) {
   let planos, origens, membros;
   try {
     const [resPlanos, origensData, membrosData] = await Promise.all([
-      supabase.from('planos_acao').select('*').eq('empresa_id', empresaAtual.id),
+      buscarTodos(() => supabase.from('planos_acao').select('*').eq('empresa_id', empresaAtual.id)),
       carregarOrigens(supabase, empresaAtual.id),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
     ]);

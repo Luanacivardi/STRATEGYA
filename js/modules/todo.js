@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData, buscarTodos } from '../ui.js';
 import { recalcularPercentualMacro } from './planosAcao.js';
 import { listarObjetivos } from './objetivos.js';
 
@@ -51,8 +51,8 @@ async function carregarLinhas(supabase, empresaAtual) {
     membros,
     objetivos,
   ] = await Promise.all([
-    supabase.from('todo_itens').select('*').eq('empresa_id', empresaAtual.id),
-    supabase.from('planos_acao').select('id, numero, titulo, origem, origem_id').eq('empresa_id', empresaAtual.id),
+    buscarTodos(() => supabase.from('todo_itens').select('*').eq('empresa_id', empresaAtual.id)),
+    buscarTodos(() => supabase.from('planos_acao').select('id, numero, titulo, origem, origem_id').eq('empresa_id', empresaAtual.id)),
     supabase.from('reunioes_analise_critica').select('id, data').eq('empresa_id', empresaAtual.id),
     supabase.from('indicadores').select('id, nome, objetivo_id').eq('empresa_id', empresaAtual.id),
     supabase.from('contas_gerenciais').select('id, codigo, nome').eq('empresa_id', empresaAtual.id),

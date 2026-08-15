@@ -197,6 +197,12 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
   await supabase.auth.signOut();
 });
 
+// Quem já está montado na tela. Sem isso, o app se remontava inteiro em eventos de sessão que não
+// têm nada a ver com "entrou/saiu": TOKEN_REFRESHED chega sozinho a cada ~1h e o supabase-js reemite
+// SIGNED_IN quando a aba volta ao foco — e cada um desses refazia carregarEmpresas() ->
+// renderConteudoAtivo(), redesenhando a tela por baixo de quem estava no meio de um formulário.
+let usuarioMontadoId = null;
+
 supabase.auth.onAuthStateChange((event, session) => {
   viewLoading.style.display = 'none';
 
@@ -209,24 +215,34 @@ supabase.auth.onAuthStateChange((event, session) => {
 
   state.user = session?.user || null;
 
+  // Renovação de token e atualização de dados do usuário não mudam quem está logado: atualiza o
+  // state (feito acima) e não mexe na tela.
+  if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
+
   // Reforço no app: mesmo que a sessão já exista, um usuário sem e-mail confirmado não entra no
   // sistema (cobre o caso de "Confirm email" ter sido ativado depois de contas já criadas, ou
   // qualquer sessão antiga sem confirmação pendente).
   if (state.user && !state.user.email_confirmed_at) {
+    usuarioMontadoId = null;
     viewApp.style.display = 'none';
     mostrarTelaConfirmeEmail(state.user.email);
     return;
   }
 
   if (state.user) {
+    if (usuarioMontadoId === state.user.id) return; // já é esta pessoa na tela: nada a refazer
+    usuarioMontadoId = state.user.id;
     viewLogin.style.display = 'none';
     viewConfirmeEmail.style.display = 'none';
     viewApp.style.display = 'block';
     const nomeExibicao = state.user.user_metadata?.nome || state.user.email;
     document.getElementById('topbar-user').textContent = nomeExibicao;
     document.getElementById('topbar-avatar').textContent = iniciais(nomeExibicao);
-    carregarEmpresas();
+    // Fora do callback de propósito: chamar o supabase de dentro do onAuthStateChange pode travar
+    // (o cliente ainda está segurando o lock interno de auth quando avisa os inscritos).
+    setTimeout(() => { carregarEmpresas(); }, 0);
   } else {
+    usuarioMontadoId = null;
     viewApp.style.display = 'none';
     viewConfirmeEmail.style.display = 'none';
     viewLogin.style.display = 'flex';

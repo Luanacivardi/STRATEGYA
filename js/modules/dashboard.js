@@ -1,4 +1,4 @@
-import { escapeHtml, formatarValor } from '../ui.js';
+import { escapeHtml, formatarValor, buscarTodos } from '../ui.js';
 import { metaDoPeriodo } from './indicadores.js';
 
 const PERSPECTIVAS = [
@@ -41,11 +41,11 @@ export async function render(container, state) {
   let metasVariaveis = [];
   if (indicadorIds.length) {
     const [{ data }, { data: metasData }] = await Promise.all([
-      supabase
+      buscarTodos(() => supabase
         .from('resultados_indicadores')
         .select('*')
         .in('indicador_id', indicadorIds)
-        .order('periodo', { ascending: false }),
+        .order('periodo', { ascending: false })),
       supabase
         .from('indicador_metas')
         .select('indicador_id, periodo, meta')

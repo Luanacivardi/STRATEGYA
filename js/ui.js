@@ -234,6 +234,25 @@ export function podeEditarRegistro(state, responsavelId, modulo, submodulo = nul
   return nivel === 'proprio' && !!responsavelId && responsavelId === state.user.id;
 }
 
+// O PostgREST devolve no máximo 1000 linhas por requisição (limite do Supabase) e NÃO avisa quando
+// corta: a consulta volta "com sucesso", só que incompleta — totais e gráficos passam a mostrar
+// número errado sem erro nenhum. Isso vale para toda tabela que cresce sem teto (lançamentos
+// mensais, resultados de indicadores, planos, tarefas). Aqui a consulta é repetida em páginas até
+// a última vir incompleta.
+//
+// Uso: passe uma FUNÇÃO que monta a consulta (o construtor do supabase-js é de uso único, não dá
+// para reaproveitar o mesmo objeto em duas páginas):
+//   const { data, error } = await buscarTodos(() => supabase.from('x').select('*').eq('empresa_id', id));
+export async function buscarTodos(construirQuery, tamanhoPagina = 1000) {
+  const linhas = [];
+  for (let inicio = 0; ; inicio += tamanhoPagina) {
+    const { data, error } = await construirQuery().range(inicio, inicio + tamanhoPagina - 1);
+    if (error) return { data: null, error };
+    linhas.push(...(data || []));
+    if (!data || data.length < tamanhoPagina) return { data: linhas, error: null };
+  }
+}
+
 export function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)

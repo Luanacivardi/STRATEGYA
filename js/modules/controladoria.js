@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, formatarDataHora } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, formatarDataHora, buscarTodos } from '../ui.js';
 import { coresGrafico } from '../tema.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
@@ -72,7 +72,7 @@ export async function render(container, state) {
       supabase.from('contas_gerenciais').select('*').eq('empresa_id', empresaAtual.id),
       supabase.from('departamentos').select('*').eq('empresa_id', empresaAtual.id).order('nome').then((r) => { if (r.error) throw r.error; return r.data || []; }),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => { if (r.error) throw r.error; return r.data || []; }),
-      supabase.from('contas_lancamentos_mensais').select('*').eq('empresa_id', empresaAtual.id).then((r) => { if (r.error) throw r.error; return r.data || []; }),
+      buscarTodos(() => supabase.from('contas_lancamentos_mensais').select('*').eq('empresa_id', empresaAtual.id)).then((r) => { if (r.error) throw r.error; return r.data || []; }),
     ]);
     if (contas.error) throw contas.error;
     contas = [...contas.data].sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true }));

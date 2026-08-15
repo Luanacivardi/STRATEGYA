@@ -45,14 +45,24 @@ export async function render(container, state) {
   const nomePorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const nomeEmpresaPorId = new Map((empresas || []).map((e) => [e.id, e.nome]));
 
-  async function carregarLogs() {
+  // Rastreabilidade não pode ter teto invisível: antes a tela trazia as 300 alterações mais
+  // recentes e pronto — o que ficasse para trás não era alcançável por nenhum filtro de tela,
+  // justamente num registro que existe para auditoria. Agora a página avança sob demanda.
+  const TAMANHO_PAGINA = 300;
+  let paginaAtual = 0;
+  let linhasCarregadas = [];
+
+  async function carregarLogs({ continuar = false } = {}) {
+    if (!continuar) { paginaAtual = 0; linhasCarregadas = []; }
+
     const tabelaFiltro = container.querySelector('#hist-filtro-tabela')?.value || '';
     const usuarioFiltro = container.querySelector('#hist-filtro-usuario')?.value || '';
     const empresaFiltro = container.querySelector('#hist-filtro-empresa')?.value || '';
     const de = container.querySelector('#hist-filtro-de')?.value || '';
     const ate = container.querySelector('#hist-filtro-ate')?.value || '';
 
-    let query = supabase.from('log_alteracoes').select('*').order('criado_em', { ascending: false }).limit(300);
+    let query = supabase.from('log_alteracoes').select('*').order('criado_em', { ascending: false })
+      .range(paginaAtual * TAMANHO_PAGINA, (paginaAtual + 1) * TAMANHO_PAGINA - 1);
     // ORBEEX vê todas as empresas onde tem acesso (a RLS já cuida de não vazar outras); admin
     // fica travado na empresa atualmente selecionada, mesmo que a RLS já reforce isso também.
     query = ehOrbeex ? (empresaFiltro ? query.eq('empresa_id', empresaFiltro) : query) : query.eq('empresa_id', empresaAtual.id);
@@ -68,11 +78,15 @@ export async function render(container, state) {
       return;
     }
 
-    area.innerHTML = data.length ? `
+    const temMais = (data || []).length === TAMANHO_PAGINA;
+    linhasCarregadas = linhasCarregadas.concat(data || []);
+    const linhas = linhasCarregadas;
+
+    area.innerHTML = linhas.length ? `
       <table class="table">
         <thead><tr><th>Quando</th>${ehOrbeex ? '<th>Empresa</th>' : ''}<th>Usuário</th><th>Registro</th><th>Ação</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
         <tbody>
-          ${data.map((l) => `
+          ${linhas.map((l) => `
             <tr>
               <td>${formatarDataHora(l.criado_em)}</td>
               ${ehOrbeex ? `<td>${escapeHtml(nomeEmpresaPorId.get(l.empresa_id) || '—')}</td>` : ''}
@@ -85,8 +99,21 @@ export async function render(container, state) {
             </tr>`).join('')}
         </tbody>
       </table>
-      ${data.length === 300 ? '<p class="text-muted" style="margin-top:8px">Mostrando as 300 alterações mais recentes. Use os filtros para refinar.</p>' : ''}
+      <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+        <span class="text-muted">${linhas.length} alteração(ões) carregada(s).</span>
+        ${temMais ? '<button class="btn btn-secondary btn-sm" id="hist-carregar-mais" type="button"><i class="ti ti-chevron-down"></i> Carregar mais 300</button>' : '<span class="text-muted">Fim do histórico para estes filtros.</span>'}
+      </div>
     ` : '<div class="empty-state"><i class="ti ti-history"></i>Nenhuma alteração encontrada com esses filtros.</div>';
+
+    const btnMais = area.querySelector('#hist-carregar-mais');
+    if (btnMais) {
+      btnMais.addEventListener('click', async () => {
+        btnMais.disabled = true;
+        btnMais.textContent = 'Carregando...';
+        paginaAtual += 1;
+        await carregarLogs({ continuar: true });
+      });
+    }
   }
 
   container.innerHTML = `
