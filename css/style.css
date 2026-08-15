@@ -592,22 +592,39 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
        notebook — a área das análises ficava fora da tela.
    Agora o overlay rola inteiro, como uma página normal, e o conteúdo ocupa a largura de fato. */
 .apresentacao-overlay-fixo { padding: 2.5rem 0 0; }
-.apresentacao-overlay-fixo .apresentacao-conteudo { width: 100%; }
+/* Diferente da apresentação de indicador (que é centrada em 1000px, formato de slide para
+   reunião), o detalhe da conta usa a largura toda da tela: são três gráficos + tabelas de
+   análises, e sobrava metade do monitor vazia nas laterais. */
+.apresentacao-overlay-fixo .apresentacao-conteudo { width: 100%; max-width: none; }
 .apresentacao-overlay-fixo .detalhe-conta-topo { padding: 0 2rem; }
 .apresentacao-overlay-fixo .detalhe-conta-scroll { padding: 1rem 2rem 2.5rem; }
+/* Os três cartões de destaque não acompanham a largura total: esticados para 600px cada eles
+   viram três placas quase vazias. Ficam centrados no topo. */
+.apresentacao-overlay-fixo .apresentacao-meta-row { max-width: 1100px; margin-inline: auto; }
 
 /* ===== GRÁFICOS DO DETALHE DA CONTA (Controladoria) =====
    Histórico Anual e Mensal lado a lado, % sobre a ROL ocupando a linha inteira embaixo.
-   As alturas ficam aqui (e não em style inline no JS) para o ajuste ser um número só. */
-.conta-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; }
+   As alturas ficam aqui (e não em style inline no JS) para o ajuste ser um número só.
+
+   Duas colunas explícitas (e não `auto-fit`): em tela larga o auto-fit criava cinco faixas de
+   320px, deixando os dois gráficos de cima espremidos à esquerda enquanto o de baixo, que ocupa
+   a linha inteira, esticava sozinho. Abaixo de 900px vira coluna única.
+
+   A altura acompanha a largura da tela (clamp em vw): num monitor grande um gráfico de 900px de
+   largura por 240px de altura fica achatado; o mínimo continua sendo os 240px. */
+.conta-graficos { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
 .conta-grafico-largo { grid-column: 1 / -1; margin-top: 1.25rem; }
 .conta-grafico-titulo {
   color: var(--text-secondary); font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.4px; margin-bottom: 10px;
 }
-.conta-grafico-area { position: relative; height: 240px; }
-.conta-grafico-largo .conta-grafico-area { height: 280px; }
+.conta-grafico-area { position: relative; height: clamp(240px, 18vw, 340px); }
+.conta-grafico-largo .conta-grafico-area { height: clamp(280px, 20vw, 380px); }
 .conta-grafico-vazio { padding: 20px; }
+
+@media (max-width: 900px) {
+  .conta-graficos { grid-template-columns: 1fr; }
+}
 
 /* ===== TOAST ===== */
 .toast-box { position: fixed; top: 74px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
