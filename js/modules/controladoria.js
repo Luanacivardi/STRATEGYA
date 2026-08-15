@@ -64,6 +64,7 @@ let competenciaAtiva = null; // 'YYYY-MM', escolhida pelo usuário no painel de 
 export async function render(container, state) {
   const { supabase, empresaAtual } = state;
   const podeEditar = resolverNivel(state, 'controladoria') === 'total';
+  const podeEditarRol = resolverNivel(state, 'controladoria', 'rol') === 'total';
 
   let contas, departamentos, membros, lancamentos;
   try {
@@ -137,7 +138,7 @@ export async function render(container, state) {
       <div class="card-header">
         <span><i class="ti ti-chart-bar"></i> Resumo Consolidado</span>
         <div style="display:flex;align-items:center;gap:8px">
-          ${podeEditar ? '<button class="btn btn-secondary btn-sm" id="btn-config-rol" title="Configurar a Receita (ROL) da empresa, usada no % sobre a ROL de cada conta"><i class="ti ti-settings"></i> ROL da empresa</button>' : ''}
+          ${podeEditarRol ? '<button class="btn btn-secondary btn-sm" id="btn-config-rol" title="Configurar a Receita (ROL) da empresa, usada no % sobre a ROL de cada conta"><i class="ti ti-settings"></i> ROL da empresa</button>' : ''}
           <input type="month" id="competencia-ativa" value="${competenciaAtiva}">
         </div>
       </div>
@@ -806,6 +807,7 @@ async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial
 async function renderDetalheConta(state, containerPai, modal, conta, membros) {
   const { supabase, empresaAtual } = state;
   const corpo = modal.querySelector('#detalhe-conta-corpo');
+  const podeVerRol = resolverNivel(state, 'controladoria', 'rol') !== 'sem_acesso';
 
   let analises, anexos, lancamentosConta, rolMensal, rolHistorico;
   try {
@@ -813,8 +815,8 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
       supabase.from('contas_analises').select('*').eq('conta_id', conta.id).order('competencia', { ascending: false }),
       supabase.from('contas_anexos').select('*').eq('conta_id', conta.id).order('created_at', { ascending: false }),
       supabase.from('contas_lancamentos_mensais').select('*').eq('conta_id', conta.id),
-      supabase.from('empresa_rol_mensal').select('*').eq('empresa_id', empresaAtual.id),
-      supabase.from('empresa_rol_historico_anual').select('*').eq('empresa_id', empresaAtual.id),
+      podeVerRol ? supabase.from('empresa_rol_mensal').select('*').eq('empresa_id', empresaAtual.id) : Promise.resolve({ data: [] }),
+      podeVerRol ? supabase.from('empresa_rol_historico_anual').select('*').eq('empresa_id', empresaAtual.id) : Promise.resolve({ data: [] }),
     ]);
     if (resAnalises.error) throw resAnalises.error;
     if (resAnexos.error) throw resAnexos.error;
@@ -865,7 +867,8 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
           </div>
           <div>
             <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
-            ${temRol ? '<div style="position:relative;height:150px"><canvas id="grafico-rol"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
+            ${!podeVerRol ? '<div class="empty-state" style="padding:20px"><i class="ti ti-lock"></i>Você não tem permissão para ver a ROL desta empresa.</div>'
+              : temRol ? '<div style="position:relative;height:150px"><canvas id="grafico-rol"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
           </div>
         </div>
       </div>

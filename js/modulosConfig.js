@@ -44,7 +44,9 @@ export const MODULOS_SISTEMA = [
     id: 'controladoria', nome: 'Controladoria', icone: 'ti-report-money', disponivel: true, configuravel: true,
     descricao: 'Cadastro de contas gerenciais, com categoria, área responsável, responsável pela análise e metas mensal/anual.',
     teaser: 'Metas financeiras por área, mês a mês: veja quem está no azul antes que vire problema.',
-    submodulos: [],
+    submodulos: [
+      { id: 'rol', nome: 'ROL da empresa (Receita)' },
+    ],
   },
   {
     id: 'documentos', nome: 'Documentos', icone: 'ti-file-text', disponivel: true, configuravel: true,
