@@ -17,6 +17,27 @@ function ajustarCor(hex, amount) {
 
 const PADRAO = { cor_primaria: '#252538', cor_destaque: '#E8B84B', cor_texto: '#ffffff', logo_url: null };
 
+function hexParaRgba(hex, alpha) {
+  const [r, g, b] = hexParaRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Cores pra uso em gráficos (Chart.js etc). Lê as variáveis CSS já aplicadas por aplicarTema(),
+// ou seja, sempre reflete a cor da empresa logada — nunca a cor padrão do Strategya (exceto se a
+// empresa não tiver marca definida, aí cai no padrão mesmo).
+export function coresGrafico() {
+  const style = getComputedStyle(document.documentElement);
+  const primaria = style.getPropertyValue('--navy').trim() || PADRAO.cor_primaria;
+  const destaque = style.getPropertyValue('--gold').trim() || PADRAO.cor_destaque;
+  return {
+    primaria,
+    destaque,
+    primariaTransparente: hexParaRgba(primaria, 0.55),
+    destaqueTransparente: hexParaRgba(destaque, 0.15),
+    destaqueForte: hexParaRgba(destaque, 0.85),
+  };
+}
+
 // Luminância relativa (fórmula WCAG simplificada, 0 = preto, 1 = branco) — quanto menor, mais forte
 // o contraste da cor sobre um fundo claro/branco.
 function luminanciaRelativa(hex) {

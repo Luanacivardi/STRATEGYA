@@ -1,4 +1,5 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, formatarDataHora } from '../ui.js';
+import { coresGrafico } from '../tema.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
 const CATEGORIA_BADGE = { receita: 'badge-success', custo: 'badge-warning', despesa: 'badge-danger', investimento: 'badge-neutral' };
@@ -966,6 +967,8 @@ function desenharGraficosConta(areaAba, dados) {
   chartInstancesConta = [];
   if (!window.Chart) return;
 
+  const cores = coresGrafico();
+
   const canvasHistorico = areaAba.querySelector('#grafico-historico-anual');
   if (canvasHistorico) {
     chartInstancesConta.push(new Chart(canvasHistorico, {
@@ -973,8 +976,8 @@ function desenharGraficosConta(areaAba, dados) {
       data: {
         labels: dados.historico.labels,
         datasets: [
-          { label: 'Orçado', data: dados.historico.orcado, backgroundColor: 'rgba(37,37,56,0.55)' },
-          { label: 'Realizado', data: dados.historico.realizado, backgroundColor: 'rgba(232,184,75,0.85)' },
+          { label: 'Orçado', data: dados.historico.orcado, backgroundColor: cores.primariaTransparente },
+          { label: 'Realizado', data: dados.historico.realizado, backgroundColor: cores.destaqueForte },
         ],
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
@@ -988,8 +991,8 @@ function desenharGraficosConta(areaAba, dados) {
       data: {
         labels: dados.mensal.labels,
         datasets: [
-          { label: 'Orçado', data: dados.mensal.orcado, backgroundColor: 'rgba(37,37,56,0.55)' },
-          { label: 'Realizado', data: dados.mensal.realizado, backgroundColor: 'rgba(232,184,75,0.85)' },
+          { label: 'Orçado', data: dados.mensal.orcado, backgroundColor: cores.primariaTransparente },
+          { label: 'Realizado', data: dados.mensal.realizado, backgroundColor: cores.destaqueForte },
         ],
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
@@ -1003,8 +1006,8 @@ function desenharGraficosConta(areaAba, dados) {
       data: {
         labels: dados.rol.labels,
         datasets: [
-          { label: '% ROL Orçado', data: dados.rol.pctOrcado, borderColor: '#252538', backgroundColor: 'transparent', tension: 0.25 },
-          { label: '% ROL Realizado', data: dados.rol.pctRealizado, borderColor: '#E8B84B', backgroundColor: 'transparent', tension: 0.25 },
+          { label: '% ROL Orçado', data: dados.rol.pctOrcado, borderColor: cores.primaria, backgroundColor: 'transparent', tension: 0.25 },
+          { label: '% ROL Realizado', data: dados.rol.pctRealizado, borderColor: cores.destaque, backgroundColor: 'transparent', tension: 0.25 },
         ],
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { ticks: { callback: (v) => `${v}%` } } } },

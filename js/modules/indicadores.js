@@ -1,5 +1,6 @@
 import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, formatarValor, formatarMesAno, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
+import { coresGrafico } from '../tema.js';
 
 const PERIODICIDADE = { mensal: 'Mensal', trimestral: 'Trimestral', anual: 'Anual' };
 const POLARIDADE = { maior_melhor: 'Maior é melhor', menor_melhor: 'Menor é melhor' };
@@ -659,13 +660,14 @@ async function abrirApresentacao(state, indicador) {
   wireAcoesAnaliseIndicador();
 
   if (window.Chart) {
+    const cores = coresGrafico();
     new Chart(overlay.querySelector('#apresentacao-grafico'), {
       type: 'line',
       data: {
         labels: resultados.map((r) => formatarMesAno(r.periodo)),
         datasets: [
-          { label: 'Realizado', data: resultados.map((r) => r.valor_realizado), borderColor: '#E8B84B', backgroundColor: 'rgba(232,184,75,0.15)', tension: 0.25, borderWidth: 3 },
-          { label: 'Meta', data: resultados.map((r) => metaDoPeriodo(indicador, metasPorMes, r.periodo)), borderColor: '#252538', borderDash: [6, 4], pointRadius: 0 },
+          { label: 'Realizado', data: resultados.map((r) => r.valor_realizado), borderColor: cores.destaque, backgroundColor: cores.destaqueTransparente, tension: 0.25, borderWidth: 3 },
+          { label: 'Meta', data: resultados.map((r) => metaDoPeriodo(indicador, metasPorMes, r.periodo)), borderColor: cores.primaria, borderDash: [6, 4], pointRadius: 0 },
         ],
       },
       options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 14 } } } } },
@@ -846,6 +848,7 @@ function desenharGrafico(resultados, indicador, metasPorMes = null) {
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
   const canvas = document.getElementById('grafico-resultado');
   if (!canvas || !window.Chart) return;
+  const cores = coresGrafico();
   chartInstance = new Chart(canvas, {
     type: 'line',
     data: {
@@ -854,14 +857,14 @@ function desenharGrafico(resultados, indicador, metasPorMes = null) {
         {
           label: 'Realizado',
           data: resultados.map((r) => r.valor_realizado),
-          borderColor: '#E8B84B',
-          backgroundColor: 'rgba(232,184,75,0.15)',
+          borderColor: cores.destaque,
+          backgroundColor: cores.destaqueTransparente,
           tension: 0.25,
         },
         {
           label: 'Meta',
           data: resultados.map((r) => metaDoPeriodo(indicador, metasPorMes, r.periodo)),
-          borderColor: '#252538',
+          borderColor: cores.primaria,
           borderDash: [6, 4],
           pointRadius: 0,
         },
