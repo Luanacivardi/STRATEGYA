@@ -241,7 +241,7 @@ function abrirFormulario(state, container, linha, todosProcessos) {
     ${outrosProcessos.map((p) => `<option value="${p.id}" ${selecionadoId === p.id ? 'selected' : ''}>${escapeHtml(rotuloProcesso(p))}</option>`).join('')}
   `;
 
-  const modal = abrirModal(`SIPOC — ${escapeHtml(rotuloProcesso(linha.processo))}`, `
+  const modal = abrirModal(`SIPOC — ${rotuloProcesso(linha.processo)}`, `
     <div class="form-group">
       <label><i class="ti ti-truck-delivery"></i> Fornecedores e Entradas</label>
       <p class="text-muted" style="font-size:12px;margin-top:-4px">Quem fornece o quê para este processo. Se o fornecedor for outro processo do Macrofluxo, a entrada aparece automaticamente como saída dele.</p>

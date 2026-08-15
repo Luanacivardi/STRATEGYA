@@ -246,7 +246,7 @@ export async function abrirVisualizadorDocumento(state, doc, ctx = {}) {
   }
 
   const linhaMeta = (label, valor) => `<div class="doc-visualizador-meta-item"><span>${escapeHtml(label)}</span><strong>${valor}</strong></div>`;
-  const modal = abrirModal(`${escapeHtml(doc.numero)} — ${escapeHtml(doc.nome)}`, `
+  const modal = abrirModal(`${doc.numero} — ${doc.nome}`, `
     <div class="doc-visualizador-meta">
       ${linhaMeta('Revisão', String(doc.revisao_atual).padStart(2, '0'))}
       ${linhaMeta('Classificação', escapeHtml(CLASSIFICACAO[doc.classificacao] || '—'))}
@@ -884,7 +884,7 @@ function abrirFormularioNovo(state, container, { tipos, documentos }) {
       numeroProprio = modal.querySelector('#nd-numero-proprio').value.trim();
       if (!numeroProprio) return toast('Informe o número do documento (numeração vigente da empresa).', 'erro');
       const jaExiste = documentos.some((d) => d.status !== 'obsoleto' && (d.numero || '').trim().toLowerCase() === numeroProprio.toLowerCase());
-      if (jaExiste) return toast(`Já existe um documento ativo com o número "${escapeHtml(numeroProprio)}" nesta empresa.`, 'erro');
+      if (jaExiste) return toast(`Já existe um documento ativo com o número "${numeroProprio}" nesta empresa.`, 'erro');
     }
 
     const processoId = modal.querySelector('#nd-processo')?.value || null;

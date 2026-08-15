@@ -327,7 +327,7 @@ async function renderApuracoes(container, state, podeGerenciarComite) {
 function abrirFormulario(state, container, membrosComite, aoSalvar, item = null, podeEditar = true) {
   const { supabase, empresaAtual, user } = state;
 
-  const modal = abrirModal(item ? `Apuração ${escapeHtml(item.numero)}` : 'Nova apuração', `
+  const modal = abrirModal(item ? `Apuração ${item.numero}` : 'Nova apuração', `
     <form id="form-apuracao">
       ${AVISO_ESCOPO}
       <div class="form-row" style="margin-top:1rem">

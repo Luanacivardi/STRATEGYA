@@ -4,9 +4,13 @@ export function el(html) {
   return tpl.content.firstElementChild;
 }
 
+// A mensagem entra como TEXTO, nunca como HTML: boa parte dos toasts do sistema concatena dado de
+// usuário ou mensagem de erro do banco (que ecoa o valor digitado), e isso executava marcação
+// injetada na sessão de quem visse o aviso.
 export function toast(msg, tipo = 'info') {
   const box = document.getElementById('toast-box');
-  const item = el(`<div class="toast toast-${tipo}">${msg}</div>`);
+  const item = el(`<div class="toast toast-${tipo}"></div>`);
+  item.textContent = msg == null ? '' : String(msg);
   box.appendChild(item);
   requestAnimationFrame(() => item.classList.add('show'));
   setTimeout(() => {
@@ -17,18 +21,22 @@ export function toast(msg, tipo = 'info') {
 
 // classeExtra: modificador opcional no elemento .modal (ex: "modal-xl", "modal-fullscreen" para
 // telas de visualização em tela cheia, como a apresentação do organograma).
+// O título entra como TEXTO (o corpo continua sendo HTML montado por quem chama): títulos são
+// quase sempre nome de documento, de processo ou de pessoa — dado digitado por usuário — e não
+// há caso no sistema que precise de marcação ali. Quem chama não precisa mais escapar o título.
 export function abrirModal(titulo, conteudoHtml, classeExtra = '') {
   const overlay = document.getElementById('modal-overlay');
   overlay.innerHTML = '';
   const modal = el(`
     <div class="modal ${classeExtra}">
       <div class="modal-header">
-        <h3>${titulo}</h3>
+        <h3></h3>
         <button class="modal-close" type="button" aria-label="Fechar">&times;</button>
       </div>
       <div class="modal-body">${conteudoHtml}</div>
     </div>
   `);
+  modal.querySelector('.modal-header h3').textContent = titulo == null ? '' : String(titulo);
   overlay.appendChild(modal);
   overlay.classList.add('open');
   modal.querySelector('.modal-close').addEventListener('click', fecharModal);

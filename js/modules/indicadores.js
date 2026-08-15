@@ -710,7 +710,7 @@ async function abrirApresentacao(state, indicador) {
 // ---------- "Criar Plano de Ação" a partir de uma análise do indicador (mesmo padrão da Controladoria) ----------
 function abrirFormularioPlanoDeAcaoDoIndicador(state, indicador, analise, membros) {
   const { supabase, empresaAtual } = state;
-  const modal = abrirModal(`Criar Plano de Ação — ${escapeHtml(indicador.nome)}`, `
+  const modal = abrirModal(`Criar Plano de Ação — ${indicador.nome}`, `
     <form id="form-plano-do-indicador">
       <div class="form-group">
         <label>Problema identificado</label>
@@ -766,7 +766,7 @@ function abrirFormularioPlanoDeAcaoDoIndicador(state, indicador, analise, membro
 // ---------- "Criar Tarefa" vinculada ao indicador ----------
 function abrirFormularioTarefaDoIndicador(state, indicador, membros) {
   const { supabase, empresaAtual } = state;
-  const modal = abrirModal(`Criar Tarefa — ${escapeHtml(indicador.nome)}`, `
+  const modal = abrirModal(`Criar Tarefa — ${indicador.nome}`, `
     <form id="form-tarefa-do-indicador">
       <div class="form-group">
         <label>Descrição</label>

@@ -811,7 +811,7 @@ async function abrirAuditoria(state, container, item = null) {
     return listaEquipe.map((e) => ({ auditor_id: e.auditor_id, ...(auditores.find((a) => a.id === e.auditor_id) || {}) }));
   }
 
-  const modal = abrirModal(item ? `Auditoria ${escapeHtml(item.numero)}` : 'Solicitar auditoria', `
+  const modal = abrirModal(item ? `Auditoria ${item.numero}` : 'Solicitar auditoria', `
     <form id="form-auditoria">
       <p style="font-weight:700;color:var(--navy-titulo);margin-bottom:8px">1. Solicitação</p>
       <div class="form-row">

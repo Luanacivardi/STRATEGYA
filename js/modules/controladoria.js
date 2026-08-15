@@ -1421,7 +1421,7 @@ function renderListaAnalisesAnexo(analises, nomeMembroPorId, podeGerenciar = tru
 // ---------- "Criar Plano de Ação" a partir de uma análise ----------
 function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise, membros) {
   const { supabase, empresaAtual } = state;
-  const modal = abrirModal(`Criar Plano de Ação — ${escapeHtml(conta.codigo)}`, `
+  const modal = abrirModal(`Criar Plano de Ação — ${conta.codigo}`, `
     <form id="form-plano-da-analise">
       <div class="form-group">
         <label>Problema identificado</label>
@@ -1487,7 +1487,7 @@ function abrirFormularioPlanoDeAcaoDaAnalise(state, containerPai, conta, analise
 // ---------- "Criar Tarefa" a partir de uma análise ----------
 function abrirFormularioTarefaDaAnalise(state, conta, analise, membros) {
   const { supabase, empresaAtual } = state;
-  const modal = abrirModal(`Criar Tarefa — ${escapeHtml(conta.codigo)}`, `
+  const modal = abrirModal(`Criar Tarefa — ${conta.codigo}`, `
     <form id="form-tarefa-da-analise">
       <div class="form-group">
         <label>Descrição</label>
