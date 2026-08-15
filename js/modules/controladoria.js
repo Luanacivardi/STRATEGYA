@@ -859,17 +859,17 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
         <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
           <div>
             <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
-            ${temHistorico ? '<div style="position:relative;height:150px"><canvas id="grafico-historico-anual"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
+            ${temHistorico ? '<div style="position:relative;height:180px"><canvas id="grafico-historico-anual"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
           </div>
           <div>
             <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
-            ${temMensal ? '<div style="position:relative;height:150px"><canvas id="grafico-mensal"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
+            ${temMensal ? '<div style="position:relative;height:180px"><canvas id="grafico-mensal"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
           </div>
-          <div>
-            <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
-            ${!podeVerRol ? '<div class="empty-state" style="padding:20px"><i class="ti ti-lock"></i>Você não tem permissão para ver a ROL desta empresa.</div>'
-              : temRol ? '<div style="position:relative;height:150px"><canvas id="grafico-rol"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
-          </div>
+        </div>
+        <div style="margin-top:16px">
+          <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
+          ${!podeVerRol ? '<div class="empty-state" style="padding:20px"><i class="ti ti-lock"></i>Você não tem permissão para ver a ROL desta empresa.</div>'
+            : temRol ? '<div style="position:relative;height:200px"><canvas id="grafico-rol"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
         </div>
       </div>
 
