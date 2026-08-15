@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": [".claude/dev-server.cjs"],
       "port": 5500
+    },
+    {
+      "name": "strategya-build",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/preview-dist.cjs"],
+      "port": 5599
     }
   ]
 }

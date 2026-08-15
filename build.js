@@ -79,12 +79,7 @@ function main() {
   copiarRecursivo(path.join(ROOT, 'css'), path.join(DIST, 'css'));
   fs.copyFileSync(path.join(ROOT, 'index.html'), path.join(DIST, 'index.html'));
   copiarSeExistir('CNAME');            // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
-  copiarSeExistir('manifest.json');
-  copiarSeExistir('sw.js');
-  copiarSeExistir('redefinir-senha.html');
-  if (fs.existsSync(path.join(ROOT, 'icons'))) {
-    copiarRecursivo(path.join(ROOT, 'icons'), path.join(DIST, 'icons'));
-  }
+  copiarSeExistir('_headers');         // cabecalhos de seguranca (CSP etc) — lido pelo Cloudflare
 
   // Relatorio de tamanho: se o bundle inflar de novo, aparece aqui no log do build.
   let bytes = 0;

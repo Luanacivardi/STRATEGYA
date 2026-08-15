@@ -4,7 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>STRATEGYA · by ORBEEX</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <!-- Versões fixas e com integrity (SRI) de propósito: com "@latest"/"@2" uma atualização de
+       terceiro entrava sozinha em produção, e sem integrity um CDN comprometido executaria
+       código com a sessão de quem estivesse logado. Ao atualizar, recalcular o hash:
+       curl -sSL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.46.0/dist/tabler-icons.min.css"
+        integrity="sha384-ND+q1IVc0KDElX60dZaqKc7Xl9cdxd2PpU2JfVUHcurCkFVtVLFdt9vJfxtHSL3p" crossorigin="anonymous" referrerpolicy="no-referrer">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -170,12 +175,14 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
+          integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"
+          integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <!-- Renderiza os PDFs publicados em <canvas> (imagem rasterizada, sem texto selecionável nem
-       link de arquivo exposto no DOM) — ver visualizador em js/modules/documentos.js. -->
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script>window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
+       link de arquivo exposto no DOM) — ver visualizador em js/modules/documentos.js.
+       O pdf.js é carregado como módulo em js/pdfSetup.js (versão 4.x é ESM). -->
+  <script type="module" src="js/pdfSetup.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
