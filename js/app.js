@@ -93,6 +93,14 @@ document.getElementById('form-redefinir-senha').addEventListener('submit', async
   const erroBox = document.getElementById('redefinir-erro');
   erroBox.style.display = 'none';
   const novaSenha = document.getElementById('redefinir-senha').value;
+  const confirmacao = document.getElementById('redefinir-senha-confirma').value;
+  // Redefinição é a única tela onde a pessoa digita uma senha que não vai testar em seguida:
+  // um erro de digitação aqui só apareceria no próximo login, já sem o link do e-mail em mãos.
+  if (novaSenha !== confirmacao) {
+    erroBox.textContent = 'As duas senhas não são iguais.';
+    erroBox.style.display = 'flex';
+    return;
+  }
   const { error } = await supabase.auth.updateUser({ password: novaSenha });
   if (error) {
     erroBox.textContent = error.message;
@@ -122,6 +130,9 @@ formLogin.addEventListener('submit', async (e) => {
   btnLoginSubmit.textContent = modoCadastro ? 'Criando conta...' : 'Entrando...';
   try {
     if (modoCadastro) {
+      // O mínimo de 8 é cobrado na criação da conta (o campo é o mesmo do login, que precisa
+      // aceitar senhas antigas de 6 caracteres — por isso a checagem fica aqui, e não no HTML).
+      if (senha.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.');
       const { data, error } = await supabase.auth.signUp({ email, password: senha });
       if (error) throw error;
       // Com "Confirm email" ativo nas configurações de Auth do Supabase, o cadastro não abre

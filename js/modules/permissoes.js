@@ -41,7 +41,7 @@ export async function render(container, state) {
         <form class="form-row" style="align-items:end" data-form-criar="${empresa.id}">
           <div class="form-group"><label>Cadastrar colaborador — nome</label><input type="text" required data-novo-nome></div>
           <div class="form-group"><label>E-mail</label><input type="email" required data-novo-email></div>
-          <div class="form-group"><label>Senha</label><input type="password" required minlength="6" data-novo-senha></div>
+          <div class="form-group"><label>Senha</label><input type="password" required minlength="8" data-novo-senha></div>
           <div class="form-group">
             <label>Papel</label>
             <select data-novo-papel required>
@@ -183,7 +183,7 @@ function abrirModalAlterarSenha(state, empresaId, usuarioId) {
     <form id="form-alterar-senha">
       <div class="form-group">
         <label>Nova senha</label>
-        <input type="password" id="alt-senha" required minlength="6">
+        <input type="password" id="alt-senha" required minlength="8">
       </div>
       <button class="btn btn-primary btn-block" type="submit">Salvar nova senha</button>
     </form>

@@ -174,7 +174,7 @@ export async function render(container, state) {
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" id="novo-senha" required minlength="6">
+            <input type="password" id="novo-senha" required minlength="8">
           </div>
           <div class="form-group">
             <label>Papel</label>
@@ -511,7 +511,7 @@ function abrirModalAlterarSenha(state, usuarioId) {
     <form id="form-alterar-senha">
       <div class="form-group">
         <label>Nova senha</label>
-        <input type="password" id="alt-senha" required minlength="6">
+        <input type="password" id="alt-senha" required minlength="8">
       </div>
       <button class="btn btn-primary btn-block" type="submit">Salvar nova senha</button>
     </form>

@@ -37,7 +37,9 @@
         <div class="form-group">
           <label for="login-senha">Senha</label>
           <div class="input-com-acao">
-            <input type="password" id="login-senha" required minlength="6" autocomplete="current-password">
+            <!-- Sem minlength aqui de propósito: este campo também recebe senhas antigas (criadas
+                 quando o mínimo era 6). O mínimo de 8 vale para definir/trocar senha, não para entrar. -->
+            <input type="password" id="login-senha" required autocomplete="current-password">
             <button type="button" class="input-acao-btn" data-toggle-senha="login-senha" tabindex="-1" aria-label="Mostrar senha"><i class="ti ti-eye"></i></button>
           </div>
         </div>
@@ -58,9 +60,14 @@
         <div class="form-group">
           <label for="redefinir-senha">Nova senha</label>
           <div class="input-com-acao">
-            <input type="password" id="redefinir-senha" required minlength="6" autocomplete="new-password">
+            <input type="password" id="redefinir-senha" required minlength="8" autocomplete="new-password">
             <button type="button" class="input-acao-btn" data-toggle-senha="redefinir-senha" tabindex="-1" aria-label="Mostrar senha"><i class="ti ti-eye"></i></button>
           </div>
+          <small class="text-muted">Mínimo de 8 caracteres.</small>
+        </div>
+        <div class="form-group">
+          <label for="redefinir-senha-confirma">Repita a nova senha</label>
+          <input type="password" id="redefinir-senha-confirma" required minlength="8" autocomplete="new-password">
         </div>
         <button class="btn btn-primary btn-block" type="submit">Salvar nova senha</button>
       </form>
