@@ -204,6 +204,11 @@ export function resolverNivel(state, modulo, submodulo = null) {
     const doDepto = nivelConfiguradoEm(linhas, 'departamento_id', departamentoId, modulo, submodulo);
     if (doDepto) return doDepto;
   }
+  // ROL da empresa: dado sensível, então o padrão (sem override explícito) é "ninguém vê" — mesmo
+  // Gestor, que em todo o resto do sistema já começa com acesso (proprio/leitura). Só passa a
+  // aparecer pra quem o Admin liberar explicitamente na matriz de permissões (usuário ou
+  // departamento). Admin/orbeex não passam por aqui — já retornaram 'total' acima.
+  if (modulo === 'controladoria' && submodulo === 'rol') return 'sem_acesso';
   if (state.papelAtual === 'gestor') {
     return modulo === 'planejamento-estrategico' ? 'leitura' : 'proprio';
   }

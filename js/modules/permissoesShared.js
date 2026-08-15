@@ -17,8 +17,10 @@ const niveisAplicaveis = (moduloId) => NIVEIS_POR_MODULO[moduloId] || NIVEIS_SEL
 // Mesmo fallback por papel do resolverNivel()/nivel_edicao_usuario() (ver js/ui.js) — usado só pra
 // MOSTRAR ao administrador o que vale hoje quando não há override ("Padrão do papel"), sem gravar
 // nada: a linha em permissoes_edicao só é criada de fato se o admin escolher um nível explícito.
-function nivelPadraoPapel(papel, moduloId) {
+function nivelPadraoPapel(papel, moduloId, submoduloId = null) {
   if (papel === 'orbeex' || papel === 'admin') return 'total';
+  // ROL da empresa: dado sensível, ninguém começa com acesso — só quem for liberado aqui mesmo.
+  if (moduloId === 'controladoria' && submoduloId === 'rol') return 'sem_acesso';
   if (papel === 'gestor') return moduloId === 'planejamento-estrategico' ? 'leitura' : 'proprio';
   return moduloId === 'planejamento-estrategico' ? 'sem_acesso' : 'leitura';
 }
@@ -124,7 +126,7 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
     linhas.find((l) => l.modulo === modulo && (l.submodulo || null) === (submodulo || null))?.nivel || '';
 
   const linhaHtml = (modulo, submodulo, nome, comIndentacao) => {
-    const padrao = papel ? nivelPadraoPapel(papel, modulo) : null;
+    const padrao = papel ? nivelPadraoPapel(papel, modulo, submodulo) : null;
     const rotuloPadrao = padrao ? `Padrão do papel (${NIVEL_LABEL[padrao]})` : 'Padrão do papel';
     return `
     <tr>
