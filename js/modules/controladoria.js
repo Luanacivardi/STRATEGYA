@@ -708,10 +708,29 @@ async function imprimirConta(state, conta) {
     ultimoAnexoHtml += `<p class="text-muted" style="font-size:12px">Competência ${fmtCompetencia(ultimoAnexo.competencia)} · enviado por ${escapeHtml(nomeMembroPorId.get(ultimoAnexo.usuario_id) || '—')} em ${fmtData(ultimoAnexo.created_at)}</p>`;
   }
 
+  // Os gráficos que estão na tela viram imagem no impresso. Antes o relatório saía só com tabelas:
+  // quem imprimia perdia justamente a leitura visual (tendência anual, curva do mês, % sobre a ROL)
+  // que é o motivo de existir a tela. Só entram os que realmente foram desenhados — conta sem
+  // histórico, ou usuário sem permissão de ver a ROL, simplesmente não gera aquele bloco.
+  const graficoImg = (chart, titulo, largo = false) => {
+    if (!chart) return '';
+    return `
+      <div class="print-grafico${largo ? ' print-grafico-largo' : ''}">
+        <div class="print-grafico-titulo">${titulo}</div>
+        <img src="${chart.toBase64Image('image/png', 1)}" alt="${titulo}">
+      </div>`;
+  };
+  const blocosGraficos = [
+    graficoImg(graficosConta.historico, 'Histórico Anual'),
+    graficoImg(graficosConta.mensal, `Mensal ${new Date().getFullYear()}`),
+    graficoImg(graficosConta.rol, '% sobre a ROL', true),
+  ].join('');
+
   imprimirSecao(`
     <h2 style="margin-bottom:4px">${escapeHtml(conta.codigo)} — ${escapeHtml(conta.nome)}</h2>
     <p class="text-muted">Controladoria — Conta Gerencial</p>
     <hr class="sep">
+    ${blocosGraficos ? `<div class="print-graficos">${blocosGraficos}</div>` : ''}
     <table class="print-detalhe-tabela">
       <tbody>
         <tr><th>Categoria</th><td>${CATEGORIA_LABEL[conta.categoria]}</td></tr>
@@ -782,7 +801,14 @@ async function imprimirConta(state, conta) {
 // ---------- DETALHE DA CONTA (ícone da pasta): análises periódicas (com os 3 gráficos) + anexos + planos de ação ----------
 // Data-entry vive no formulário de edição (ícone do lápis) — aqui é só visualização.
 let abaDetalheAtiva = 'analises';
-let chartInstancesConta = [];
+// Guardados por nome (e não numa lista) porque a impressão precisa pegar cada gráfico específico —
+// e porque, quando uma conta não tem histórico ou não tem ROL, o gráfico correspondente nem existe.
+let graficosConta = {};
+
+function destruirGraficosConta() {
+  Object.values(graficosConta).forEach((c) => c.destroy());
+  graficosConta = {};
+}
 
 // Mesmo padrão visual da Apresentação de Indicador (tela cheia, título grande, cartões de
 // destaque, gráfico) — usa apresentacao-overlay diretamente em vez do sistema de modal.
@@ -796,7 +822,7 @@ async function abrirDetalheConta(state, containerPai, conta, membros, abaInicial
   `;
   document.body.appendChild(overlay);
 
-  const fechar = () => { overlay.remove(); document.removeEventListener('keydown', onEsc); };
+  const fechar = () => { overlay.remove(); document.removeEventListener('keydown', onEsc); destruirGraficosConta(); };
   overlay.querySelector('#detalhe-conta-fechar').addEventListener('click', fechar);
   const onEsc = (e) => { if (e.key === 'Escape') fechar(); };
   document.addEventListener('keydown', onEsc);
@@ -856,20 +882,20 @@ async function renderDetalheConta(state, containerPai, modal, conta, membros) {
       </div>
 
       <div class="apresentacao-grafico-box">
-        <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+        <div class="conta-graficos">
           <div>
-            <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Histórico Anual</p>
-            ${temHistorico ? '<div style="position:relative;height:180px"><canvas id="grafico-historico-anual"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
+            <p class="conta-grafico-titulo">Histórico Anual</p>
+            ${temHistorico ? '<div class="conta-grafico-area"><canvas id="grafico-historico-anual"></canvas></div>' : '<div class="empty-state conta-grafico-vazio"><i class="ti ti-chart-bar"></i>Sem histórico anual lançado (edite a conta pelo lápis).</div>'}
           </div>
           <div>
-            <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Mensal ${anoAtual}</p>
-            ${temMensal ? '<div style="position:relative;height:180px"><canvas id="grafico-mensal"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
+            <p class="conta-grafico-titulo">Mensal ${anoAtual}</p>
+            ${temMensal ? '<div class="conta-grafico-area"><canvas id="grafico-mensal"></canvas></div>' : '<div class="empty-state conta-grafico-vazio"><i class="ti ti-chart-bar"></i>Sem lançamentos mensais este ano (edite a conta pelo lápis).</div>'}
           </div>
-        </div>
-        <div style="margin-top:16px">
-          <p class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">% sobre a ROL</p>
-          ${!podeVerRol ? '<div class="empty-state" style="padding:20px"><i class="ti ti-lock"></i>Você não tem permissão para ver a ROL desta empresa.</div>'
-            : temRol ? '<div style="position:relative;height:200px"><canvas id="grafico-rol"></canvas></div>' : '<div class="empty-state" style="padding:20px"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
+          <div class="conta-grafico-largo">
+            <p class="conta-grafico-titulo">% sobre a ROL</p>
+            ${!podeVerRol ? '<div class="empty-state conta-grafico-vazio"><i class="ti ti-lock"></i>Você não tem permissão para ver a ROL desta empresa.</div>'
+              : temRol ? '<div class="conta-grafico-area"><canvas id="grafico-rol"></canvas></div>' : '<div class="empty-state conta-grafico-vazio"><i class="ti ti-chart-line"></i>Configure a ROL da empresa (botão no Resumo Consolidado) e o histórico/mensal desta conta.</div>'}
+          </div>
         </div>
       </div>
 
@@ -927,7 +953,10 @@ function construirDadosGraficosConta(conta, lancamentosConta, rolMensal, rolHist
   const historicoRealizado = [...anosHistorico.map((a) => historicoAnual[a]?.realizado ?? null), lancDoAnoAtual.length ? somaAnoAtual.realizado : null];
 
   // ---- Mensal (ano corrente) ----
-  const mensalLabels = MESES_LABEL.map((m) => `${m}/${String(anoAtual).slice(2)}`);
+  // Sem o sufixo do ano: o título do gráfico já diz "Mensal <ano>", e com "jan/26" em cada uma das
+  // 12 colunas o Chart.js só conseguia mostrar metade dos rótulos. (O gráfico de % sobre a ROL
+  // mantém o sufixo — lá os rótulos misturam anos fechados com meses do ano corrente.)
+  const mensalLabels = [...MESES_LABEL];
   const mensalOrcado = MESES_LABEL.map((_, i) => {
     const l = lancPorMes.get(String(i + 1).padStart(2, '0'));
     return l?.valor_orcado ?? null;
@@ -966,15 +995,14 @@ function construirDadosGraficosConta(conta, lancamentosConta, rolMensal, rolHist
 }
 
 function desenharGraficosConta(areaAba, dados) {
-  chartInstancesConta.forEach((c) => c.destroy());
-  chartInstancesConta = [];
+  destruirGraficosConta();
   if (!window.Chart) return;
 
   const cores = coresGrafico();
 
   const canvasHistorico = areaAba.querySelector('#grafico-historico-anual');
   if (canvasHistorico) {
-    chartInstancesConta.push(new Chart(canvasHistorico, {
+    graficosConta.historico = (new Chart(canvasHistorico, {
       type: 'bar',
       data: {
         labels: dados.historico.labels,
@@ -989,7 +1017,7 @@ function desenharGraficosConta(areaAba, dados) {
 
   const canvasMensal = areaAba.querySelector('#grafico-mensal');
   if (canvasMensal) {
-    chartInstancesConta.push(new Chart(canvasMensal, {
+    graficosConta.mensal = (new Chart(canvasMensal, {
       type: 'bar',
       data: {
         labels: dados.mensal.labels,
@@ -998,13 +1026,23 @@ function desenharGraficosConta(areaAba, dados) {
           { label: 'Realizado', data: dados.mensal.realizado, backgroundColor: cores.destaqueForte },
         ],
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
+      // maxRotation 0: com 12 meses o Chart.js virava os rótulos na diagonal para caber. Preferimos
+      // que ele omita alguns rótulos (autoSkip) a deixar todos inclinados e difíceis de ler.
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          y: { beginAtZero: true },
+          x: { ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 4 } },
+        },
+      },
     }));
   }
 
   const canvasRol = areaAba.querySelector('#grafico-rol');
   if (canvasRol) {
-    chartInstancesConta.push(new Chart(canvasRol, {
+    graficosConta.rol = (new Chart(canvasRol, {
       type: 'line',
       data: {
         labels: dados.rol.labels,
