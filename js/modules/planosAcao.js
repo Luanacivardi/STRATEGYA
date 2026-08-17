@@ -173,7 +173,7 @@ async function renderIndicadoresGrupo(container, state) {
   const corStatus = { nao_iniciado: '#94a3b8', em_andamento: '#E8B84B', concluido: '#10b981', atrasado: '#ef4444' };
 
   area.innerHTML = `
-    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1.25rem">
+    <div class="stats-grid">
       <div class="stat-box accent-blue">
         <div class="text-muted" style="font-size:12px">Total de planos</div>
         <div style="font-size:24px;font-weight:700">${total}</div>

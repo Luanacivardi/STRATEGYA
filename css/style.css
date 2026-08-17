@@ -445,7 +445,17 @@ input[type="file"]::file-selector-button:hover { background: var(--gold); border
 .status-atingido, .status-concluido { background: var(--bg-success); color: var(--text-success); }
 .status-atrasado, .status-pendente { background: #fee2e2; color: #991b1b; }
 
-.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.1rem; margin-bottom: 1.5rem; }
+/* Grade de cards de KPI (topo do Dashboard e de vários módulos: Documentos, Auditorias,
+   Treinamentos, Planos de Ação, Controladoria — ver .stats-grid, mesma ideia em versão compacta).
+   Flexbox em vez de CSS grid de propósito: com grid, uma última linha incompleta (ex: 5 cards
+   numa grade de 4 colunas) deixa as colunas que sobram em branco à direita em vez de esticar os
+   cards que existem — com flex-wrap + flex:1 1 <largura mínima> nos filhos, o espaço sobrando é
+   redistribuído entre os cards da própria linha, preenchendo a largura toda mesmo com poucos
+   itens ou uma última linha incompleta. */
+.dashboard-grid { display: flex; flex-wrap: wrap; gap: 1.1rem; margin-bottom: 1.5rem; }
+.dashboard-grid > * { flex: 1 1 200px; }
+.stats-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 1.25rem; }
+.stats-grid > * { flex: 1 1 180px; }
 
 /* Cards de KPI do Dashboard: fundo claro com leve gradiente na cor de destaque (--accent) e sombra
    colorida suave na mesma cor — cada card assume uma cor semântica via modificador (ver dashboard.js),

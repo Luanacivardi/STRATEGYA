@@ -123,7 +123,7 @@ export async function render(container, state) {
   container.innerHTML = `
     <div class="card">
       <div class="card-header"><span><i class="ti ti-report-money"></i> Resumo por categoria</span></div>
-      <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+      <div class="stats-grid">
         ${totais.map((t) => `
           <div class="stat-box accent-${CATEGORIA_COR[t.cat]}">
             <div class="badge ${CATEGORIA_BADGE[t.cat]}" style="margin-bottom:8px">${CATEGORIA_LABEL[t.cat]}</div>
@@ -143,7 +143,7 @@ export async function render(container, state) {
         </div>
       </div>
       ${doMes.length ? `
-        <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:1rem">
+        <div class="stats-grid">
           <div class="stat-box accent-blue">
             <div class="text-muted" style="font-size:12px">Orçado no mês</div>
             <div style="font-size:18px;font-weight:700">${fmtMoeda(totalOrcadoMes)}</div>

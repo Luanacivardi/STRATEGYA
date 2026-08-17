@@ -2140,7 +2140,7 @@ async function renderDashboard(container, state) {
   const horasPlanejadas = listaAuditorias.reduce((s, a) => s + (a.horas_totais || 0), 0);
 
   area.innerHTML = `
-    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:1.25rem">
+    <div class="stats-grid">
       <div class="stat-box accent-blue"><div class="text-muted" style="font-size:12px">Planejadas x Realizadas</div><div style="font-size:22px;font-weight:700">${planejadas} / ${realizadas}</div></div>
       <div class="stat-box accent-purple"><div class="text-muted" style="font-size:12px">Internas x Externas</div><div style="font-size:22px;font-weight:700">${internas} / ${externas}</div></div>
       <div class="stat-box accent-orange"><div class="text-muted" style="font-size:12px">NC Maiores / Menores</div><div style="font-size:22px;font-weight:700">${ncPorResultado.nc_maior} / ${ncPorResultado.nc_menor}</div></div>

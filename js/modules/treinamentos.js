@@ -872,7 +872,7 @@ async function renderDashboard(container, state) {
   lista.forEach((t) => { if (t.eficacia_resultado) eficaciaContagem[t.eficacia_resultado]++; });
 
   area.innerHTML = `
-    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:1.25rem">
+    <div class="stats-grid">
       <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Horas de treinamento no mês</div><div style="font-size:22px;font-weight:700">${horasMes.toFixed(1)}h</div></div>
       <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">Planejados x Realizados</div><div style="font-size:22px;font-weight:700">${planejados} / ${realizados}</div></div>
       <div class="stat-box" style="padding:14px;border-radius:8px;background:var(--surface-1)"><div class="text-muted" style="font-size:12px">% Realizado</div><div style="font-size:22px;font-weight:700">${pctRealizado}%</div></div>
