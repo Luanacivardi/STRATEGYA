@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, statusSimbolo } from '../ui.js';
 import { definirFiltroObjetivo } from './planosAcao.js';
 import { renderMapa, wireMapa } from './mapaEstrategico.js';
 
@@ -105,7 +105,7 @@ export async function render(container, state) {
                 <td><strong>${escapeHtml(o.nome)}</strong><br><span class="text-muted">${escapeHtml(o.descricao || '')}</span>${o.processo_id ? `<br><span class="badge badge-neutral">${escapeHtml(processoPorId.get(o.processo_id) || '—')}</span>` : ''}</td>
                 <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
                 <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
-                <td><span class="badge status-${o.status}">${STATUS[o.status]}</span></td>
+                <td>${statusSimbolo(o.status, STATUS[o.status])}</td>
                 <td>${(() => {
                   const doObjetivo = riscosPorObjetivo.get(o.id) || [];
                   const nRiscos = doObjetivo.filter((r) => r.tipo === 'risco').length;

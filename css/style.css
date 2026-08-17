@@ -447,6 +447,18 @@ input[type="file"]::file-selector-button:hover { background: var(--gold); border
 .status-atingido, .status-concluido { background: var(--bg-success); color: var(--text-success); }
 .status-atrasado, .status-pendente { background: #fee2e2; color: #991b1b; }
 
+/* Versão em símbolo (ícone circular colorido, sem texto) da grade de status acima — usa as mesmas
+   cores, só troca o texto por um ícone Tabler; ver statusSimbolo() em js/ui.js. O rótulo textual
+   continua acessível via title (tooltip ao passar o mouse / leitor de tela). */
+.status-symbol {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%; font-size: 14px; flex-shrink: 0;
+}
+.status-symbol.status-nao_iniciado { background: #e2e8f0; color: #475569; }
+.status-symbol.status-em_andamento { background: #fef9c3; color: #854d0e; }
+.status-symbol.status-atingido, .status-symbol.status-concluido { background: var(--bg-success); color: var(--text-success); }
+.status-symbol.status-atrasado, .status-symbol.status-pendente { background: #fee2e2; color: #991b1b; }
+
 /* Grade de cards de KPI (topo do Dashboard e de vários módulos: Documentos, Auditorias,
    Treinamentos, Planos de Ação, Controladoria — ver .stats-grid, mesma ideia em versão compacta).
    Flexbox em vez de CSS grid de propósito: com grid, uma última linha incompleta (ex: 5 cards

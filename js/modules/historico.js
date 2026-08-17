@@ -1,11 +1,11 @@
 import { escapeHtml, formatarDataHora } from '../ui.js';
 
 // Rótulos amigáveis para as tabelas rastreadas (trigger fn_log_alteracao, migração 0024 + extensões
-// em 0025, 0029, 0031, 0034/0042, 0035, 0036, 0041, 0086, 0087 — sempre que um módulo novo ganha o
-// trigger, o rótulo precisa entrar aqui também, senão a tabela aparece com o nome cru (snake_case)
-// e some do filtro "Registro"). Auditorias (ISO), Apurações e Treinamentos não usam esse trigger —
-// não é esquecimento: Apurações é propositalmente fora da trilha geral (confidencialidade do
-// comitê), e Auditorias/Treinamentos ainda não tiveram rastreabilidade genérica adicionada.
+// em 0025, 0029, 0031, 0034/0042, 0035, 0036, 0041, 0086, 0087, 0101 — sempre que um módulo novo
+// ganha o trigger, o rótulo precisa entrar aqui também, senão a tabela aparece com o nome cru
+// (snake_case) e some do filtro "Registro"). Só Apurações fica de fora do trigger por design
+// (confidencialidade do comitê de investigação) — todos os demais módulos configuráveis já têm
+// rastreabilidade, incluindo Auditorias (ISO) e Treinamentos desde a migração 0101.
 const TABELA_LABEL = {
   empresas: 'Empresa',
   objetivos_estrategicos: 'Objetivo Estratégico',
@@ -34,6 +34,24 @@ const TABELA_LABEL = {
   contas_lancamentos_mensais: 'Lançamento Mensal',
   empresa_rol_mensal: 'ROL Mensal',
   empresa_rol_historico_anual: 'Histórico Anual de ROL',
+  auditorias_turnos: 'Turno de Auditoria',
+  auditorias_processos: 'Processo Auditável',
+  auditores: 'Auditor',
+  auditores_competencias: 'Competência de Auditor',
+  auditores_certificacoes: 'Certificação de Auditor',
+  auditorias: 'Auditoria',
+  auditorias_equipe: 'Equipe da Auditoria',
+  auditorias_achados: 'Achado de Auditoria',
+  auditorias_aprovacoes: 'Aprovação de Auditoria',
+  auditorias_documentos: 'Documento da Auditoria',
+  auditorias_relatorio_itens: 'Item do Relatório de Auditoria',
+  auditorias_relatorio_pessoas: 'Pessoa Auditada',
+  auditorias_relatorio_instrumentos: 'Instrumento Auditado',
+  auditorias_relatorio_procedimentos: 'Procedimento Auditado',
+  treinamentos_competencias: 'Competência (Treinamentos)',
+  treinamentos: 'Treinamento',
+  treinamentos_participantes: 'Participante de Treinamento',
+  treinamentos_versatilidade: 'Matriz de Versatilidade',
 };
 
 const OPERACAO_LABEL = { insert: 'Criação', update: 'Edição', delete: 'Exclusão' };

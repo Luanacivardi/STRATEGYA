@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData, buscarTodos } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData, buscarTodos, statusSimbolo } from '../ui.js';
 import { recalcularPercentualMacro } from './planosAcao.js';
 import { listarObjetivos } from './objetivos.js';
 
@@ -314,7 +314,7 @@ export async function renderCorpo(container, state) {
               <td>${escapeHtml(l.responsavelNome)}</td>
               <td>${escapeHtml(l.indicadorNome)}</td>
               <td>${formatarData(l.prazo) || '—'}</td>
-              <td><span class="badge ${l.statusKey === 'concluido' ? 'status-concluido' : 'status-nao_iniciado'}">${STATUS_LABEL[l.statusKey]}</span></td>
+              <td>${statusSimbolo(l.statusKey === 'concluido' ? 'concluido' : 'nao_iniciado', STATUS_LABEL[l.statusKey])}</td>
               <td class="table-actions">
                 <button class="icon-btn" data-imprimir-tarefa="${l.origem}:${l.id}" title="Imprimir esta tarefa"><i class="ti ti-printer"></i></button>
                 ${podeEditarRegistro(state, l.raw.responsavel_id, 'acoes', 'tarefas') ? `

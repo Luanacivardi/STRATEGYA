@@ -1,5 +1,5 @@
-import { escapeHtml } from '../ui.js';
-import { PERSPECTIVAS } from './objetivos.js';
+import { escapeHtml, statusSimbolo } from '../ui.js';
+import { PERSPECTIVAS, STATUS } from './objetivos.js';
 
 const ORDEM_LANES = ['financeira', 'clientes', 'processos_internos', 'aprendizado_crescimento'];
 
@@ -15,7 +15,7 @@ export function renderMapa(objetivos) {
           ${objs.length ? objs.map((o) => `
             <div class="bsc-card" data-objetivo="${o.id}" title="Ver indicadores deste objetivo">
               <div class="bsc-card-nome">${escapeHtml(o.nome)}</div>
-              <span class="badge status-${o.status}">${o.status.replaceAll('_', ' ')}</span>
+              ${statusSimbolo(o.status, STATUS[o.status])}
             </div>`).join('') : '<span class="text-muted">Nenhum objetivo nesta perspectiva.</span>'}
         </div>
       </div>`;

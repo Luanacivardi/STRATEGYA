@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, formatarDataHora, buscarTodos } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, imprimirSecao, podeEditarRegistro, resolverNivel, formatarDataHora, buscarTodos, statusSimbolo } from '../ui.js';
 import { coresGrafico } from '../tema.js';
 
 const CATEGORIA_LABEL = { receita: 'Receita', custo: 'Custo', despesa: 'Despesa', investimento: 'Investimento' };
@@ -1081,7 +1081,7 @@ async function renderAbaPlanos(state, conta, nomeMembroPorId, areaAba) {
               <td>${escapeHtml(nomeMembroPorId.get(p.responsavel_id) || '—')}</td>
               <td>${p.quando ? new Date(p.quando + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
               <td>${p.prioridade ? PRIORIDADE_LABEL[p.prioridade] : '—'}</td>
-              <td><span class="badge status-${p.status}">${STATUS_PLANO_LABEL[p.status] || p.status}</span> ${p.percentual_conclusao ? `<span class="text-muted" style="font-size:12px">(${p.percentual_conclusao}%)</span>` : ''}</td>
+              <td>${statusSimbolo(p.status, STATUS_PLANO_LABEL[p.status] || p.status)} ${p.percentual_conclusao ? `<span class="text-muted" style="font-size:12px">(${p.percentual_conclusao}%)</span>` : ''}</td>
             </tr>
           `).join('')}
         </tbody>

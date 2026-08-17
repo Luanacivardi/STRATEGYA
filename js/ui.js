@@ -267,3 +267,21 @@ export function escapeHtml(str) {
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
+
+// Ícone por trás da grade de status "não iniciado / em andamento / atingido·concluído /
+// atrasado·pendente" usada em Objetivos, Planos de Ação, Tarefas, Mapa Estratégico e Controladoria
+// (classes .status-* em css/style.css) — mesmo significado semântico em todo o app, só o rótulo
+// textual muda de módulo pra módulo (ex: "Atingido" vs "Concluído"), por isso o rótulo é passado
+// como parâmetro em vez de fixo aqui.
+const STATUS_ICONE = {
+  nao_iniciado: 'ti-circle-dashed',
+  em_andamento: 'ti-clock',
+  atingido: 'ti-circle-check',
+  concluido: 'ti-circle-check',
+  atrasado: 'ti-alert-circle',
+  pendente: 'ti-alert-circle',
+};
+export function statusSimbolo(statusKey, label) {
+  const icone = STATUS_ICONE[statusKey] || 'ti-help-circle';
+  return `<span class="status-symbol status-${statusKey}" title="${escapeHtml(label || statusKey)}"><i class="ti ${icone}"></i></span>`;
+}

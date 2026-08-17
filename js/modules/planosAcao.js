@@ -1,4 +1,4 @@
-import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData, buscarTodos } from '../ui.js';
+import { abrirModal, fecharModal, toast, escapeHtml, confirmar, dataValida, enviarPorEmail, imprimirSecao, podeEditarRegistro, resolverNivel, baixarCsv, formatarData, buscarTodos, statusSimbolo } from '../ui.js';
 import { listarObjetivos } from './objetivos.js';
 import * as todo from './todo.js';
 
@@ -299,7 +299,7 @@ async function renderPlanos(container, state) {
                 <td>${p.origem ? `<span class="badge badge-neutral">${ORIGEM_LABEL[p.origem]}</span><br>` : ''}${escapeHtml(nomeOrigem(p, origens))}</td>
                 <td>${escapeHtml(emailPorId.get(p.responsavel_id) || '—')}</td>
                 <td>${formatarData(p.quando) || '—'}</td>
-                <td><span class="badge status-${p.status}">${STATUS_LABEL[p.status]}</span></td>
+                <td>${statusSimbolo(p.status, STATUS_LABEL[p.status])}</td>
                 <td>${p.percentual_conclusao}%</td>
                 <td class="table-actions">
                   <button class="icon-btn" data-imprimir-plano="${p.id}" title="Imprimir plano de ação"><i class="ti ti-printer"></i></button>
@@ -858,7 +858,7 @@ async function montarAcoesMicro(state, modal, plano, membros) {
               <td>${escapeHtml(i.descricao)}</td>
               <td>${escapeHtml(emailPorId.get(i.responsavel_id) || '—')}</td>
               <td>${formatarData(i.prazo) || '—'}</td>
-              <td><span class="badge status-${i.status}">${STATUS_LABEL[i.status]}</span></td>
+              <td>${statusSimbolo(i.status, STATUS_LABEL[i.status])}</td>
               <td>${i.percentual_conclusao}%</td>
               ${podeEditar ? `<td class="table-actions">
                 <button type="button" class="icon-btn" data-editar-item="${i.id}" title="Editar"><i class="ti ti-pencil"></i></button>
