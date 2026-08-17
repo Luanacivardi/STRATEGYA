@@ -3,17 +3,19 @@
 // literal precisa ser atualizado nas políticas RLS e no catálogo (não há sincronização automática
 // entre JS e SQL — só a validação no banco impede um literal inválido em permissoes_edicao).
 //
-// "configuravel: false" marca módulos sem sistema de nível algum (hoje só Treinamentos, ainda não
-// lançado) — ficam de fora da matriz de permissões porque não têm o que configurar.
+// "configuravel: false" marca módulos sem sistema de nível algum — ficam de fora da matriz de
+// permissões porque não têm o que configurar (hoje nenhum módulo disponível está nesse caso).
 //
-// Apurações e Auditorias são configuráveis (migrações 0077-0080), mas cada um com uma peculiaridade
-// que a matriz de permissões (js/modules/permissoesShared.js) e o resolvedor de nível (resolverNivel
-// em ui.js / nivel_edicao_usuario no banco) tratam à parte:
+// Apurações, Auditorias e Treinamentos são configuráveis (migrações 0077-0080, 0098), mas cada um
+// com uma peculiaridade que a matriz de permissões (js/modules/permissoesShared.js) e o resolvedor
+// de nível (resolverNivel em ui.js / nivel_edicao_usuario no banco) tratam à parte:
 // - Apurações: ser membro ativo do comitê (tabela apuracoes_comite_membros) continua sendo um
 //   pré-requisito absoluto e não-contornável (proteção contra conflito de interesse) — o nível
 //   configurado aqui (Visualização/Edição Total) só tem efeito para quem já é membro.
 // - Auditorias: não existe responsável único por registro, então o nível 'proprio' (Edição sob
 //   Responsabilidade) não se aplica — só Visualização, Edição Total e Sem acesso.
+// - Treinamentos: submódulo 'versatilidade' (catálogo de competências + matriz) também não tem
+//   'proprio' — só o submódulo 'solicitacoes' usa (via solicitante_id, mesmo padrão de objetivos).
 export const MODULOS_SISTEMA = [
   {
     id: 'planejamento-estrategico', nome: 'Planejamento Estratégico', icone: 'ti-target-arrow', disponivel: true, configuravel: true,
@@ -73,10 +75,13 @@ export const MODULOS_SISTEMA = [
     ],
   },
   {
-    id: 'treinamentos', nome: 'Treinamentos', icone: 'ti-school', disponivel: false, configuravel: false,
-    descricao: 'Gestão de treinamentos e competências da equipe.',
+    id: 'treinamentos', nome: 'Treinamentos', icone: 'ti-school', disponivel: true, configuravel: true,
+    descricao: 'Solicitação de treinamentos, cronograma visual, fechamento com presença e análise de eficácia (ISO 9001 7.2), e Matriz de Versatilidade por competência.',
     teaser: 'Saiba exatamente quem já foi treinado — e quem ainda precisa.',
-    submodulos: [],
+    submodulos: [
+      { id: 'solicitacoes', nome: 'Solicitações' },
+      { id: 'versatilidade', nome: 'Matriz de Versatilidade' },
+    ],
   },
 ];
 

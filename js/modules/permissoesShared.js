@@ -12,7 +12,12 @@ const NIVEIS_SELECIONAVEIS = ['leitura', 'proprio', 'total', 'aprovacao', 'sem_a
 // que já é Visualização ou Edição Total por decisão de produto) não usam 'proprio'/'aprovacao' —
 // oferecer essas opções só confundiria, já que na prática elas se comportam como 'leitura'.
 const NIVEIS_POR_MODULO = { auditorias: ['leitura', 'total', 'sem_acesso'], apuracoes: ['leitura', 'total', 'sem_acesso'] };
-const niveisAplicaveis = (moduloId) => NIVEIS_POR_MODULO[moduloId] || NIVEIS_SELECIONAVEIS;
+// Restrição por submódulo específico (mais granular que NIVEIS_POR_MODULO acima) — hoje só
+// Treinamentos > Matriz de Versatilidade, que não tem um "responsável" por linha (é colaborador x
+// competência), então 'proprio' não faz sentido ali (só em Treinamentos > Solicitações).
+const NIVEIS_POR_SUBMODULO = { 'treinamentos.versatilidade': ['leitura', 'total', 'sem_acesso'] };
+const niveisAplicaveis = (moduloId, submoduloId) =>
+  (submoduloId && NIVEIS_POR_SUBMODULO[`${moduloId}.${submoduloId}`]) || NIVEIS_POR_MODULO[moduloId] || NIVEIS_SELECIONAVEIS;
 
 // Mesmo fallback por papel do resolverNivel()/nivel_edicao_usuario() (ver js/ui.js) — usado só pra
 // MOSTRAR ao administrador o que vale hoje quando não há override ("Padrão do papel"), sem gravar
@@ -134,7 +139,7 @@ export async function abrirModalMatrizPermissoes(state, { sujeitoTipo, sujeitoId
       <td>
         <select data-nivel-modulo="${modulo}" data-nivel-submodulo="${submodulo || ''}" title="Passe o mouse sobre uma opção para ver o que ela libera">
           <option value="" ${!nivelDe(modulo, submodulo) ? 'selected' : ''} title="Segue o comportamento automático do papel da pessoa neste módulo/submódulo.">${escapeHtml(rotuloPadrao)}</option>
-          ${niveisAplicaveis(modulo).map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''} title="${escapeHtml(NIVEL_DESCRICAO[n])}">${NIVEL_LABEL[n]}</option>`).join('')}
+          ${niveisAplicaveis(modulo, submodulo).map((n) => `<option value="${n}" ${nivelDe(modulo, submodulo) === n ? 'selected' : ''} title="${escapeHtml(NIVEL_DESCRICAO[n])}">${NIVEL_LABEL[n]}</option>`).join('')}
         </select>
       </td>
     </tr>`;
