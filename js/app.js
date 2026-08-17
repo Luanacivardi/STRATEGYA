@@ -513,27 +513,46 @@ function moduloHabilitadoParaEmpresa(moduloId) {
   return habilitado && moduloTemAcessoDoUsuario(moduloId);
 }
 
-// ---------- MÓDULOS (sidebar) ----------
-const moduleRail = document.getElementById('module-rail');
+// ---------- MÓDULOS (barra lateral persistente) ----------
+// A barra em si (#module-rail) é estática no HTML (marca, usuário, "Sair" — ver index.html); só o
+// <nav id="sidebar-nav"> dentro dela é re-renderizado aqui, com "Início" fixo no topo seguido da
+// lista de módulos. Sempre visível (nenhum viewAtual esconde mais a barra, diferente de antes).
+const sidebarNav = document.getElementById('sidebar-nav');
 
 function renderModuleRail() {
-  moduleRail.innerHTML = '<div class="module-rail-title">Módulos</div>' + MODULOS_SISTEMA.map((m) => {
+  const itemInicio = `
+    <button class="module-item ${viewAtual === 'home' ? 'active' : ''}" data-ir-inicio>
+      <span class="module-item-icon"><i class="ti ti-home"></i></span>
+      <span>Início</span>
+    </button>
+  `;
+  const itensModulos = MODULOS_SISTEMA.map((m) => {
     const disp = moduloHabilitadoParaEmpresa(m.id);
     return `
-    <button class="module-item ${m.id === moduloAtivo && viewAtual === 'modulo' ? 'active' : ''} ${disp ? '' : 'disabled'}"
-      data-modulo="${m.id}" ${disp ? '' : 'disabled'}>
+    <button class="module-item ${m.id === moduloAtivo && viewAtual === 'modulo' ? 'active' : ''} ${disp ? '' : 'disabled'}" data-modulo="${m.id}">
       <span class="module-item-icon"><i class="ti ${m.icone}"></i></span>
       <span>${m.nome}</span>
     </button>
   `;
   }).join('');
+  sidebarNav.innerHTML = itemInicio + itensModulos;
 
-  moduleRail.querySelectorAll('[data-modulo]:not(:disabled)').forEach((btn) => {
+  sidebarNav.querySelector('[data-ir-inicio]').addEventListener('click', irParaHome);
+
+  // Módulo ainda "em construção" (disponivel:false) ou não habilitado pra esta empresa: em vez de
+  // travar o clique (disabled nativo), abre um lembrete com o resumo do módulo — mesma ideia que a
+  // Home usava antes de a navegação virar só a barra lateral (ver abrirModalModulo mais abaixo).
+  sidebarNav.querySelectorAll('[data-modulo]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      moduloAtivo = btn.dataset.modulo;
-      viewAtual = 'modulo';
-      renderModuleRail();
-      renderConteudoAtivo();
+      const moduloId = btn.dataset.modulo;
+      if (moduloHabilitadoParaEmpresa(moduloId)) {
+        moduloAtivo = moduloId;
+        viewAtual = 'modulo';
+        renderModuleRail();
+        renderConteudoAtivo();
+      } else {
+        abrirModalModulo(moduloId);
+      }
     });
   });
 }
@@ -635,35 +654,8 @@ async function renderHomeInstitucional() {
   `;
 }
 
-// Rail vertical com só os ícones dos módulos: cor normal se disponível pra empresa, cinza se não.
-// Disponível clica e vai direto pro módulo; indisponível clica e abre um lembrete com o resumo
-// do módulo (abrirModalModulo), já que a pessoa ainda não tem acesso pra navegar até ele.
-function renderHomeModulosRail() {
-  const rail = document.getElementById('home-modulos-rail');
-  if (!rail) return;
-
-  rail.innerHTML = MODULOS_SISTEMA.map((m) => {
-    const disp = moduloHabilitadoParaEmpresa(m.id);
-    return `<button type="button" class="home-modulo-logo ${disp ? '' : 'indisponivel'}" data-modulo-rail="${m.id}" title="${escapeHtml(m.nome)}">
-      <i class="ti ${m.icone}"></i>
-    </button>`;
-  }).join('');
-
-  rail.querySelectorAll('[data-modulo-rail]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const moduloId = btn.dataset.moduloRail;
-      if (moduloHabilitadoParaEmpresa(moduloId)) {
-        moduloAtivo = moduloId;
-        viewAtual = 'modulo';
-        renderModuleRail();
-        renderConteudoAtivo();
-      } else {
-        abrirModalModulo(moduloId);
-      }
-    });
-  });
-}
-
+// Aberto ao clicar num módulo "em construção"/não habilitado na barra lateral (ver renderModuleRail
+// acima) — um lembrete com o resumo do módulo, já que a pessoa ainda não tem acesso pra navegar até ele.
 function abrirModalModulo(moduloId) {
   const m = MODULOS_SISTEMA.find((x) => x.id === moduloId);
   if (!m) return;
@@ -679,7 +671,6 @@ function abrirModalModulo(moduloId) {
 }
 
 async function renderHome() {
-  renderHomeModulosRail();
   renderHomeHero();
   await renderHomeInstitucional();
 }
@@ -757,7 +748,6 @@ async function renderConteudoAtivo() {
   modPlaceholder.style.display = 'none';
   areaConfig.style.display = 'none';
   areaPermissoes.style.display = 'none';
-  moduleRail.style.display = (viewAtual === 'home' || viewAtual === 'permissoes') ? 'none' : '';
 
   if (viewAtual === 'home') {
     areaHome.style.display = 'block';
