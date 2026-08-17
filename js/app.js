@@ -14,6 +14,7 @@ import * as empresaUsuarios from './modules/empresaUsuarios.js';
 import * as permissoes from './modules/permissoes.js';
 import * as apuracoes from './modules/apuracoes.js';
 import * as auditorias from './modules/auditorias.js';
+import * as treinamentos from './modules/treinamentos.js';
 import { MODULOS_SISTEMA } from './modulosConfig.js';
 
 export const state = {
@@ -31,7 +32,7 @@ const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, riscos, indicadores,
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes, 'auditorias': auditorias };
+const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes, 'auditorias': auditorias, 'treinamentos': treinamentos };
 
 // Módulos do sistema — ver js/modulosConfig.js (fonte central, espelha o catálogo no banco).
 export { MODULOS_SISTEMA };
