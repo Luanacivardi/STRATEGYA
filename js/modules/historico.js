@@ -1,6 +1,11 @@
 import { escapeHtml, formatarDataHora } from '../ui.js';
 
-// Rótulos amigáveis para as tabelas rastreadas (trigger fn_log_alteracao, migração 0024).
+// Rótulos amigáveis para as tabelas rastreadas (trigger fn_log_alteracao, migração 0024 + extensões
+// em 0025, 0029, 0031, 0034/0042, 0035, 0036, 0041, 0086, 0087 — sempre que um módulo novo ganha o
+// trigger, o rótulo precisa entrar aqui também, senão a tabela aparece com o nome cru (snake_case)
+// e some do filtro "Registro"). Auditorias (ISO), Apurações e Treinamentos não usam esse trigger —
+// não é esquecimento: Apurações é propositalmente fora da trilha geral (confidencialidade do
+// comitê), e Auditorias/Treinamentos ainda não tiveram rastreabilidade genérica adicionada.
 const TABELA_LABEL = {
   empresas: 'Empresa',
   objetivos_estrategicos: 'Objetivo Estratégico',
@@ -18,6 +23,17 @@ const TABELA_LABEL = {
   planos_acao_itens: 'Tarefa do Plano de Ação',
   rac_indicadores: 'Indicador em Ata de Reunião',
   rac_acoes: 'Ação de Ata de Reunião',
+  departamentos: 'Departamento',
+  modulos_restritos: 'Restrição de Módulo',
+  permissoes_edicao: 'Permissão de Edição',
+  documentos: 'Documento',
+  contas_gerenciais: 'Conta Gerencial',
+  contas_analises: 'Análise de Conta',
+  contas_anexos: 'Anexo de Conta',
+  indicador_analises: 'Análise de Indicador',
+  contas_lancamentos_mensais: 'Lançamento Mensal',
+  empresa_rol_mensal: 'ROL Mensal',
+  empresa_rol_historico_anual: 'Histórico Anual de ROL',
 };
 
 const OPERACAO_LABEL = { insert: 'Criação', update: 'Edição', delete: 'Exclusão' };
