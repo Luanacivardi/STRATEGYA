@@ -73,11 +73,25 @@ function copiarSeExistir(nome) {
   if (fs.existsSync(origem)) fs.copyFileSync(origem, path.join(DIST, nome));
 }
 
+// Cache-busting dos assets locais (css/style.css, js/app.js, js/pdfSetup.js): sem isso, o
+// Cloudflare/navegador do usuario pode continuar servindo a versao antiga em cache por horas
+// depois de um deploy, mesmo com o index.html novo (os links dos CDNs ja tem versao+integrity
+// fixas no proprio nome, entao ficam de fora). "?v=<timestamp do build>" forca um recurso "novo"
+// a cada deploy, sem precisar mexer em configuracao de cache do Cloudflare.
+function aplicarCacheBusting(html) {
+  const v = Date.now();
+  return html
+    .replace('href="css/style.css"', `href="css/style.css?v=${v}"`)
+    .replace('src="js/pdfSetup.js"', `src="js/pdfSetup.js?v=${v}"`)
+    .replace('src="js/app.js"', `src="js/app.js?v=${v}"`);
+}
+
 function main() {
   limparDist();
   copiarRecursivo(path.join(ROOT, 'js'), path.join(DIST, 'js'), { ofuscarJs: true });
   copiarRecursivo(path.join(ROOT, 'css'), path.join(DIST, 'css'));
-  fs.copyFileSync(path.join(ROOT, 'index.html'), path.join(DIST, 'index.html'));
+  const htmlOriginal = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  fs.writeFileSync(path.join(DIST, 'index.html'), aplicarCacheBusting(htmlOriginal), 'utf8');
   copiarSeExistir('CNAME');            // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
   copiarSeExistir('_headers');         // cabecalhos de seguranca (CSP etc) — lido pelo Cloudflare
 

@@ -34,10 +34,12 @@
 
 body { font-family: var(--font-sans); background: var(--bg-light); color: var(--text-primary); line-height: 1.5; }
 
-/* Remove as setinhas de seta do scrollbar nativo do Windows/Chrome (aparecem no topo/base de
-   qualquer área com rolagem) em todo o app — mantém a barra e o "polegar" arrastável, só tira
-   os botões de seta que ficam sobrando visualmente. */
-*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+/* Barra de rolagem invisível em qualquer área com rolagem do app (mantém a rolagem por mouse/
+   toque/teclado funcionando normalmente, só a barra visual some) — cobre Firefox
+   (scrollbar-width) e Chrome/Edge/Safari (::-webkit-scrollbar), já que cada motor usa uma API
+   diferente pra isso. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; }
 
 /* ===== TOPBAR (só o que não é navegação: empresa atual, atalhos de Config/Permissões) =====
    Marca, usuário e "Sair" moraram aqui antes — agora vivem na barra lateral persistente
@@ -228,7 +230,7 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 .modulo-area { min-width: 0; max-width: 100%; overflow-x: hidden; }
 
 .app-sidebar {
-  width: 264px; flex-shrink: 0; background: var(--navy-dark);
+  flex: 0 0 264px; width: 264px; min-width: 264px; background: var(--navy-dark);
   display: flex; flex-direction: column; padding: 1.5rem 1rem;
   position: sticky; top: 0; height: 100vh; overflow-y: auto;
   box-shadow: 4px 0 24px rgba(0,0,0,0.16);
@@ -274,7 +276,7 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 @media (max-width: 860px) {
   .app-shell-body { flex-direction: column; }
   .app-sidebar {
-    width: 100%; height: auto; position: static; box-shadow: none;
+    flex: 0 0 auto; width: 100%; min-width: 0; height: auto; position: static; box-shadow: none;
     flex-direction: row; flex-wrap: wrap; align-items: center; padding: 10px 12px; gap: 10px;
   }
   .sidebar-brand, .sidebar-user { padding: 0; margin: 0; border: none; }
