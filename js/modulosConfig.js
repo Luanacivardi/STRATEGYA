@@ -83,6 +83,33 @@ export const MODULOS_SISTEMA = [
       { id: 'versatilidade', nome: 'Matriz de Versatilidade' },
     ],
   },
+  // Os 4 módulos abaixo ainda não têm nenhuma tela implementada — aparecem na lista (e no rail)
+  // como "em construção" (ver modPlaceholder em js/app.js), mesmo padrão que Treinamentos usou
+  // antes de ser lançado. Só o título/ícone por enquanto; evoluímos um de cada vez depois.
+  {
+    id: 'fornecedores', nome: 'Gestão de Fornecedores', icone: 'ti-truck-delivery', disponivel: false, configuravel: false,
+    descricao: 'Em elaboração.',
+    teaser: 'Em breve.',
+    submodulos: [],
+  },
+  {
+    id: 'satisfacao-clientes', nome: 'Satisfação de Clientes', icone: 'ti-mood-smile', disponivel: false, configuravel: false,
+    descricao: 'Em elaboração.',
+    teaser: 'Em breve.',
+    submodulos: [],
+  },
+  {
+    id: 'metrologia', nome: 'Metrologia', icone: 'ti-ruler-measure', disponivel: false, configuravel: false,
+    descricao: 'Em elaboração.',
+    teaser: 'Em breve.',
+    submodulos: [],
+  },
+  {
+    id: 'manutencoes', nome: 'Manutenções', icone: 'ti-tool', disponivel: false, configuravel: false,
+    descricao: 'Em elaboração.',
+    teaser: 'Em breve.',
+    submodulos: [],
+  },
 ];
 
 // Papéis (usuarios_empresas.papel) — lista única, usada em todos os selects/labels do sistema.
