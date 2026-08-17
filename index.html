@@ -90,63 +90,58 @@
 
   <!-- APP -->
   <div id="view-app" class="app-shell" style="display:none">
-    <header class="topbar">
-      <a href="#" class="topbar-logo" id="topbar-home-link">
-        <span class="topbar-brand">STRATEGYA</span>
-        <span class="topbar-sub">by ORBEEX</span>
-      </a>
-      <div class="topbar-right">
-        <select id="empresa-select" class="empresa-select"></select>
-        <button class="btn btn-secondary btn-sm btn-icon-only" id="btn-config" type="button" title="Empresa e usuários"><i class="ti ti-settings"></i></button>
-        <button class="btn btn-secondary btn-sm btn-icon-only" id="btn-permissoes" type="button" title="Permissões (ORBEEX)" style="display:none"><i class="ti ti-shield-lock"></i></button>
-        <span class="topbar-divider"></span>
-        <span class="topbar-user-chip">
+    <div class="app-shell-body">
+      <!-- Barra lateral persistente: marca, usuário, navegação de módulos e "Sair" — sempre
+           visível em qualquer tela (Início, módulo, Config, Permissões). O #sidebar-nav é
+           preenchido por renderModuleRail() em js/app.js (item "Início" + lista de módulos). -->
+      <aside class="app-sidebar" id="module-rail">
+        <a href="#" class="sidebar-brand" id="topbar-home-link">
+          <span class="topbar-brand">STRATEGYA</span>
+          <span class="topbar-sub">by ORBEEX</span>
+        </a>
+        <div class="sidebar-user">
           <span class="topbar-avatar" id="topbar-avatar"></span>
           <span class="topbar-user" id="topbar-user"></span>
-        </span>
-      </div>
-      <!-- Fora da área rolável (.topbar-right) de propósito: com muitos botões/empresa de nome
-           longo, o "Sair" podia ficar empurrado para fora da rolagem (sem barra visível) e
-           parecer que tinha sumido — ficando fixo aqui, ele nunca é escondido. -->
-      <button class="icon-btn topbar-logout-btn" id="btn-logout" type="button" title="Sair"><i class="ti ti-logout"></i></button>
-    </header>
-
-    <div id="print-letterhead" class="print-letterhead"></div>
-
-    <div class="container">
-      <div class="header">
-        <button type="button" class="header-icon" id="header-icon" title="Voltar para o início">
-          <img id="header-logo-img" alt="Logo do cliente" style="display:none">
-          <i class="ti ti-target-arrow" id="header-icon-fallback"></i>
-        </button>
-        <div>
-          <h1 id="empresa-nome-titulo">—</h1>
-          <p id="modulo-nome-subtitulo">Sistema de Gestão Integrada</p>
         </div>
-      </div>
+        <div class="module-rail-title">Módulos</div>
+        <nav class="sidebar-nav" id="sidebar-nav"></nav>
+        <button class="sidebar-logout" id="btn-logout" type="button" title="Sair"><i class="ti ti-logout"></i><span>Sair</span></button>
+      </aside>
 
-      <div id="sem-empresa" class="alert alert-info" style="display:none">
-        <i class="ti ti-info-circle"></i>
-        <span id="sem-empresa-texto"></span>
-      </div>
+      <div class="app-main">
+        <header class="topbar">
+          <select id="empresa-select" class="empresa-select"></select>
+          <button class="btn btn-secondary btn-sm btn-icon-only" id="btn-config" type="button" title="Empresa e usuários"><i class="ti ti-settings"></i></button>
+          <button class="btn btn-secondary btn-sm btn-icon-only" id="btn-permissoes" type="button" title="Permissões (ORBEEX)" style="display:none"><i class="ti ti-shield-lock"></i></button>
+        </header>
 
-      <div id="app-layout" class="app-layout" style="display:none">
-        <aside class="module-rail" id="module-rail">
-          <div class="module-rail-title">Módulos</div>
-        </aside>
+        <div id="print-letterhead" class="print-letterhead"></div>
 
-        <div class="modulo-area">
-          <div id="area-home">
-            <div class="home-layout">
-              <aside class="home-modulos-rail" id="home-modulos-rail"></aside>
-              <div class="home-main">
-                <div id="home-hero"></div>
-                <div id="home-institucional"></div>
-              </div>
+        <div class="container">
+          <div class="header">
+            <button type="button" class="header-icon" id="header-icon" title="Voltar para o início">
+              <img id="header-logo-img" alt="Logo do cliente" style="display:none">
+              <i class="ti ti-target-arrow" id="header-icon-fallback"></i>
+            </button>
+            <div>
+              <h1 id="empresa-nome-titulo">—</h1>
+              <p id="modulo-nome-subtitulo">Sistema de Gestão Integrada</p>
             </div>
           </div>
 
-          <div id="area-modulo" style="display:none">
+          <div id="sem-empresa" class="alert alert-info" style="display:none">
+            <i class="ti ti-info-circle"></i>
+            <span id="sem-empresa-texto"></span>
+          </div>
+
+          <div id="app-layout" class="app-layout" style="display:none">
+            <div class="modulo-area">
+              <div id="area-home">
+                <div id="home-hero"></div>
+                <div id="home-institucional"></div>
+              </div>
+
+              <div id="area-modulo" style="display:none">
             <nav class="tabs" id="tabs">
               <button class="tab-btn" data-tab="contexto"><i class="ti ti-map-2"></i> Contexto</button>
               <button class="tab-btn active" data-tab="dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard</button>
@@ -179,6 +174,8 @@
       </div>
 
       <div id="print-secao"></div>
+        </div>
+      </div>
     </div>
   </div>
 

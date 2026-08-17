@@ -39,37 +39,28 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
    os botões de seta que ficam sobrando visualmente. */
 *::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 
-/* ===== TOPBAR ===== */
+/* ===== TOPBAR (só o que não é navegação: empresa atual, atalhos de Config/Permissões) =====
+   Marca, usuário e "Sair" moraram aqui antes — agora vivem na barra lateral persistente
+   (ver .app-sidebar mais abaixo), então as classes .topbar-brand/.topbar-sub/.topbar-avatar/
+   .topbar-user continuam existindo (reaproveitadas lá), só as de composição do topbar em si
+   (.topbar-logo/.topbar-right/.topbar-divider/.topbar-user-chip/.topbar-logout-btn) saíram. */
 .topbar {
   background: color-mix(in srgb, var(--navy) 90%, transparent); backdrop-filter: blur(10px) saturate(160%);
   -webkit-backdrop-filter: blur(10px) saturate(160%); padding: 10px 1.25rem; display: flex; align-items: center;
-  justify-content: space-between; min-height: 60px; position: sticky; top: 0; z-index: 100;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.18); column-gap: 12px; flex-wrap: nowrap;
+  gap: 8px; min-height: 60px; position: sticky; top: 0; z-index: 90;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18); overflow-x: auto; scrollbar-width: none;
 }
-.topbar-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+.topbar::-webkit-scrollbar { display: none; }
+.topbar > * { flex-shrink: 0; }
+.topbar .btn { height: 32px; white-space: nowrap; box-sizing: border-box; }
 .topbar-brand { font-size: 20px; font-weight: 700; color: var(--navy-text); letter-spacing: 0.5px; white-space: nowrap; }
 .topbar-sub { font-size: 11px; color: color-mix(in srgb, var(--navy-text) 45%, transparent); letter-spacing: 0.8px; text-transform: uppercase; margin-left: 6px; white-space: nowrap; }
-.topbar-right {
-  display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; justify-content: flex-start;
-  min-width: 0; overflow-x: auto; scrollbar-width: none; margin-left: auto;
-}
-.topbar-right::-webkit-scrollbar { display: none; }
-.topbar-right > * { flex-shrink: 0; }
-.topbar-right .btn { height: 32px; white-space: nowrap; box-sizing: border-box; }
-.topbar-right .btn-icon-only { flex-shrink: 0; }
-.topbar-divider { width: 1px; height: 22px; background: rgba(255,255,255,0.15); margin: 0 2px; }
-.topbar-user-chip {
-  display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06);
-  border-radius: 20px; padding: 4px 6px 4px 4px; flex-shrink: 0;
-}
 .topbar-avatar {
   width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: var(--navy);
   font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; text-transform: uppercase;
 }
 .topbar-user { font-size: 12px; color: color-mix(in srgb, var(--navy-text) 75%, transparent); white-space: nowrap; text-transform: none; }
-.topbar-logout-btn { color: color-mix(in srgb, var(--navy-text) 55%, transparent); font-size: 16px; padding: 2px; display: flex; flex-shrink: 0; }
-.topbar-logout-btn:hover { color: var(--navy-text); }
 
 .empresa-select {
   background: var(--navy-mid); color: var(--navy-text); border: 1px solid rgba(255,255,255,0.15);
@@ -222,17 +213,41 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
 .audit-card[open] .audit-card-chevron { transform: rotate(180deg); }
 .audit-card-body { padding: 0 1.5rem 1.5rem; }
 
-/* ===== LAYOUT DE MÓDULOS (sidebar) =====
-   Cartão de navegação estilo "dashboard de app" (pílulas arredondadas, ícone em badge, item ativo
-   em destaque cheio) — mantém a paleta dinâmica da empresa (--navy/--gold, tema.js) em vez de cores
-   fixas, já que o mesmo rail é usado por qualquer empresa com seu próprio tema. */
-.app-layout { display: flex; align-items: flex-start; gap: 1.5rem; }
-.modulo-area { flex: 1; min-width: 0; max-width: 100%; overflow-x: hidden; }
-.module-rail {
-  width: 248px; flex-shrink: 0; background: var(--navy-dark); border-radius: 26px;
-  padding: 1.5rem 1rem; position: sticky; top: 76px;
-  box-shadow: 0 18px 34px -12px rgba(232,184,75,0.16), 0 8px 22px rgba(0,0,0,0.16);
+/* ===== SHELL / BARRA LATERAL PERSISTENTE =====
+   Toda a navegação mora numa coluna lateral de altura cheia (marca, usuário, lista de módulos,
+   sair), sempre visível em qualquer tela (Início, módulo, Config, Permissões) — antes essa lista
+   só aparecia dentro do conteúdo do módulo e sumia em Início/Permissões; agora é sempre a mesma
+   barra, com "Início" como primeiro item. O topo (.topbar) fica só com o que não é navegação
+   (empresa atual, atalhos de Config/Permissões). Cartão de navegação estilo "dashboard de app"
+   (pílulas arredondadas, ícone em badge, item ativo em destaque cheio) — mantém a paleta dinâmica
+   da empresa (--navy/--gold, tema.js) em vez de cores fixas, já que a mesma barra atende qualquer
+   empresa com seu próprio tema. */
+.app-shell-body { display: flex; align-items: stretch; min-height: 100vh; }
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-layout { display: block; }
+.modulo-area { min-width: 0; max-width: 100%; overflow-x: hidden; }
+
+.app-sidebar {
+  width: 264px; flex-shrink: 0; background: var(--navy-dark);
+  display: flex; flex-direction: column; padding: 1.5rem 1rem;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.16);
 }
+.sidebar-brand { display: flex; align-items: baseline; gap: 6px; text-decoration: none; padding: 0 0.6rem 1.1rem; }
+.sidebar-user {
+  display: flex; align-items: center; gap: 8px; padding: 8px 0.6rem; margin-bottom: 1.1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-nav { flex: 1; }
+.sidebar-logout {
+  display: flex; align-items: center; gap: 10px; margin-top: 1rem; padding: 11px 12px;
+  background: none; border: none; border-radius: 16px; cursor: pointer; width: 100%; text-align: left;
+  color: color-mix(in srgb, var(--navy-text) 55%, transparent); font-family: var(--font-sans);
+  font-size: 13.5px; font-weight: 600; flex-shrink: 0;
+}
+.sidebar-logout i { font-size: 16px; }
+.sidebar-logout:hover { background: rgba(255,255,255,0.07); color: var(--navy-text); }
+
 .module-rail-title {
   padding: 0 0.6rem 14px; margin-bottom: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px;
   color: color-mix(in srgb, var(--navy-text) 38%, transparent); font-weight: 700;
@@ -255,43 +270,28 @@ body { font-family: var(--font-sans); background: var(--bg-light); color: var(--
   box-shadow: 0 8px 18px -8px rgba(232,184,75,0.55);
 }
 .module-item.active .module-item-icon { background: rgba(37,37,56,0.16); color: var(--navy); }
-.module-item.disabled { opacity: 0.35; cursor: not-allowed; }
+.module-item.disabled { opacity: 0.5; }
 @media (max-width: 860px) {
-  .app-layout { flex-direction: column; }
-  .module-rail { width: 100%; position: static; display: flex; overflow-x: auto; padding: 10px; gap: 6px; -webkit-overflow-scrolling: touch; box-shadow: none; border-radius: 18px; }
+  .app-shell-body { flex-direction: column; }
+  .app-sidebar {
+    width: 100%; height: auto; position: static; box-shadow: none;
+    flex-direction: row; flex-wrap: wrap; align-items: center; padding: 10px 12px; gap: 10px;
+  }
+  .sidebar-brand, .sidebar-user { padding: 0; margin: 0; border: none; }
+  .sidebar-nav {
+    flex: 1 1 100%; order: 3; display: flex; overflow-x: auto; gap: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
   .module-rail-title { display: none; }
   .module-item { flex-direction: column; gap: 4px; white-space: nowrap; padding: 10px 14px; margin-bottom: 0; }
+  .sidebar-logout { width: auto; margin-top: 0; padding: 8px; }
+  .sidebar-logout span { display: none; }
 }
 
-/* ===== HOME (página inicial: rail de módulos + boas-vindas + missão/visão/valores) ===== */
-.home-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
-.home-main { flex: 1; min-width: 0; }
+/* ===== HOME (página inicial: boas-vindas + missão/visão/valores) ===== */
 
-/* Rail vertical só com o ícone do módulo, sem caixa/fundo — disponível na cor da marca, indisponível
-   em cinza. Disponível clica e vai direto pro módulo; indisponível clica e abre um lembrete com o
-   resumo do módulo (js/app.js abrirModalModulo). Alinhado ao topo do conteúdo ao lado (sem sticky,
-   pra não desalinhar ao rolar a página). */
-.home-modulos-rail {
-  display: flex; flex-direction: column; align-items: center; gap: 18px; flex-shrink: 0;
-  width: 56px; padding-top: 2px;
-}
-.home-modulo-logo {
-  width: 44px; height: 44px; border-radius: 10px; border: none; padding: 0; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; font-size: 26px; font-family: inherit;
-  /* --home-icone-cor (definida em tema.js/aplicarTema, ver corMaisForte): a cor mais forte entre a
-     cor primária e a de destaque da empresa — não usa var(--navy) direto porque a primária sozinha
-     pode ser clara demais pra ler sobre o fundo branco da Home (ex: Tedesco). */
-  background: none; color: var(--home-icone-cor); transition: background 0.15s, color 0.15s, transform 0.15s;
-}
-.home-modulo-logo:hover { background: rgba(37,37,56,0.07); color: var(--gold-dark); transform: translateY(-1px); }
-.home-modulo-logo.indisponivel { color: var(--border); }
-.home-modulo-logo.indisponivel:hover { background: rgba(37,37,56,0.04); color: var(--text-secondary); }
-@media (max-width: 860px) {
-  .home-layout { flex-direction: column; }
-  .home-modulos-rail { flex-direction: row; width: 100%; padding: 4px 0; }
-}
-
-/* Modal de resumo do módulo (abrirModal padrão do sistema) */
+/* Modal de resumo do módulo (abrirModal padrão do sistema) — disparado ao clicar num módulo
+   "em construção" na barra lateral (ver abrirModalModulo em js/app.js). */
 .home-modal-icon {
   width: 62px; height: 62px; border-radius: 16px; background: var(--navy); color: var(--gold);
   display: flex; align-items: center; justify-content: center; font-size: 27px; margin: 0 auto 14px;
@@ -893,7 +893,6 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 @media (max-width: 720px) {
   .swot-grid { grid-template-columns: 1fr; }
   .topbar { padding: 8px 0.75rem; }
-  .topbar-divider { display: none; }
   .topbar-brand { font-size: 16px; }
   .topbar-sub { display: none; }
   .empresa-select { max-width: 110px; }
@@ -962,7 +961,7 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .doc-header, .doc-footer { display: none; }
 
 @media print {
-  .topbar, .module-rail, .tabs, .btn, .modal-overlay, .toast-box, #sem-empresa { display: none !important; }
+  .topbar, .app-sidebar, .tabs, .btn, .modal-overlay, .toast-box, #sem-empresa { display: none !important; }
   .container { max-width: 100%; padding: 0; }
   .card { box-shadow: none; border: 1px solid #ccc; }
   body { background: #fff; }
