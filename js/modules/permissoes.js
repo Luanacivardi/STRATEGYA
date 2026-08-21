@@ -20,12 +20,22 @@ export async function render(container, state) {
       <p class="text-muted">Gerencie o papel de cada usuário em cada empresa, tudo em um só lugar. Visível apenas para o papel ORBEEX.</p>
     </div>
 
-    ${porEmpresa.map(({ empresa, membros }) => `
+    ${porEmpresa.map(({ empresa, membros }) => { const ativosEmpresa = membros.filter((m) => m.ativo).length; return `
       <div class="card">
         <div class="card-header">
           <span><i class="ti ti-building"></i> ${escapeHtml(empresa.nome)}</span>
           ${membros.length > 1 ? `<button class="btn btn-secondary btn-sm" data-copiar-permissoes="${empresa.id}"><i class="ti ti-copy"></i> Copiar permissões</button>` : ''}
         </div>
+
+        <div class="form-row" style="align-items:end;max-width:340px">
+          <div class="form-group">
+            <label>Limite de usuários ativos (plano contratado)</label>
+            <input type="number" min="1" step="1" value="${empresa.limite_usuarios ?? 10}" data-limite-usuarios="${empresa.id}">
+          </div>
+          <div class="form-group"><span class="badge ${ativosEmpresa >= (empresa.limite_usuarios ?? 10) ? 'badge-danger' : 'badge-neutral'}">${ativosEmpresa} ativos hoje</span></div>
+        </div>
+        <p class="text-muted" style="margin-top:-6px;margin-bottom:1rem;font-size:12px">Para plano "ilimitado", usar um teto alto de fair-use (ex.: 999999) — nunca deixar sem controle.</p>
+        <hr class="sep">
 
         <label>Módulos habilitados para esta empresa</label>
         <div class="permissoes-modulos-grid" data-modulos-empresa="${empresa.id}">
@@ -76,8 +86,32 @@ export async function render(container, state) {
             </tbody>
           </table>` : '<p class="text-muted">Nenhum usuário vinculado.</p>'}
       </div>
-    `).join('')}
+    `; }).join('')}
   `;
+
+  container.querySelectorAll('[data-limite-usuarios]').forEach((input) => {
+    let valorAnterior = input.value;
+    input.addEventListener('change', async () => {
+      const empresaId = input.dataset.limiteUsuarios;
+      const novoLimite = parseInt(input.value, 10);
+      if (!novoLimite || novoLimite < 1) {
+        toast('Informe um limite válido (número inteiro maior que zero).', 'erro');
+        input.value = valorAnterior;
+        return;
+      }
+      const { error } = await supabase.from('empresas').update({ limite_usuarios: novoLimite }).eq('id', empresaId);
+      if (error) {
+        toast('Erro ao atualizar limite: ' + error.message, 'erro');
+        input.value = valorAnterior;
+        return;
+      }
+      valorAnterior = input.value;
+      const empresaLocal = empresas.find((e) => e.id === empresaId);
+      if (empresaLocal) empresaLocal.limite_usuarios = novoLimite;
+      if (state.empresaAtual?.id === empresaId) state.empresaAtual.limite_usuarios = novoLimite;
+      toast('Limite de usuários atualizado.', 'sucesso');
+    });
+  });
 
   container.querySelectorAll('[data-modulo-check]').forEach((chk) => {
     chk.addEventListener('change', async () => {

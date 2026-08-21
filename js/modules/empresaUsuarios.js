@@ -18,6 +18,9 @@ export async function render(container, state) {
   }
 
   const membros = [...membrosRaw].sort((a, b) => (a.nome || a.email).localeCompare(b.nome || b.email));
+  const usuariosAtivos = membros.filter((m) => m.ativo).length;
+  const limiteUsuarios = empresaAtual.limite_usuarios ?? null;
+  const noLimite = limiteUsuarios != null && usuariosAtivos >= limiteUsuarios;
 
   let departamentos = [];
   let permissoesEdicao = [];
@@ -159,26 +162,29 @@ export async function render(container, state) {
 
     <div class="card">
       <div class="card-header">
-        <span><i class="ti ti-users"></i> Colaboradores com acesso</span>
+        <span><i class="ti ti-users"></i> Colaboradores com acesso
+          ${limiteUsuarios != null ? `<span class="badge ${noLimite ? 'badge-danger' : 'badge-neutral'}" style="margin-left:8px" title="Colaboradores ativos vs. limite do plano contratado">${usuariosAtivos} de ${limiteUsuarios}</span>` : ''}
+        </span>
         ${podeGerenciar ? '<button class="btn btn-secondary btn-sm" id="btn-copiar-permissoes"><i class="ti ti-copy"></i> Copiar permissões</button>' : ''}
       </div>
       ${podeGerenciar ? `
+        ${noLimite ? `<div class="alert alert-warning" style="margin-bottom:1rem"><i class="ti ti-alert-triangle"></i> Limite de ${limiteUsuarios} usuários ativos do plano contratado atingido. Inative alguém ou fale com a ORBEEX para ampliar o plano antes de cadastrar mais um colaborador.</div>` : ''}
         <form id="form-criar-usuario" class="form-row" style="align-items:end">
           <div class="form-group">
             <label>Nome</label>
-            <input type="text" id="novo-nome" required>
+            <input type="text" id="novo-nome" required ${noLimite ? 'disabled' : ''}>
           </div>
           <div class="form-group">
             <label>E-mail</label>
-            <input type="email" id="novo-email" required>
+            <input type="email" id="novo-email" required ${noLimite ? 'disabled' : ''}>
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" id="novo-senha" required minlength="8">
+            <input type="password" id="novo-senha" required minlength="8" ${noLimite ? 'disabled' : ''}>
           </div>
           <div class="form-group">
             <label>Papel</label>
-            <select id="novo-papel" required>
+            <select id="novo-papel" required ${noLimite ? 'disabled' : ''}>
               <option value="" disabled selected>Selecione...</option>
               <option value="usuario">Usuário</option>
               <option value="gestor">Gestor</option>
@@ -188,13 +194,13 @@ export async function render(container, state) {
           </div>
           <div class="form-group">
             <label>Departamento</label>
-            <select id="novo-departamento">
+            <select id="novo-departamento" ${noLimite ? 'disabled' : ''}>
               <option value="">—</option>
               ${departamentos.map((d) => `<option value="${d.id}">${escapeHtml(d.nome)}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
-            <button class="btn btn-primary btn-block" type="submit" id="btn-criar-usuario"><i class="ti ti-user-plus"></i> Cadastrar colaborador</button>
+            <button class="btn btn-primary btn-block" type="submit" id="btn-criar-usuario" ${noLimite ? 'disabled' : ''}><i class="ti ti-user-plus"></i> Cadastrar colaborador</button>
           </div>
         </form>
         <hr class="sep">

@@ -271,7 +271,7 @@ async function carregarEmpresas() {
   // "teve o acesso revogado" — que são mensagens bem diferentes para quem está na tela.
   const { data, error } = await supabase
     .from('usuarios_empresas')
-    .select('papel, departamento_id, ativo, empresas(id, nome, cnpj, cor_primaria, cor_destaque, cor_texto, logo_url, modulos_habilitados)')
+    .select('papel, departamento_id, ativo, empresas(id, nome, cnpj, cor_primaria, cor_destaque, cor_texto, logo_url, modulos_habilitados, limite_usuarios)')
     .eq('usuario_id', state.user.id);
 
   if (error) {
