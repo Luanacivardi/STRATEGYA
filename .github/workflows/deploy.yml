@@ -16,6 +16,13 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+
+      # Antes de publicar: confere se os literais de modulo/submodulo do JS batem com o catalogo
+      # no banco. Um literal digitado errado nao quebra nada visivelmente — so faz uma permissao
+      # parar de valer, em silencio. Sem segredo: o catalogo e legivel pelo papel public.
+      - name: Conferir catalogo de modulos
+        run: node scripts/conferir-catalogo-modulos.mjs
+
       - run: npm run build
       - name: Publica dist/ na branch gh-pages
         uses: peaceiris/actions-gh-pages@v4

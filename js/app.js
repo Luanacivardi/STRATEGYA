@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { iniciarCapturaDeErros, relatarErro, definirContexto, despejarFilaPreLogin } from './erros.js';
 import { toast, abrirModal, fecharModal, escapeHtml, resolverNivel } from './ui.js';
 import { aplicarTema, extrairCoresDoLogo, corTextoIdeal } from './tema.js';
 import * as dashboard from './modules/dashboard.js';
@@ -24,6 +25,11 @@ export const state = {
   empresaAtual: null,
   papelAtual: null,
 };
+
+// Antes de qualquer outra coisa: a partir daqui, todo erro nao tratado vira linha em
+// public.erros_cliente (ver js/erros.js e migração 0103) em vez de morrer no console de quem
+// estiver na tela. Fica no topo de propósito — erro durante a própria montagem também conta.
+iniciarCapturaDeErros();
 
 // Abas internas do módulo Planejamento Estratégico
 // (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos;
@@ -208,6 +214,9 @@ supabase.auth.onAuthStateChange((event, session) => {
   if (state.user) {
     if (usuarioMontadoId === state.user.id) return; // já é esta pessoa na tela: nada a refazer
     usuarioMontadoId = state.user.id;
+    // Erro que aconteceu na tela de login ficou em fila (o RLS exige sessão para gravar).
+    // Agora que existe sessão, sobe.
+    despejarFilaPreLogin();
     viewLogin.style.display = 'none';
     viewConfirmeEmail.style.display = 'none';
     viewApp.style.display = 'block';
@@ -343,6 +352,7 @@ async function selecionarEmpresa(empresaId) {
   if (!emp) return;
   state.empresaAtual = emp;
   state.papelAtual = emp.papel;
+  window.__strategyaEmpresaId = emp.id; // lido por js/erros.js para saber de qual empresa veio o erro
   empresaSelect.value = emp.id;
   empresaNomeTitulo.textContent = emp.nome;
   localStorage.setItem('pe_empresa_atual', emp.id);
@@ -712,6 +722,12 @@ tabsNav.querySelectorAll('.tab-btn').forEach((btn) => {
 async function renderConteudoAtivo() {
   if (!state.empresaAtual) return;
 
+  // Carimba onde a pessoa está, para que um erro solto (fora dos try/catch abaixo) chegue dizendo
+  // de qual tela veio — ver js/erros.js.
+  definirContexto(viewAtual === 'modulo'
+    ? (moduloAtivo === 'planejamento-estrategico' ? `planejamento-estrategico/${tabAtiva}` : moduloAtivo)
+    : viewAtual);
+
   // Segurança: se uma impressão de seção (ex: ata individual) ficou "presa" por algum motivo
   // (o navegador não disparou "afterprint"), qualquer navegação normal já limpa o estado,
   // evitando que a próxima impressão (ex: Tarefas) saia em branco.
@@ -762,6 +778,7 @@ async function renderConteudoAtivo() {
       try {
         await mod.render(container, state);
       } catch (err) {
+        relatarErro(err, `planejamento-estrategico/${tabAtiva}`);
         container.innerHTML = `<div class="alert alert-warning">Não foi possível carregar esta aba: ${escapeHtml(err.message || err)}</div>`;
       }
     }
@@ -773,6 +790,7 @@ async function renderConteudoAtivo() {
     try {
       await MODULOS_SIMPLES[moduloAtivo].render(areaModuloSimples, state);
     } catch (err) {
+      relatarErro(err, moduloAtivo);
       areaModuloSimples.innerHTML = `<div class="alert alert-warning">Não foi possível carregar este módulo: ${escapeHtml(err.message || err)}</div>`;
     }
     return;
