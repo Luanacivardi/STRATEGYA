@@ -54,9 +54,7 @@ const viewRedefinirSenha = document.getElementById('view-redefinir-senha');
 const viewConfirmeEmail = document.getElementById('view-confirme-email');
 const formLogin = document.getElementById('form-login');
 const loginErro = document.getElementById('login-erro');
-const btnToggleCadastro = document.getElementById('btn-toggle-cadastro');
 const btnLoginSubmit = document.getElementById('btn-login-submit');
-let modoCadastro = false;
 
 // Alterna a visibilidade dos campos de senha (login e redefinição)
 document.querySelectorAll('[data-toggle-senha]').forEach((btn) => {
@@ -114,13 +112,6 @@ document.getElementById('form-redefinir-senha').addEventListener('submit', async
   viewLogin.style.display = 'flex';
 });
 
-btnToggleCadastro.addEventListener('click', () => {
-  modoCadastro = !modoCadastro;
-  btnLoginSubmit.textContent = modoCadastro ? 'Criar conta' : 'Entrar';
-  btnToggleCadastro.textContent = modoCadastro ? 'Já tenho conta' : 'Criar conta';
-  loginErro.style.display = 'none';
-});
-
 formLogin.addEventListener('submit', async (e) => {
   e.preventDefault();
   loginErro.style.display = 'none';
@@ -128,34 +119,18 @@ formLogin.addEventListener('submit', async (e) => {
   const senha = document.getElementById('login-senha').value;
   const textoOriginal = btnLoginSubmit.textContent;
   btnLoginSubmit.disabled = true;
-  btnLoginSubmit.textContent = modoCadastro ? 'Criando conta...' : 'Entrando...';
+  btnLoginSubmit.textContent = 'Entrando...';
   try {
-    if (modoCadastro) {
-      // O mínimo de 8 é cobrado na criação da conta (o campo é o mesmo do login, que precisa
-      // aceitar senhas antigas de 6 caracteres — por isso a checagem fica aqui, e não no HTML).
-      if (senha.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.');
-      const { data, error } = await supabase.auth.signUp({ email, password: senha });
-      if (error) throw error;
-      // Com "Confirm email" ativo nas configurações de Auth do Supabase, o cadastro não abre
-      // sessão até o e-mail ser confirmado (data.session vem nulo) — leva direto para a tela de
-      // confirmação em vez de deixar a pessoa "presa" na tela de login sem entender o motivo.
-      if (!data.session) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+    if (error) {
+      // Conta existe e a senha está certa, mas o e-mail ainda não foi confirmado (é o caso de
+      // todo colaborador recém-convidado por admin/ORBEEX) — leva direto pra tela de confirmação
+      // em vez de um erro genérico.
+      if (/email.*not.*confirmed/i.test(error.message)) {
         mostrarTelaConfirmeEmail(email);
-      } else {
-        toast('Conta criada com sucesso.', 'sucesso');
+        return;
       }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-      if (error) {
-        // Conta existe e a senha está certa, mas o e-mail ainda não foi confirmado (inclui
-        // colaboradores cadastrados por admin/ORBEEX, que agora também exigem confirmação) —
-        // leva direto pra tela de confirmação em vez de um erro genérico.
-        if (/email.*not.*confirmed/i.test(error.message)) {
-          mostrarTelaConfirmeEmail(email);
-          return;
-        }
-        throw error;
-      }
+      throw error;
     }
   } catch (err) {
     loginErro.textContent = err.message || 'Erro ao autenticar.';

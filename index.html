@@ -4,6 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>STRATEGYA · by ORBEEX</title>
+  <meta name="description" content="Sistema de gestão integrada para ISO 9001, 14001 e 45001: planejamento estratégico, indicadores, riscos, documentos, auditorias e treinamentos num só lugar.">
+
+  <!-- Ícones gerados a partir do símbolo do logo (pasta Logo Strategya, arquivo 3.png), recortado
+       e reamostrado — ver img/. O .png de 32px atende os navegadores atuais; o apple-touch-icon é
+       o que o iOS usa ao salvar na tela de início. -->
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16.png">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#252538">
+
+  <!-- Cartão exibido quando o link é colado em WhatsApp, LinkedIn e afins. Sem isto o link
+       aparece "pelado", só com a URL. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="STRATEGYA">
+  <meta property="og:title" content="STRATEGYA · by ORBEEX">
+  <meta property="og:description" content="Estratégia, conformidade e resultados. Sistema de gestão integrada para ISO 9001, 14001 e 45001.">
+  <meta property="og:url" content="https://strategya.orbeex.com.br/">
+  <meta property="og:image" content="https://strategya.orbeex.com.br/img/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="pt_BR">
+  <meta name="twitter:card" content="summary_large_image">
   <!-- Versões fixas e com integrity (SRI) de propósito: com "@latest"/"@2" uma atualização de
        terceiro entrava sozinha em produção, e sem integrity um CDN comprometido executaria
        código com a sessão de quem estivesse logado. Ao atualizar, recalcular o hash:
@@ -45,7 +68,11 @@
         </div>
         <button class="btn btn-primary btn-block" type="submit" id="btn-login-submit">Entrar</button>
       </form>
-      <button class="btn btn-secondary btn-block" id="btn-toggle-cadastro" type="button">Criar conta</button>
+      <!-- Não existe autocadastro: todo acesso nasce de um convite feito pelo administrador da
+           empresa (RPC convidar_usuario_por_email) ou pela ORBEEX (Edge Function
+           criar-usuario-empresa). O botão "Criar conta" que ficava aqui deixava qualquer pessoa
+           da internet abrir conta na produção — e contradizia a venda por faixa de usuários
+           (empresas.limite_usuarios, migração 0102). Desligado também no painel do Supabase. -->
       <button type="button" id="btn-esqueci-senha" class="link-btn">Esqueci minha senha</button>
     </div>
   </div>

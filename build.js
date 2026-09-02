@@ -1,9 +1,14 @@
 // Gera a pasta dist/ com o app pronto para publicacao.
 //
-// Ofuscacao LEVE: o repositorio e privado, entao o objetivo aqui nao e mais esconder
-// o codigo do mundo — e apenas dificultar que um cliente pagante copie a logica a partir
-// do bundle servido. Renomeacao de identificadores + stringArray entregam a maior parte
-// dessa dissuasao a custo quase zero.
+// Ofuscacao LEVE: renomeacao de identificadores + stringArray, para dificultar que um cliente
+// pagante copie a logica a partir do bundle servido.
+//
+// ATENCAO — este comentario dizia que "o repositorio e privado", e isso esta ERRADO: em
+// 02/09/2026 a API do GitHub confirma "private": false. Ou seja, o fonte legivel esta publico
+// ao lado do bundle ofuscado, e a ofuscacao hoje nao protege nada — so custa bytes, tempo de
+// build e a legibilidade de qualquer erro que venha de producao (relevante ao ligar o Sentry:
+// sem source maps as pilhas chegam como "erro na funcao a(), linha 1").
+// Decisao pendente: ou o repositorio fecha e a ofuscacao passa a fazer sentido, ou ela sai.
 //
 // Removidos deliberadamente (mediram 2,93x de inflacao no bundle, 740 KB -> 2168 KB):
 //   controlFlowFlattening  - principal responsavel pelo tamanho e pela lentidao de execucao
@@ -90,10 +95,12 @@ function main() {
   limparDist();
   copiarRecursivo(path.join(ROOT, 'js'), path.join(DIST, 'js'), { ofuscarJs: true });
   copiarRecursivo(path.join(ROOT, 'css'), path.join(DIST, 'css'));
+  copiarRecursivo(path.join(ROOT, 'img'), path.join(DIST, 'img'));  // favicon, apple-touch-icon e cartao de compartilhamento
   const htmlOriginal = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   fs.writeFileSync(path.join(DIST, 'index.html'), aplicarCacheBusting(htmlOriginal), 'utf8');
-  copiarSeExistir('CNAME');            // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
-  copiarSeExistir('_headers');         // cabecalhos de seguranca (CSP etc) — lido pelo Cloudflare
+  copiarSeExistir('CNAME');                  // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
+  copiarSeExistir('_headers');               // cabecalhos de seguranca (CSP etc) — lido pelo Cloudflare
+  copiarSeExistir('manifest.json');           // nome e icones ao salvar na tela de inicio do celular
 
   // Relatorio de tamanho: se o bundle inflar de novo, aparece aqui no log do build.
   let bytes = 0;

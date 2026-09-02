@@ -124,7 +124,7 @@ export function visualizarPdfDocumentoLegado(state, doc, revisoes, ctx) {
   const paginaHtml = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">'
     + '<title>' + escapeHtml(doc.numero) + ' — ' + escapeHtml(doc.nome) + '</title>'
     + '<style>' + estilo + '</style></head><body>'
-    + '<div class="toolbar"><button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button></div>'
+    + '<div class="toolbar"><button type="button" id="btn-imprimir-doc">Imprimir / Salvar como PDF</button></div>'
     + gerarCabecalhoDocumento(doc, emp)
     + gerarRodapeDocumento(doc, emp)
     + '<div class="doc-corpo">' + corpo + '</div>'
@@ -132,5 +132,10 @@ export function visualizarPdfDocumentoLegado(state, doc, revisoes, ctx) {
 
   janela.document.write(paginaHtml);
   janela.document.close();
+  // O clique é ligado aqui, e não por onclick="" dentro do HTML: uma janela aberta com
+  // window.open('') herda a Content-Security-Policy de quem a abriu, e a nossa CSP (ver _headers)
+  // não tem 'unsafe-inline' em script-src. Com o onclick inline, a janela abriria normalmente e o
+  // botão simplesmente não faria nada — sem erro visível para o usuário.
+  janela.document.getElementById('btn-imprimir-doc')?.addEventListener('click', () => janela.print());
   return true;
 }

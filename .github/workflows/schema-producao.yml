@@ -59,13 +59,19 @@ jobs:
           echo "OK: $LINHAS linhas."
 
       - name: Comitar se mudou
+        # O 'git add' vem ANTES da comparacao de proposito. Antes ele vinha depois, e a checagem
+        # era 'git diff --quiet -- <arquivo>' — que ignora arquivo nao rastreado e devolve "nada
+        # mudou". Como o schema_producao.sql nunca tinha sido comitado, toda execucao caia no
+        # 'exit 0' e o workflow terminava VERDE sem fazer nada: rodou todas as segundas desde
+        # 15/08/2026 e nunca criou a primeira versao do arquivo. Comparando o indice
+        # (--cached) depois do add, o caso "arquivo novo" tambem conta como mudanca.
         run: |
-          if git diff --quiet -- supabase/schema_producao.sql; then
-            echo "Schema sem alteracoes desde a ultima execucao."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add supabase/schema_producao.sql
+          if git diff --cached --quiet -- supabase/schema_producao.sql; then
+            echo "Schema sem alteracoes desde a ultima execucao."
+            exit 0
+          fi
           git commit -m "Espelha schema de producao [skip ci]"
           git push
