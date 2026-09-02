@@ -91,6 +91,28 @@ function aplicarCacheBusting(html) {
     .replace('src="js/app.js"', `src="js/app.js?v=${v}"`);
 }
 
+// Carimbo do que foi publicado, gravado em dist/versao.json.
+//
+// Por que existe: em 02/09/2026 descobrimos que o Worker do Cloudflare estava servindo o commit
+// 7a30c26 (17/08) enquanto o GitHub Pages ja servia o 1cd8903 (21/08) — onze dias de diferenca,
+// sem ninguem perceber, porque nao havia como perguntar a um deploy "qual versao voce e?".
+// A comparacao so foi possivel garimpando nome de coluna dentro do bundle ofuscado.
+// Com este arquivo, um `curl <endereco>/versao.json` responde na hora, e o monitor de
+// disponibilidade pode conferir se os dois deploys estao no mesmo commit.
+function gravarVersao() {
+  const env = process.env;
+  let commit = env.GITHUB_SHA || env.WORKERS_CI_COMMIT_SHA || env.CF_PAGES_COMMIT_SHA || null;
+  if (!commit) {
+    try {
+      commit = require('child_process').execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString().trim();
+    } catch { /* fora de um clone git (ex.: tarball) — segue sem o commit */ }
+  }
+  const versao = { commit: commit ? commit.slice(0, 7) : 'desconhecido', build: BUILD_ID };
+  fs.writeFileSync(path.join(DIST, 'versao.json'), JSON.stringify(versao, null, 2), 'utf8');
+  return versao;
+}
+
 function main() {
   limparDist();
   copiarRecursivo(path.join(ROOT, 'js'), path.join(DIST, 'js'), { ofuscarJs: true });
@@ -101,6 +123,7 @@ function main() {
   copiarSeExistir('CNAME');                  // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
   copiarSeExistir('_headers');               // cabecalhos de seguranca (CSP etc) — lido pelo Cloudflare
   copiarSeExistir('manifest.json');           // nome e icones ao salvar na tela de inicio do celular
+  const versao = gravarVersao();              // dist/versao.json — "qual commit este deploy esta servindo?"
 
   // Relatorio de tamanho: se o bundle inflar de novo, aparece aqui no log do build.
   let bytes = 0;
@@ -111,7 +134,7 @@ function main() {
       s.isDirectory() ? medir(p) : (bytes += s.size);
     }
   })(DIST);
-  console.log(`Build concluido em dist/ (${BUILD_ID}) — ${(bytes / 1024).toFixed(0)} KB`);
+  console.log(`Build concluido em dist/ (${BUILD_ID}) — ${(bytes / 1024).toFixed(0)} KB — commit ${versao.commit}`);
 }
 
 main();
