@@ -23,6 +23,12 @@ jobs:
       - name: Conferir catalogo de modulos
         run: node scripts/conferir-catalogo-modulos.mjs
 
+      # Os modulos agora sao buscados sob demanda (import dinamico no app.js). Um nome errado
+      # deixou de quebrar na hora e passou a falhar so quando alguem clica naquele modulo — este
+      # passo devolve a falha para o build.
+      - name: Conferir modulos sob demanda
+        run: node scripts/conferir-modulos-carregaveis.mjs
+
       - run: npm run build
       - name: Publica dist/ na branch gh-pages
         uses: peaceiris/actions-gh-pages@v4

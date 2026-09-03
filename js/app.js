@@ -2,20 +2,6 @@ import { supabase } from './supabaseClient.js';
 import { iniciarCapturaDeErros, relatarErro, definirContexto, despejarFilaPreLogin } from './erros.js';
 import { toast, abrirModal, fecharModal, escapeHtml, resolverNivel } from './ui.js';
 import { aplicarTema, extrairCoresDoLogo, corTextoIdeal } from './tema.js';
-import * as dashboard from './modules/dashboard.js';
-import * as contexto from './modules/contexto.js';
-import * as objetivos from './modules/objetivos.js';
-import * as planosAcao from './modules/planosAcao.js';
-import * as indicadores from './modules/indicadores.js';
-import * as atasReuniao from './modules/atasReuniao.js';
-import * as riscos from './modules/riscosOportunidades.js';
-import * as controladoria from './modules/controladoria.js';
-import * as documentos from './modules/documentos.js';
-import * as empresaUsuarios from './modules/empresaUsuarios.js';
-import * as permissoes from './modules/permissoes.js';
-import * as apuracoes from './modules/apuracoes.js';
-import * as auditorias from './modules/auditorias.js';
-import * as treinamentos from './modules/treinamentos.js';
 import { MODULOS_SISTEMA } from './modulosConfig.js';
 
 export const state = {
@@ -31,14 +17,66 @@ export const state = {
 // estiver na tela. Fica no topo de propósito — erro durante a própria montagem também conta.
 iniciarCapturaDeErros();
 
-// Abas internas do módulo Planejamento Estratégico
+// ---------- CARREGAMENTO SOB DEMANDA DOS MÓDULOS ----------
+// Antes, este arquivo importava os 14 módulos de forma estática. Consequência medida em produção
+// (01/09/2026): a tela de LOGIN baixava 41 arquivos e 2,37 MB antes de alguém digitar a senha —
+// incluindo Auditorias (136 KB), Controladoria (87 KB) e Documentos (56 KB), mesmo para quem só
+// tem acesso a Treinamentos. Agora cada módulo é buscado quando a pessoa abre.
+//
+// A versão vem de `import.meta.url`: o build.js já acrescenta "?v=<timestamp>" ao endereço do
+// próprio app.js, e nós repassamos essa mesma marca aos módulos. É a única forma que funciona
+// aqui — o ofuscador move a string './modules/' para o vetor codificado em base64, então o
+// build.js não teria como reescrever esses caminhos por substituição de texto. Montando o
+// endereço em tempo de execução, a marca acompanha sem depender disso. Em desenvolvimento (sem
+// build) a busca vem vazia e os caminhos ficam limpos.
+//
+// LIMITE, para não prometer mais do que entrega: a marca vale só para o módulo pedido aqui. Os
+// imports estáticos DENTRO dele (dashboard.js importa objetivos.js, por exemplo) são resolvidos
+// pelo navegador sem a query. Isso não é problema porque quem realmente protege é o cabeçalho de
+// cache, e ele já está certo nos dois destinos: o Cloudflare manda
+// "max-age=0, must-revalidate" (o navegador confere a cada uso, e um arquivo sem mudança volta
+// como 304) e o GitHub Pages manda "max-age=600" — janela de 10 minutos que vale igual para o
+// app.js e para os submódulos, então eles envelhecem juntos. Cobrir os submódulos exigiria
+// versionar o diretório inteiro no build; medido em 03/09/2026, não compensa.
+const VERSAO_ASSETS = new URL(import.meta.url).search;
+const modulosPedidos = new Map();
+
+function carregarModulo(arquivo) {
+  const jaPedido = modulosPedidos.get(arquivo);
+  if (jaPedido) return jaPedido;
+  // Guarda a promessa, não o módulo resolvido: duas telas pedindo o mesmo módulo ao mesmo tempo
+  // compartilham uma única busca. E em caso de falha (queda de rede no meio), a entrada sai do
+  // mapa para que a próxima tentativa realmente tente de novo, em vez de repetir a falha guardada.
+  const promessa = import(`./modules/${arquivo}.js${VERSAO_ASSETS}`).catch((err) => {
+    modulosPedidos.delete(arquivo);
+    throw err;
+  });
+  modulosPedidos.set(arquivo, promessa);
+  return promessa;
+}
+
+// Abas internas do módulo Planejamento Estratégico → nome do arquivo em js/modules/.
 // (Partes Interessadas virou grupo dentro de Contexto; Mapa Estratégico foi unificado com Objetivos;
 // Ações virou módulo próprio — ver MODULOS_SIMPLES)
-const TABS_PLANEJAMENTO = { dashboard, contexto, objetivos, riscos, indicadores, atas: atasReuniao };
+const TABS_PLANEJAMENTO = {
+  dashboard: 'dashboard',
+  contexto: 'contexto',
+  objetivos: 'objetivos',
+  riscos: 'riscosOportunidades',
+  indicadores: 'indicadores',
+  atas: 'atasReuniao',
+};
 let tabAtiva = 'dashboard';
 
 // Módulos que têm uma única tela (sem abas internas), renderizados direto em #area-modulo-simples
-const MODULOS_SIMPLES = { 'acoes': planosAcao, 'controladoria': controladoria, documentos, 'apuracoes': apuracoes, 'auditorias': auditorias, 'treinamentos': treinamentos };
+const MODULOS_SIMPLES = {
+  'acoes': 'planosAcao',
+  'controladoria': 'controladoria',
+  'documentos': 'documentos',
+  'apuracoes': 'apuracoes',
+  'auditorias': 'auditorias',
+  'treinamentos': 'treinamentos',
+};
 
 // Módulos do sistema — ver js/modulosConfig.js (fonte central, espelha o catálogo no banco).
 export { MODULOS_SISTEMA };
@@ -710,9 +748,9 @@ function atualizarVisibilidadeAbasPE() {
 }
 
 tabsNav.querySelectorAll('.tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     tabAtiva = btn.dataset.tab;
-    if (tabAtiva === 'indicadores') indicadores.filtrarPorObjetivo(null);
+    if (tabAtiva === 'indicadores') (await carregarModulo('indicadores')).filtrarPorObjetivo(null);
     tabsNav.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
     renderConteudoAtivo();
@@ -750,7 +788,7 @@ async function renderConteudoAtivo() {
   if (viewAtual === 'config') {
     areaConfig.style.display = 'block';
     moduloNomeSubtitulo.textContent = 'Empresa e Usuários';
-    empresaUsuarios.render(areaConfig, state);
+    (await carregarModulo('empresaUsuarios')).render(areaConfig, state);
     return;
   }
 
@@ -758,7 +796,7 @@ async function renderConteudoAtivo() {
     if (!state.ehOrbeex) { viewAtual = 'home'; return renderConteudoAtivo(); }
     areaPermissoes.style.display = 'block';
     moduloNomeSubtitulo.textContent = 'Permissões';
-    permissoes.render(areaPermissoes, state);
+    (await carregarModulo('permissoes')).render(areaPermissoes, state);
     return;
   }
 
@@ -770,12 +808,15 @@ async function renderConteudoAtivo() {
     atualizarVisibilidadeAbasPE();
     tabsNav.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tabAtiva));
     document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabAtiva}`));
-    const mod = TABS_PLANEJAMENTO[tabAtiva];
+    const arquivoAba = TABS_PLANEJAMENTO[tabAtiva];
     const container = document.getElementById(`tab-${tabAtiva}`);
     // Com await, um erro dentro do render da aba vira erro tratável aqui em vez de uma promise
     // rejeitada em silêncio — que deixava a aba pela metade sem nenhum aviso na tela.
-    if (mod && container) {
+    // O try também cobre o próprio carregamento do módulo: se a busca falhar (rede caindo no meio),
+    // a pessoa vê o aviso em vez de uma aba em branco, e o erro chega em erros_cliente.
+    if (arquivoAba && container) {
       try {
+        const mod = await carregarModulo(arquivoAba);
         await mod.render(container, state);
       } catch (err) {
         relatarErro(err, `planejamento-estrategico/${tabAtiva}`);
@@ -788,7 +829,8 @@ async function renderConteudoAtivo() {
   if (MODULOS_SIMPLES[moduloAtivo]) {
     areaModuloSimples.style.display = 'block';
     try {
-      await MODULOS_SIMPLES[moduloAtivo].render(areaModuloSimples, state);
+      const mod = await carregarModulo(MODULOS_SIMPLES[moduloAtivo]);
+      await mod.render(areaModuloSimples, state);
     } catch (err) {
       relatarErro(err, moduloAtivo);
       areaModuloSimples.innerHTML = `<div class="alert alert-warning">Não foi possível carregar este módulo: ${escapeHtml(err.message || err)}</div>`;
@@ -807,7 +849,8 @@ document.addEventListener('strategya:abrir-risco', async (e) => {
   viewAtual = 'modulo';
   renderModuleRail();
   await renderConteudoAtivo();
-  riscos.abrirEdicaoPorId(state, document.getElementById('tab-riscos'), e.detail.id);
+  // Já foi carregado pelo renderConteudoAtivo acima; aqui vem do cache, sem nova busca.
+  (await carregarModulo('riscosOportunidades')).abrirEdicaoPorId(state, document.getElementById('tab-riscos'), e.detail.id);
 });
 
 // Disparado por Riscos e Oportunidades ao "Tratar" um risco — abre o plano de ação vinculado
@@ -815,6 +858,9 @@ document.addEventListener('strategya:abrir-risco', async (e) => {
 document.addEventListener('strategya:abrir-plano-acao', async (e) => {
   moduloAtivo = 'acoes';
   viewAtual = 'modulo';
+  // irParaGrupo prepara o estado interno que o render logo abaixo vai ler, então o módulo
+  // precisa estar carregado antes — daí o await vir aqui e não só no render.
+  const planosAcao = await carregarModulo('planosAcao');
   planosAcao.irParaGrupo('planos');
   renderModuleRail();
   await renderConteudoAtivo();
@@ -822,10 +868,10 @@ document.addEventListener('strategya:abrir-plano-acao', async (e) => {
 });
 
 // Troca de aba dentro do Planejamento Estratégico (ex: "ver indicadores" a partir de um Objetivo)
-document.addEventListener('strategya:mudar-aba', (e) => {
+document.addEventListener('strategya:mudar-aba', async (e) => {
   // "Ações" virou módulo próprio (não é mais aba do Planejamento Estratégico)
   if (e.detail.aba === 'planos') {
-    planosAcao.irParaGrupo(e.detail.grupo || 'planos');
+    (await carregarModulo('planosAcao')).irParaGrupo(e.detail.grupo || 'planos');
     moduloAtivo = 'acoes';
     viewAtual = 'modulo';
     renderModuleRail();
@@ -836,8 +882,11 @@ document.addEventListener('strategya:mudar-aba', (e) => {
   tabAtiva = e.detail.aba;
   moduloAtivo = 'planejamento-estrategico';
   viewAtual = 'modulo';
-  if (tabAtiva === 'contexto' && e.detail.grupo) contexto.irParaGrupo(e.detail.grupo);
+  // Estes ajustes preparam o estado interno do módulo para o render logo abaixo, então precisam
+  // esperar o carregamento — mesma razão do handler de abrir-plano-acao.
+  if (tabAtiva === 'contexto' && e.detail.grupo) (await carregarModulo('contexto')).irParaGrupo(e.detail.grupo);
   if (tabAtiva === 'indicadores') {
+    const indicadores = await carregarModulo('indicadores');
     indicadores.filtrarPorObjetivo(e.detail.objetivoId || null);
     if (e.detail.indicadorId) indicadores.abrirIndicadorPorId(e.detail.indicadorId);
   }
