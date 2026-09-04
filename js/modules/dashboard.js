@@ -1,5 +1,6 @@
 import { escapeHtml, formatarValor, buscarTodos } from '../ui.js';
 import { metaDoPeriodo, abrirApresentacao } from './indicadores.js';
+import { progressoObjetivo } from './objetivos.js';
 
 const PERSPECTIVAS = [
   { key: 'financeira', label: 'Financeira', cor: 'blue' },
@@ -87,25 +88,19 @@ export async function render(container, state) {
     return { ind, ultimo, pct, meta };
   });
 
-  // Progresso de cada objetivo: média de conclusão dos planos de ação vinculados a ele (assim o
-  // % sobe conforme as tarefas dos planos vão sendo marcadas como concluídas, em vez de depender
-  // de alguém lembrar de trocar manualmente o status do objetivo pra "Atingido"). Objetivo sem
-  // nenhum plano vinculado ainda usa o status manual como está hoje (atingido/concluído = 100%,
-  // resto = 0%), já que não há execução pra medir.
+  // Progresso de cada objetivo (mesma regra usada no Mapa Estratégico e na tabela de Objetivos,
+  // centralizada em progressoObjetivo/objetivos.js): média de conclusão dos planos de ação
+  // vinculados, pra o % subir conforme as tarefas vão sendo concluídas em vez de depender de
+  // alguém lembrar de trocar manualmente o status do objetivo.
   const planosPorObjetivo = new Map();
   for (const pl of planosDosObjetivos || []) {
     if (!planosPorObjetivo.has(pl.origem_id)) planosPorObjetivo.set(pl.origem_id, []);
     planosPorObjetivo.get(pl.origem_id).push(Number(pl.percentual_conclusao) || 0);
   }
-  const progressoObjetivo = (o) => {
-    const planos = planosPorObjetivo.get(o.id);
-    if (planos && planos.length) return planos.reduce((soma, v) => soma + v, 0) / planos.length;
-    return o.status === 'atingido' || o.status === 'concluido' ? 100 : 0;
-  };
 
   const perspectivaHtml = PERSPECTIVAS.map((p) => {
     const objs = (objetivos || []).filter((o) => o.perspectiva_bsc === p.key);
-    const pct = objs.length ? Math.round(objs.reduce((soma, o) => soma + progressoObjetivo(o), 0) / objs.length) : 0;
+    const pct = objs.length ? Math.round(objs.reduce((soma, o) => soma + progressoObjetivo(o, planosPorObjetivo), 0) / objs.length) : 0;
     return `
       <div class="dashboard-card accent-${p.cor}">
         <div class="dashboard-card-label">${p.label}</div>

@@ -17,6 +17,30 @@ export const STATUS = {
   atrasado: 'Atrasado',
 };
 
+// Progresso de um objetivo (0-100): média de conclusão dos planos de ação vinculados a ele, para
+// refletir a execução real em vez de depender de alguém lembrar de trocar o status manualmente.
+// planosPorObjetivo: Map<objetivoId, number[]> com o percentual_conclusao de cada plano vinculado.
+// Objetivo sem plano ainda não tem execução pra medir — cai no status manual (Atingido = 100%).
+export function progressoObjetivo(o, planosPorObjetivo) {
+  const planos = planosPorObjetivo.get(o.id);
+  if (planos && planos.length) return planos.reduce((soma, v) => soma + v, 0) / planos.length;
+  return o.status === 'atingido' ? 100 : 0;
+}
+
+// Status exibido nas telas (Mapa Estratégico e tabela de Objetivos): "Atrasado" é sempre uma
+// decisão manual (depende de prazo/julgamento, não dá pra derivar só do % de conclusão) — quando
+// marcado assim, prevalece. Havendo planos vinculados, o status normal é derivado do progresso
+// deles; sem plano, mantém o que está salvo em objetivos_estrategicos.status.
+export function statusExibicao(o, planosPorObjetivo) {
+  if (o.status === 'atrasado') return o.status;
+  const planos = planosPorObjetivo.get(o.id);
+  if (!planos || !planos.length) return o.status;
+  const progresso = progressoObjetivo(o, planosPorObjetivo);
+  if (progresso >= 100) return 'atingido';
+  if (progresso > 0) return 'em_andamento';
+  return 'nao_iniciado';
+}
+
 // Categoria usada para identificar itens de Riscos e Oportunidades criados a partir da análise
 // feita no formulário do objetivo (permite editar/remover a análise sem tocar em itens manuais).
 const CATEGORIA_ANALISE_OBJETIVO = 'Análise do objetivo';
@@ -48,7 +72,7 @@ export async function render(container, state) {
     [itens, membros, planos, riscos, processos] = await Promise.all([
       listarObjetivos(supabase, empresaAtual.id),
       supabase.rpc('listar_usuarios_empresa', { p_empresa_id: empresaAtual.id }).then((r) => r.data || []),
-      supabase.from('planos_acao').select('id, origem_id').eq('empresa_id', empresaAtual.id).eq('origem', 'objetivo').then((r) => r.data || []),
+      supabase.from('planos_acao').select('id, origem_id, percentual_conclusao').eq('empresa_id', empresaAtual.id).eq('origem', 'objetivo').then((r) => r.data || []),
       supabase.from('riscos_oportunidades').select('id, tipo, descricao, categoria, objetivo_id').eq('empresa_id', empresaAtual.id).not('objetivo_id', 'is', null).then((r) => r.data || []),
       supabase.from('macrofluxo_processos').select('id, numero, nome, tipo').eq('empresa_id', empresaAtual.id).order('ordem').then((r) => r.data || []),
     ]);
@@ -60,7 +84,10 @@ export async function render(container, state) {
   const emailPorId = new Map(membros.map((m) => [m.usuario_id, m.nome || m.email]));
   const processoPorId = new Map(processos.map((p) => [p.id, rotuloProcesso(p)]));
   const planosPorObjetivo = new Map();
-  planos.forEach((p) => planosPorObjetivo.set(p.origem_id, (planosPorObjetivo.get(p.origem_id) || 0) + 1));
+  planos.forEach((p) => {
+    if (!planosPorObjetivo.has(p.origem_id)) planosPorObjetivo.set(p.origem_id, []);
+    planosPorObjetivo.get(p.origem_id).push(Number(p.percentual_conclusao) || 0);
+  });
   const riscosPorObjetivo = new Map();
   riscos.forEach((r) => {
     if (!riscosPorObjetivo.has(r.objetivo_id)) riscosPorObjetivo.set(r.objetivo_id, []);
@@ -74,7 +101,7 @@ export async function render(container, state) {
     const statusFiltro = container.querySelector('#ob-filtro-status')?.value || '';
     return itens.filter((o) => {
       if (respFiltro && o.responsavel_id !== respFiltro) return false;
-      if (statusFiltro && o.status !== statusFiltro) return false;
+      if (statusFiltro && statusExibicao(o, planosPorObjetivo) !== statusFiltro) return false;
       return true;
     });
   }
@@ -105,7 +132,7 @@ export async function render(container, state) {
                 <td><strong>${escapeHtml(o.nome)}</strong><br><span class="text-muted">${escapeHtml(o.descricao || '')}</span>${o.processo_id ? `<br><span class="badge badge-neutral">${escapeHtml(processoPorId.get(o.processo_id) || '—')}</span>` : ''}</td>
                 <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
                 <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
-                <td>${statusSimbolo(o.status, STATUS[o.status])}</td>
+                <td>${statusSimbolo(statusExibicao(o, planosPorObjetivo), STATUS[statusExibicao(o, planosPorObjetivo)])}</td>
                 <td>${(() => {
                   const doObjetivo = riscosPorObjetivo.get(o.id) || [];
                   const nRiscos = doObjetivo.filter((r) => r.tipo === 'risco').length;
@@ -118,7 +145,7 @@ export async function render(container, state) {
                 })()}</td>
                 <td>
                   <button class="btn btn-secondary btn-sm" data-ver-planos="${o.id}">
-                    ${planosPorObjetivo.get(o.id) ? `${planosPorObjetivo.get(o.id)} plano(s)` : 'Sem plano — criar'}
+                    ${planosPorObjetivo.get(o.id)?.length ? `${planosPorObjetivo.get(o.id).length} plano(s)` : 'Sem plano — criar'}
                   </button>
                 </td>
                 <td class="table-actions">
@@ -184,7 +211,7 @@ export async function render(container, state) {
   }
 
   container.innerHTML = `
-    ${renderMapa(itens)}
+    ${renderMapa(itens, planosPorObjetivo)}
     <div class="card">
       <div class="card-header">
         <span><i class="ti ti-flag"></i> Objetivos Estratégicos</span>
@@ -224,13 +251,13 @@ export async function render(container, state) {
 
   const btnImprimir = container.querySelector('#btn-objetivos-pdf');
   if (btnImprimir) {
-    btnImprimir.addEventListener('click', () => imprimirListaObjetivos(objetivosAlvoImpressao(), emailPorId));
+    btnImprimir.addEventListener('click', () => imprimirListaObjetivos(objetivosAlvoImpressao(), emailPorId, planosPorObjetivo));
   }
 }
 
 // Documento de impressão de uma lista de objetivos (respeita a seleção em massa quando houver,
 // senão os filtros de responsável/status ativos na tela).
-function imprimirListaObjetivos(itens, emailPorId) {
+function imprimirListaObjetivos(itens, emailPorId, planosPorObjetivo) {
   imprimirSecao(`
     <h2 style="margin-bottom:4px">Objetivos Estratégicos</h2>
     <p class="text-muted">${itens.length} objetivo(s)</p>
@@ -244,7 +271,7 @@ function imprimirListaObjetivos(itens, emailPorId) {
               <td>${escapeHtml(o.nome)}${o.descricao ? `<br><span class="text-muted">${escapeHtml(o.descricao)}</span>` : ''}</td>
               <td>${PERSPECTIVAS[o.perspectiva_bsc]}</td>
               <td>${escapeHtml(emailPorId.get(o.responsavel_id) || '—')}</td>
-              <td>${STATUS[o.status]}</td>
+              <td>${STATUS[statusExibicao(o, planosPorObjetivo)]}</td>
             </tr>`).join('')}
         </tbody>
       </table>` : '<p>Nenhum objetivo encontrado.</p>'}
