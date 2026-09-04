@@ -55,22 +55,40 @@ function limparDist() {
   fs.mkdirSync(DIST, { recursive: true });
 }
 
-function copiarRecursivo(origem, destino, { ofuscarJs = false } = {}) {
+function copiarRecursivo(origem, destino, { ofuscarJs = false, v } = {}) {
   const stat = fs.statSync(origem);
   if (stat.isDirectory()) {
     fs.mkdirSync(destino, { recursive: true });
     for (const nome of fs.readdirSync(origem)) {
-      copiarRecursivo(path.join(origem, nome), path.join(destino, nome), { ofuscarJs });
+      copiarRecursivo(path.join(origem, nome), path.join(destino, nome), { ofuscarJs, v });
     }
     return;
   }
   if (ofuscarJs && origem.endsWith('.js')) {
     const codigoOriginal = fs.readFileSync(origem, 'utf8');
     const ofuscado = JavaScriptObfuscator.obfuscate(codigoOriginal, OBFUSCATOR_OPTIONS).getObfuscatedCode();
-    fs.writeFileSync(destino, COPYRIGHT_BANNER + ofuscado, 'utf8');
+    fs.writeFileSync(destino, COPYRIGHT_BANNER + aplicarCacheBustingImportsJs(ofuscado, v), 'utf8');
   } else {
     fs.copyFileSync(origem, destino);
   }
+}
+
+// Cache-busting dos imports estaticos ENTRE modulos (ex: dashboard.js importando de
+// objetivos.js): sem isso, so o modulo pedido via import() dinamico (carregarModulo() em
+// app.js) ganhava "?v=", porque a marca vem do proprio endereco da requisicao dinamica
+// (import.meta.url + VERSAO_ASSETS). Um `import {x} from './objetivos.js'` ESTATICO dentro de
+// outro modulo resolve como endereco literal, sem query — e o navegador podia continuar servindo
+// esse arquivo do cache antigo mesmo depois do deploy, quebrando com "does not provide an export
+// named X" sempre que uma dependencia ganhava uma exportacao nova (bug real, visto em producao em
+// 04/09/2026: dashboard.js importou progressoObjetivo de objetivos.js, e quem tinha objetivos.js
+// em cache continuou vendo a versao sem essa funcao). Aplicado depois da ofuscacao porque o
+// javascript-obfuscator preserva os specifiers de import/export como estao (nao os move para o
+// vetor de strings), entao o texto ainda e' facil de casar por regex.
+function aplicarCacheBustingImportsJs(codigo, v) {
+  const comQuery = (aspas, caminho) => `${aspas}${caminho}?v=${v}${aspas}`;
+  return codigo
+    .replace(/from(\s*)(['"])(\.\.?\/[^'"?]+\.js)\2/g, (m, espaco, aspas, caminho) => `from${espaco}${comQuery(aspas, caminho)}`)
+    .replace(/import(\s*)\((\s*)(['"])(\.\.?\/[^'"?]+\.js)\3(\s*)\)/g, (m, e1, e2, aspas, caminho, e3) => `import${e1}(${e2}${comQuery(aspas, caminho)}${e3})`);
 }
 
 function copiarSeExistir(nome) {
@@ -83,8 +101,7 @@ function copiarSeExistir(nome) {
 // depois de um deploy, mesmo com o index.html novo (os links dos CDNs ja tem versao+integrity
 // fixas no proprio nome, entao ficam de fora). "?v=<timestamp do build>" forca um recurso "novo"
 // a cada deploy, sem precisar mexer em configuracao de cache do Cloudflare.
-function aplicarCacheBusting(html) {
-  const v = Date.now();
+function aplicarCacheBusting(html, v) {
   return html
     .replace('href="css/style.css"', `href="css/style.css?v=${v}"`)
     .replace('src="js/pdfSetup.js"', `src="js/pdfSetup.js?v=${v}"`)
@@ -114,12 +131,13 @@ function gravarVersao() {
 }
 
 function main() {
+  const v = Date.now(); // um unico carimbo de versao para o HTML e para os imports entre modulos JS deste build
   limparDist();
-  copiarRecursivo(path.join(ROOT, 'js'), path.join(DIST, 'js'), { ofuscarJs: true });
+  copiarRecursivo(path.join(ROOT, 'js'), path.join(DIST, 'js'), { ofuscarJs: true, v });
   copiarRecursivo(path.join(ROOT, 'css'), path.join(DIST, 'css'));
   copiarRecursivo(path.join(ROOT, 'img'), path.join(DIST, 'img'));  // favicon, apple-touch-icon e cartao de compartilhamento
   const htmlOriginal = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  fs.writeFileSync(path.join(DIST, 'index.html'), aplicarCacheBusting(htmlOriginal), 'utf8');
+  fs.writeFileSync(path.join(DIST, 'index.html'), aplicarCacheBusting(htmlOriginal, v), 'utf8');
   copiarSeExistir('CNAME');                  // inofensivo no Cloudflare; util enquanto o GH Pages coexiste
   copiarSeExistir('_headers');               // cabecalhos de seguranca (CSP etc) — lido pelo Cloudflare
   copiarSeExistir('manifest.json');           // nome e icones ao salvar na tela de inicio do celular
