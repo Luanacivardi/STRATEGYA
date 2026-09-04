@@ -732,9 +732,11 @@ input.filter-select.filter-select-sm[type="date"] { min-width: 108px; max-width:
    (mesma largura entre si), ao invés de flutuarem soltas com tamanho fixo e deixarem espaço
    desigual na última linha. */
 .bsc-lane-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; padding: 12px; background: var(--surface-1); min-height: 60px; }
-.bsc-card { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; border-left: 4px solid var(--gold); box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; transition: box-shadow 0.15s; }
+.bsc-card { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; border-left: 4px solid var(--gold); box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: box-shadow 0.15s; }
 .bsc-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 .bsc-card-nome { font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.bsc-card-acoes { display: flex; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.bsc-card-acoes .icon-btn { font-size: 15px; }
 
 /* ===== INDICADORES ===== */
 .semaforo-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
