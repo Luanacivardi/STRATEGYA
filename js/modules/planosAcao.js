@@ -302,6 +302,7 @@ async function renderPlanos(container, state) {
                 <td>${statusSimbolo(p.status, STATUS_LABEL[p.status])}</td>
                 <td>${p.percentual_conclusao}%</td>
                 <td class="table-actions">
+                  <button class="icon-btn" data-visualizar-plano="${p.id}" title="Visualizar plano de ação"><i class="ti ti-eye"></i></button>
                   <button class="icon-btn" data-imprimir-plano="${p.id}" title="Imprimir plano de ação"><i class="ti ti-printer"></i></button>
                   ${podeEditarRegistro(state, p.responsavel_id, 'acoes', 'planos') ? `
                     <button class="icon-btn" data-editar="${p.id}" title="Editar"><i class="ti ti-pencil"></i></button>
@@ -363,6 +364,13 @@ async function renderPlanos(container, state) {
       btn.addEventListener('click', () => {
         const plano = planos.find((p) => p.id === btn.dataset.imprimirPlano);
         imprimirPlano(state, plano, origens);
+      });
+    });
+
+    area.querySelectorAll('[data-visualizar-plano]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const plano = planos.find((p) => p.id === btn.dataset.visualizarPlano);
+        visualizarPlano(state, plano, origens);
       });
     });
   }
@@ -440,18 +448,15 @@ function exportarCsvPlanos(planos, origens, emailPorId) {
   baixarCsv(`planos_acao_${new Date().toISOString().slice(0, 10)}.csv`, cabecalho, linhasValores);
 }
 
-// Monta o documento de impressão de um único plano de ação (5W2H completo + tarefas micro),
-// usando o timbre padrão (#print-letterhead) e a área reservada #print-secao.
-async function imprimirPlano(state, plano, origens) {
+// Monta o miolo (5W2H completo + tarefas micro) reaproveitado tanto pela impressão quanto pela
+// visualização em tela — busca as tarefas e o nome dos responsáveis uma única vez.
+async function montarDetalhePlano(state, plano, origens) {
   const { supabase } = state;
   const { data: itens } = await supabase.from('planos_acao_itens').select('*').eq('plano_acao_id', plano.id).order('created_at');
   const { data: membros } = await supabase.rpc('listar_usuarios_empresa', { p_empresa_id: state.empresaAtual.id });
   const nomePorId = new Map((membros || []).map((m) => [m.usuario_id, m.nome || m.email]));
 
-  imprimirSecao(`
-    <h2 style="margin-bottom:4px">Plano de Ação ${escapeHtml(plano.numero)}</h2>
-    <p class="text-muted">${escapeHtml(plano.titulo)}</p>
-    <hr class="sep">
+  return `
     <table class="print-detalhe-tabela">
       <tbody>
         <tr><th>Categoria de origem</th><td>${plano.origem_categoria ? ORIGEM_CATEGORIA_LABEL[plano.origem_categoria] : '—'}</td></tr>
@@ -468,7 +473,7 @@ async function imprimirPlano(state, plano, origens) {
         <tr><th>Quem (responsável)</th><td>${escapeHtml(nomePorId.get(plano.responsavel_id) || '—')}</td></tr>
         <tr><th>Como</th><td>${escapeHtml(plano.como || '—')}</td></tr>
         <tr><th>Quanto custa</th><td>${plano.quanto_custa ?? '—'}</td></tr>
-        <tr><th>Status</th><td>${STATUS_LABEL[plano.status]} (${plano.percentual_conclusao}% concluído)</td></tr>
+        <tr><th>Status</th><td>${statusSimbolo(plano.status, STATUS_LABEL[plano.status])} (${plano.percentual_conclusao}% concluído)</td></tr>
       </tbody>
     </table>
     <h4 style="margin-top:16px">Tarefas</h4>
@@ -481,12 +486,38 @@ async function imprimirPlano(state, plano, origens) {
               <td>${escapeHtml(i.descricao)}</td>
               <td>${escapeHtml(nomePorId.get(i.responsavel_id) || '—')}</td>
               <td>${formatarData(i.prazo) || '—'}</td>
-              <td>${STATUS_LABEL[i.status]}</td>
+              <td>${statusSimbolo(i.status, STATUS_LABEL[i.status])}</td>
               <td>${i.percentual_conclusao}%</td>
             </tr>`).join('')}
         </tbody>
       </table>` : '<p>Nenhuma tarefa registrada.</p>'}
+  `;
+}
+
+// Monta o documento de impressão de um único plano de ação, usando o timbre padrão
+// (#print-letterhead) e a área reservada #print-secao.
+async function imprimirPlano(state, plano, origens) {
+  const detalhe = await montarDetalhePlano(state, plano, origens);
+  imprimirSecao(`
+    <h2 style="margin-bottom:4px">Plano de Ação ${escapeHtml(plano.numero)}</h2>
+    <p class="text-muted">${escapeHtml(plano.titulo)}</p>
+    <hr class="sep">
+    ${detalhe}
   `);
+}
+
+// Visualização em tela do plano completo (mesmo conteúdo da impressão), sem precisar imprimir —
+// abre num modal com um atalho para imprimir/PDF caso a pessoa queira depois.
+async function visualizarPlano(state, plano, origens) {
+  const detalhe = await montarDetalhePlano(state, plano, origens);
+  const modal = abrirModal(`Plano de Ação ${plano.numero}`, `
+    <p class="text-muted" style="margin-top:-8px">${escapeHtml(plano.titulo)}</p>
+    ${detalhe}
+    <div style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button type="button" class="btn btn-secondary btn-sm" id="btn-visualizar-plano-imprimir"><i class="ti ti-printer"></i> Imprimir / PDF</button>
+    </div>
+  `, 'modal-xl');
+  modal.querySelector('#btn-visualizar-plano-imprimir').addEventListener('click', () => imprimirPlano(state, plano, origens));
 }
 
 // Documento de impressão da lista de planos (respeitando os filtros ativos no momento do clique).
