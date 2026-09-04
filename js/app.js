@@ -871,7 +871,9 @@ document.addEventListener('strategya:abrir-plano-acao', async (e) => {
 document.addEventListener('strategya:mudar-aba', async (e) => {
   // "Ações" virou módulo próprio (não é mais aba do Planejamento Estratégico)
   if (e.detail.aba === 'planos') {
-    (await carregarModulo('planosAcao')).irParaGrupo(e.detail.grupo || 'planos');
+    const planosAcao = await carregarModulo('planosAcao');
+    if (e.detail.objetivoId) planosAcao.definirFiltroObjetivo(e.detail.objetivoId);
+    planosAcao.irParaGrupo(e.detail.grupo || 'planos');
     moduloAtivo = 'acoes';
     viewAtual = 'modulo';
     renderModuleRail();

@@ -13,9 +13,13 @@ export function renderMapa(objetivos) {
         <div class="bsc-lane-title">${PERSPECTIVAS[key]}</div>
         <div class="bsc-lane-cards">
           ${objs.length ? objs.map((o) => `
-            <div class="bsc-card" data-objetivo="${o.id}" title="Ver indicadores deste objetivo">
+            <div class="bsc-card">
               <div class="bsc-card-nome">${escapeHtml(o.nome)}</div>
               ${statusSimbolo(o.status, STATUS[o.status])}
+              <div class="bsc-card-acoes">
+                <button type="button" class="icon-btn" data-ver-indicadores="${o.id}" title="Ver indicadores deste objetivo"><i class="ti ti-chart-line"></i></button>
+                <button type="button" class="icon-btn" data-ver-planos-objetivo="${o.id}" title="Ver planos de ação deste objetivo"><i class="ti ti-list-check"></i></button>
+              </div>
             </div>`).join('') : '<span class="text-muted">Nenhum objetivo nesta perspectiva.</span>'}
         </div>
       </div>`;
@@ -28,11 +32,17 @@ export function renderMapa(objetivos) {
     </div>`;
 }
 
-// Liga o clique nos cards do mapa (navega para Indicadores já filtrado pelo objetivo).
+// Liga os botões de cada card do mapa: um leva para Indicadores, outro para Planos de Ação,
+// ambos já filtrados pelo objetivo clicado.
 export function wireMapa(container) {
-  container.querySelectorAll('[data-objetivo]').forEach((el) => {
+  container.querySelectorAll('[data-ver-indicadores]').forEach((el) => {
     el.addEventListener('click', () => {
-      document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'indicadores', objetivoId: el.dataset.objetivo } }));
+      document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'indicadores', objetivoId: el.dataset.verIndicadores } }));
+    });
+  });
+  container.querySelectorAll('[data-ver-planos-objetivo]').forEach((el) => {
+    el.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'planos', grupo: 'planos', objetivoId: el.dataset.verPlanosObjetivo } }));
     });
   });
 }
