@@ -1,5 +1,5 @@
 import { escapeHtml, formatarValor, buscarTodos } from '../ui.js';
-import { metaDoPeriodo } from './indicadores.js';
+import { metaDoPeriodo, abrirApresentacao } from './indicadores.js';
 
 const PERSPECTIVAS = [
   { key: 'financeira', label: 'Financeira', cor: 'blue' },
@@ -111,7 +111,7 @@ export async function render(container, state) {
                 : (ind.tipo_meta === 'variavel' ? '<span class="text-muted">variável</span>' : '<span class="text-muted">—</span>')}</td>
               <td>${ultimo ? `${formatarValor(ultimo.valor_realizado, ind.unidade)} ${escapeHtml(ind.unidade || '')} (${ultimo.periodo})` : '<span class="text-muted">sem dados</span>'}</td>
               <td>${pct === null ? '—' : Math.round(pct) + '%'}</td>
-              <td><button class="icon-btn" data-ir-indicador="${ind.id}" title="Ver indicador"><i class="ti ti-external-link"></i></button></td>
+              <td><button class="icon-btn" data-ver-grafico="${ind.id}" title="Ver gráfico (tela cheia)"><i class="ti ti-chart-line"></i></button></td>
             </tr>`).join('')}
         </tbody>
       </table>`
@@ -159,9 +159,12 @@ export async function render(container, state) {
     });
   });
 
-  container.querySelectorAll('[data-ir-indicador]').forEach((el) => {
+  // Abre a apresentação (tela cheia, com gráfico) direto por cima do Dashboard — mesma tela que o
+  // ícone de olho abre na aba Indicadores — sem precisar trocar de aba.
+  container.querySelectorAll('[data-ver-grafico]').forEach((el) => {
     el.addEventListener('click', () => {
-      document.dispatchEvent(new CustomEvent('strategya:mudar-aba', { detail: { aba: 'indicadores', indicadorId: el.dataset.irIndicador } }));
+      const ind = (indicadores || []).find((i) => i.id === el.dataset.verGrafico);
+      if (ind) abrirApresentacao(state, ind);
     });
   });
 }

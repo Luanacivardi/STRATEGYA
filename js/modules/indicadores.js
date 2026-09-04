@@ -552,7 +552,7 @@ function renderHistoricoAnalises(analises, nomeMembroPorId, podeEditar = true) {
   `).join('');
 }
 
-async function abrirApresentacao(state, indicador) {
+export async function abrirApresentacao(state, indicador) {
   const { supabase, empresaAtual, user } = state;
   const podeEditar = podeEditarRegistro(state, indicador.responsavel_id, 'planejamento-estrategico', 'indicadores');
   const ehVariavel = metaEhVariavel(indicador);
