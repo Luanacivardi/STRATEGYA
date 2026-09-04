@@ -31,9 +31,10 @@ export async function render(container, state) {
   container.innerHTML = '<p class="text-muted">Carregando dashboard...</p>';
   const { supabase, empresaAtual } = state;
 
-  const [{ data: objetivos }, { data: indicadores }] = await Promise.all([
+  const [{ data: objetivos }, { data: indicadores }, { data: planosDosObjetivos }] = await Promise.all([
     supabase.from('objetivos_estrategicos').select('*').eq('empresa_id', empresaAtual.id),
     supabase.from('indicadores').select('*').eq('empresa_id', empresaAtual.id),
+    supabase.from('planos_acao').select('origem_id, percentual_conclusao').eq('empresa_id', empresaAtual.id).eq('origem', 'objetivo'),
   ]);
 
   const indicadorIds = (indicadores || []).map((i) => i.id);
@@ -86,10 +87,25 @@ export async function render(container, state) {
     return { ind, ultimo, pct, meta };
   });
 
+  // Progresso de cada objetivo: média de conclusão dos planos de ação vinculados a ele (assim o
+  // % sobe conforme as tarefas dos planos vão sendo marcadas como concluídas, em vez de depender
+  // de alguém lembrar de trocar manualmente o status do objetivo pra "Atingido"). Objetivo sem
+  // nenhum plano vinculado ainda usa o status manual como está hoje (atingido/concluído = 100%,
+  // resto = 0%), já que não há execução pra medir.
+  const planosPorObjetivo = new Map();
+  for (const pl of planosDosObjetivos || []) {
+    if (!planosPorObjetivo.has(pl.origem_id)) planosPorObjetivo.set(pl.origem_id, []);
+    planosPorObjetivo.get(pl.origem_id).push(Number(pl.percentual_conclusao) || 0);
+  }
+  const progressoObjetivo = (o) => {
+    const planos = planosPorObjetivo.get(o.id);
+    if (planos && planos.length) return planos.reduce((soma, v) => soma + v, 0) / planos.length;
+    return o.status === 'atingido' || o.status === 'concluido' ? 100 : 0;
+  };
+
   const perspectivaHtml = PERSPECTIVAS.map((p) => {
     const objs = (objetivos || []).filter((o) => o.perspectiva_bsc === p.key);
-    const atingidos = objs.filter((o) => o.status === 'atingido').length;
-    const pct = objs.length ? Math.round((atingidos / objs.length) * 100) : 0;
+    const pct = objs.length ? Math.round(objs.reduce((soma, o) => soma + progressoObjetivo(o), 0) / objs.length) : 0;
     return `
       <div class="dashboard-card accent-${p.cor}">
         <div class="dashboard-card-label">${p.label}</div>
